@@ -30,7 +30,7 @@ setenv() { # setenv FILE KEY VALUE  (replace or append)
 
 if [ ! -f deploy/.secrets ]; then
   echo "• Generating secrets (saved in deploy/.secrets; keep a copy somewhere safe)"
-  ( sh "$SB/utils/generate-keys.sh" | grep -E '^[A-Z0-9_]+=' ; echo "DASHBOARD_USERNAME=maxadmin" ) > deploy/.secrets
+  ( sh "$SB/utils/generate-keys.sh" </dev/null | grep -E '^[A-Z0-9_]+=' ; echo "DASHBOARD_USERNAME=maxadmin" ) > deploy/.secrets
   chmod 600 deploy/.secrets
 fi
 set -a; . deploy/.secrets; set +a
