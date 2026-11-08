@@ -66,5 +66,6 @@ function friendly(msg: string) {
   if (msg.includes("violates foreign key") && msg.includes("restrict")) return "This record is in use and can't be deleted.";
   if (msg.includes("violates foreign key")) return "This record is linked to other records and can't be deleted.";
   if (msg.includes("cancel_needs_reason")) return "Please give a reason for cancelling.";
+  if (msg.includes("trip_dates_order")) return "The trip can't end before it starts. Check the travel dates.";
   return msg;
 }

@@ -142,3 +142,13 @@ export function inrShort(n: number) {
   if (a >= 1e3) return `${s}₹${+(a / 1e3).toFixed(0)} K`;
   return `${s}₹${Math.round(a)}`;
 }
+
+/** Problem with a phone number, or null when it is fine. Indian numbers: 10 digits (mobile or landline);
+ *  foreign numbers: + and country code, 8–15 digits in all. */
+export function phoneError(v: string | null | undefined): string | null {
+  if (!v || !v.trim()) return null;
+  if (/[a-z]/i.test(v)) return "Use digits only.";
+  const n = normPhone(v);
+  if (n.startsWith("+91")) return /^\+91[2-9]\d{9}$/.test(n) ? null : "Indian numbers have 10 digits, like 98765 43210.";
+  return /^\+[1-9]\d{7,14}$/.test(n) ? null : "Enter a 10-digit number, or + and the country code for a foreign number (like +971 50 123 4567).";
+}

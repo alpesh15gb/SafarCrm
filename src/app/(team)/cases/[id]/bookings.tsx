@@ -11,6 +11,7 @@ import { useApp } from "@/components/shell/shell";
 import { cancelLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLineVisible } from "@/actions/bookings";
 import { DEFAULT_KIND, SERVICES, SERVICE_FIELDS, SERVICE_LABEL, visaTemplate, type FieldDef, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
+import { lineProblem } from "@/lib/validate";
 import { FlightPassengers, IssueList, type Pax } from "@/components/flight-pax";
 import { PAX_LABEL, checkAirport, checkFlightNo, checkPnr, checkTicket, airlineCodeOf, nextDay, normFlightNo, normTicket, paxType } from "@/lib/iata";
 import { fdate, inr } from "@/lib/format";
@@ -197,6 +198,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   const [m, setM] = useState({ supplier_cost: "", selling_price: "", commission_type: "amount" as "amount" | "percent", commission_value: "", gst: "", payment_due_date: "", supplier_due_date: "" });
   const [notes, setNotes] = useState("");
   const [visible, setVisible] = useState(true);
+  const [tried, setTried] = useState(false);   // show "what's missing" only after a save attempt
 
   useEffect(() => {
     if (!open) return;
@@ -218,6 +220,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
       setNotes(""); setVisible(true);
     }
     setAddSup(null);
+    setTried(false);
   }, [open, line, initService, travellers]);
 
   const num = (v: string) => Number(v) || 0;
@@ -239,6 +242,17 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     return { ...x, [k]: v };
   });
   const sectors = (d.sectors as Sector[]) ?? [];
+  // return trip: typing the outbound airports fills the return leg in reverse, until someone edits the return leg
+  function setAirport(i: number, key: "from" | "to", raw: string) {
+    const v = raw.toUpperCase();
+    const next = sectors.map((x, j) => (j === i ? { ...x, [key]: v } : x));
+    if (d.trip_type === "return" && i === 0 && next[1]) {
+      const mirror = key === "from" ? "to" : "from";
+      const old = sectors[0][key];
+      if (!next[1][mirror] || next[1][mirror] === old) next[1] = { ...next[1], [mirror]: v };
+    }
+    setDet("sectors", next);
+  }
   const tickets = (d.tickets as { passenger: string; number: string }[]) ?? [];
 
   function setTripType(t: string) {
@@ -249,8 +263,12 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   }
 
   const visaPerPerson = service === "visa" && !line && trav.length > 1;
-  const save = () =>
-    run(
+  // check before sending, and say exactly what is missing
+  const problem = lineProblem(service, d);
+  const save = () => {
+    setTried(true);
+    if (problem) return;
+    return run(
       () => visaPerPerson ? saveVisaPerPerson() : saveLine({
         id: line?.id, case_id: caseId, service, supplier_id: supplier?.id ?? null, status, reference, traveller_ids: trav,
         supplier_cost: num(m.supplier_cost), selling_price: num(m.selling_price), commission_type: m.commission_type, commission_value: num(m.commission_value),
@@ -259,6 +277,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
       }),
       { then: () => onClose() },
     );
+  };
   // a visa is decided per person, so make one file per traveller
   async function saveVisaPerPerson() {
     for (const id of trav) {
@@ -312,11 +331,11 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
 
         {service === "flight" && (
           <div className="space-y-2">
-            <div className="text-[13px] font-medium">Sectors</div>
+            <div className="text-[13px] font-medium">Sectors <span className="text-coral">*</span> <span className="font-normal text-muted">From and To airport codes are needed</span></div>
             {sectors.map((s, i) => (
               <div key={i} className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 sm:grid-cols-[70px_70px_140px_1fr_90px_80px_80px_28px]">
-                <input className="field uppercase" list="dl-airport" placeholder="From" value={s.from} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, from: e.target.value.toUpperCase() } : x)))} />
-                <input className="field uppercase" list="dl-airport" placeholder="To" value={s.to} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, to: e.target.value.toUpperCase() } : x)))} />
+                <input className="field uppercase" list="dl-airport" placeholder="From" value={s.from} onChange={(e) => setAirport(i, "from", e.target.value)} />
+                <input className="field uppercase" list="dl-airport" placeholder="To" value={s.to} onChange={(e) => setAirport(i, "to", e.target.value)} />
                 <input className="field" type="date" value={s.date} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} />
                 <input className="field" list="dl-airline" placeholder="Airline" value={s.airline} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, airline: e.target.value } : x)))} />
                 <input className="field" placeholder="Flight no." value={s.flight_no}
@@ -392,6 +411,9 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </div>
         </div>
 
+        {tried && problem && (
+          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700">{problem}</p>
+        )}
         <More>
           <div className="space-y-3">
             <Field label="Booking or confirmation reference"><input className="field" value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
@@ -439,7 +461,7 @@ function DetailFields({ defs, d, set }: { defs: FieldDef[]; d: Record<string, un
         if (f.type === "bool")
           return <div key={f.key} className={span}><Toggle checked={!!v} onChange={(x) => set(f.key, x)} label={f.label} /></div>;
         return (
-          <Field key={f.key} label={f.label} hint={f.hint} className={f.type === "textarea" ? "sm:col-span-4" : span}>
+          <Field key={f.key} label={f.label} hint={f.hint} required={f.required} className={f.type === "textarea" ? "sm:col-span-4" : span}>
             {f.type === "select" ? (
               <select className="field" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
                 <option value="">—</option>{f.options!.map((o) => <option key={o}>{o}</option>)}

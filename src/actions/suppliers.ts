@@ -1,11 +1,15 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { fail, type ActionResult } from "@/lib/auth";
-import { normPhone } from "@/lib/format";
+import { normPhone, phoneError } from "@/lib/format";
 
 export async function saveSupplier(input: Record<string, unknown> & { id?: string; name: string }): Promise<ActionResult<{ id: string; name: string }>> {
   try {
     if (!String(input.name ?? "").trim()) return { ok: false, error: "Supplier name is required." };
+    for (const [k, label] of [["mobile", "Mobile"], ["whatsapp", "WhatsApp number"]] as const) {
+      const err = phoneError(input[k] as string);
+      if (err) return { ok: false, error: `${label}: ${err}` };
+    }
     const row: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input)) {
       if (["id", "created_at", "updated_at", "created_by"].includes(k)) continue;

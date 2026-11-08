@@ -1,6 +1,8 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { fail, type ActionResult } from "@/lib/auth";
+import { lineProblem } from "@/lib/validate";
+import type { Service } from "@/lib/constants";
 
 export type LineInput = {
   id?: string;
@@ -26,6 +28,8 @@ const n = (v: unknown) => (v === "" || v === null || v === undefined || Number.i
 
 export async function saveLine(input: LineInput): Promise<ActionResult<{ id: string }>> {
   try {
+    const problem = lineProblem(input.service as Service, (input.details ?? {}) as Record<string, unknown>);
+    if (problem) return { ok: false, error: problem };
     const sb = await createClient();
     const row: Record<string, unknown> = {
       case_id: input.case_id,

@@ -2,7 +2,7 @@
 import { randomInt } from "node:crypto";
 import { createAdmin, createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
-import { normPhone, portalCodeEmail, portalEmail, waLink } from "@/lib/format";
+import { normPhone, portalCodeEmail, portalEmail, waLink, phoneError } from "@/lib/format";
 
 const PHONE_KEYS = ["mobile", "alt_mobile", "whatsapp", "emergency_mobile"];
 const DATE_KEYS = ["dob", "anniversary", "dl_expiry", "passport_issue", "passport_expiry", "consent_date"];
@@ -20,6 +20,11 @@ export async function saveCustomer(input: CustomerInput): Promise<ActionResult<{
   try {
     if (!String(input.first_name ?? "").trim()) return { ok: false, error: "Name is required." };
     if (!String(input.mobile ?? "").trim()) return { ok: false, error: "Mobile is required." };
+    const PHONE_LABEL: Record<string, string> = { mobile: "Mobile", alt_mobile: "Alternate mobile", whatsapp: "WhatsApp number", emergency_mobile: "Emergency contact mobile" };
+    for (const k of PHONE_KEYS) {
+      const err = phoneError((input as Record<string, unknown>)[k] as string);
+      if (err) return { ok: false, error: `${PHONE_LABEL[k]}: ${err}` };
+    }
     const row: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(input)) {
       if (BLOCKED.has(k)) continue;

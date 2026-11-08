@@ -110,7 +110,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         />
       )}
       {tab === "bookings" && <BookingsLoader caseId={id} lines={linesWithMoney} travellers={trav} maxId={c.max_id} customer={customer} trip={{ start: c.travel_start, end: c.travel_end }} />}
-      {tab === "payments" && <PaymentsLoader caseId={id} lines={linesWithMoney} money={money} />}
+      {tab === "payments" && <PaymentsLoader caseId={id} lines={linesWithMoney} money={money} status={c.status} />}
       {tab === "files" && <FilesLoader caseId={id} maxId={c.max_id} customer={customer} travellerIds={trav.map((t) => t.id)} lines={linesWithMoney} />}
       {tab === "tasks" && <TasksLoader caseId={id} maxId={c.max_id} title={c.title} />}
       {tab === "activity" && <ActivityLoader caseId={id} />}
@@ -182,7 +182,7 @@ async function BookingsLoader(p: { caseId: string; lines: Line[]; travellers: Pa
   return <BookingsTab {...p} lookups={lk} files={files} />;
 }
 
-async function PaymentsLoader({ caseId, lines, money }: { caseId: string; lines: Line[]; money: Record<string, unknown> | null }) {
+async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string; lines: Line[]; money: Record<string, unknown> | null; status: string }) {
   const sb = await createClient();
   const [{ data: payments }, { data: expenses }, { data: suppliers }, { data: allocs }] = await Promise.all([
     sb.from("payments").select("*, receiver:profiles!payments_received_by_fkey(full_name)").eq("case_id", caseId).eq("direction", "in").order("pay_date", { ascending: false }),
@@ -192,6 +192,7 @@ async function PaymentsLoader({ caseId, lines, money }: { caseId: string; lines:
   ]);
   return (
     <PaymentsTab
+      status={status}
       caseId={caseId}
       lines={lines}
       money={money}

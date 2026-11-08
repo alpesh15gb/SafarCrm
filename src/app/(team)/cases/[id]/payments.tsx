@@ -15,8 +15,8 @@ type Exp = { id: string; name: string; amount: number; exp_date: string };
 type SupMoney = { supplier_id: string; supplier_name: string; payable: number; paid: number; due_date: string | null };
 type SupPay = { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string } | null } };
 
-export function PaymentsTab({ caseId, lines, money, payments, expenses, suppliers, supplierPayments }: {
-  caseId: string; lines: Line[]; money: Record<string, unknown> | null; payments: Pay[]; expenses: Exp[]; suppliers: SupMoney[]; supplierPayments: SupPay[];
+export function PaymentsTab({ caseId, lines, money, payments, expenses, suppliers, supplierPayments, status }: {
+  status: string; caseId: string; lines: Line[]; money: Record<string, unknown> | null; payments: Pay[]; expenses: Exp[]; suppliers: SupMoney[]; supplierPayments: SupPay[];
 }) {
   const { me } = useApp();
   const { run, pending } = useAction();
@@ -154,13 +154,13 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
         </Card>
       </div>
 
-      <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} />
+      <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} status={status} />
       <SupplierPaymentDialog sup={supPay} onClose={() => setSupPay(null)} caseId={caseId} />
     </div>
   );
 }
 
-function ClientPaymentDialog({ open, onClose, caseId, due }: { open: boolean; onClose: () => void; caseId: string; due: number }) {
+function ClientPaymentDialog({ open, onClose, caseId, due, status }: { open: boolean; onClose: () => void; caseId: string; due: number; status: string }) {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "upi", reference: "", received_by: me.id, notes: "", refund: false });
@@ -182,6 +182,11 @@ function ClientPaymentDialog({ open, onClose, caseId, due }: { open: boolean; on
         <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} placeholder="UTR / cheque no." /></Field>
         <Field label="Received by"><StaffSelect staff={staff} value={v.received_by} onChange={(x) => setV({ ...v, received_by: x })} /></Field>
         <Field label="Notes"><input className="field" value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
+        {["enquiry", "quoted"].includes(status) && !isRefund && (
+          <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900 sm:col-span-2">
+            This case is still {status === "enquiry" ? "an Enquiry" : "Quoted"}. If the client is paying, they have agreed: change the case status to <b>Confirmed</b> at the top of the page.
+          </p>
+        )}
         <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={isRefund} disabled={amt < 0} onChange={(e) => setV({ ...v, refund: e.target.checked })} />This is a refund paid back to the client</label>
         {abs > 0 && (
           <p className={cx("rounded-lg px-3 py-2 text-[13px] sm:col-span-2", isRefund ? "bg-amber-50 text-amber-900" : over ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900")}>

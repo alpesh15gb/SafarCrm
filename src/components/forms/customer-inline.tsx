@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button, Field } from "@/components/ui";
 import { useToast } from "@/components/client";
 import { checkDuplicates, saveCustomer } from "@/actions/customers";
+import { phoneError } from "@/lib/format";
 
 /** Minimal "name + mobile" customer creation with duplicate warning. */
 export function CustomerInline({ initialName = "", onCreated, onCancel }: { initialName?: string; onCreated: (c: { id: string; full_name: string; mobile: string }) => void; onCancel?: () => void }) {
@@ -11,10 +12,14 @@ export function CustomerInline({ initialName = "", onCreated, onCancel }: { init
   const [mobile, setMobile] = useState("");
   const [dups, setDups] = useState<{ id: string; full_name: string; code: string; matched: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [checkPhone, setCheckPhone] = useState(false);
+  const mobileErr = checkPhone ? phoneError(mobile) : null;
 
   async function create(force = false) {
     const parts = name.trim().split(/\s+/);
     if (!parts[0] || !mobile.trim()) return toast("Name and mobile are required.", "error");
+    setCheckPhone(true);
+    if (phoneError(mobile)) return;
     setBusy(true);
     if (!force) {
       const d = await checkDuplicates(mobile);
@@ -33,7 +38,11 @@ export function CustomerInline({ initialName = "", onCreated, onCancel }: { init
     <form className="space-y-3 rounded-lg border border-dashed border-line bg-gray-50 p-3" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); if (!busy) create(); }}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Full name" required><input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Mobile" required><input className="field" inputMode="tel" placeholder="98765 43210" value={mobile} onChange={(e) => { setMobile(e.target.value); setDups([]); }} /></Field>
+        <Field label="Mobile" required>
+          <input className={"field" + (mobileErr ? " !border-red-400" : "")} inputMode="tel" placeholder="98765 43210" value={mobile} aria-invalid={!!mobileErr}
+            onBlur={() => mobile.trim() && setCheckPhone(true)} onChange={(e) => { setMobile(e.target.value); setDups([]); }} />
+          {mobileErr && <span role="alert" className="mt-1 block text-xs font-medium text-red-600">{mobileErr}</span>}
+        </Field>
       </div>
       {dups.length > 0 && (
         <div className="rounded-lg bg-amber-50 p-2.5 text-sm text-amber-900">

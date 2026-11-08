@@ -23,13 +23,15 @@ export function Combo({
   const [q, setQ] = useState("");
   const [opts, setOpts] = useState<Opt[]>([]);
   const [sel, setSel] = useState(0);
+  const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const searchRef = useRef(search);
   useEffect(() => { searchRef.current = search; });
 
   useEffect(() => {
     if (!open) return;
-    const h = setTimeout(async () => { setOpts(await searchRef.current(q)); setSel(0); }, 180);
+    setLoading(true);
+    const h = setTimeout(async () => { setOpts(await searchRef.current(q)); setSel(0); setLoading(false); }, 180);
     return () => clearTimeout(h);
   }, [q, open]);
   useEffect(() => {
@@ -73,7 +75,8 @@ export function Combo({
       )}
       {open && (
         <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-line bg-white py-1 shadow-lg">
-          {opts.length === 0 && <div className="px-3 py-2 text-sm text-muted">No matches</div>}
+          {loading && opts.length === 0 && <div className="px-3 py-2 text-sm text-muted">Searching…</div>}
+          {!loading && opts.length === 0 && <div className="px-3 py-2 text-sm text-muted">No matches{q ? ` for “${q}”` : ""}</div>}
           {opts.map((o, i) => (
             <button
               key={o.id}
@@ -85,7 +88,7 @@ export function Combo({
               {o.label} {o.sub && <span className="text-xs text-muted">· {o.sub}</span>}
             </button>
           ))}
-          {footer && <div className="border-t border-line px-1 pt-1">{footer(q, () => setOpen(false))}</div>}
+          {footer && !loading && <div className="border-t border-line px-1 pt-1">{footer(q, () => setOpen(false))}</div>}
         </div>
       )}
     </div>

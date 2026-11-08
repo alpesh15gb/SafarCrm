@@ -11,6 +11,7 @@ import { previewAsClient, setClientView, setTravellers, updateCase } from "@/act
 import { familyMembers } from "@/actions/search";
 import { LEAD_SOURCES, SERVICE_LABEL } from "@/lib/constants";
 import { age, expiryLabel, fdate } from "@/lib/format";
+import { tripDatesProblem } from "@/lib/validate";
 import type { Line } from "./bookings";
 
 type Kase = {
@@ -58,10 +59,11 @@ export function OverviewTab({ kase, customer, travellers, lines }: { kase: Kase;
                   <input className="field" value={f.tags.join(", ")} onChange={(e) => set("tags", e.target.value.split(",").map((t) => t.trim()).filter(Boolean))} />
                 </Field>
               </div>
+              {tripDatesProblem(f.travel_start, f.travel_end) && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700">{tripDatesProblem(f.travel_start, f.travel_end)}</p>}
               <Field label="Internal notes" hint="Never shown to the client"><textarea className="field min-h-20" value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} /></Field>
               <div className="flex justify-end gap-2">
                 <Button onClick={() => { setF(kase); setEdit(false); }}>Cancel</Button>
-                <Button variant="primary" disabled={pending} onClick={() => run(() => updateCase(kase.id, f), { then: () => setEdit(false) })}>Save</Button>
+                <Button variant="primary" disabled={pending || !!tripDatesProblem(f.travel_start, f.travel_end)} onClick={() => run(() => updateCase(kase.id, f), { then: () => setEdit(false) })}>Save</Button>
               </div>
             </div>
           ) : (

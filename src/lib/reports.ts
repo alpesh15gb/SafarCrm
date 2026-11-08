@@ -43,7 +43,7 @@ export async function runReport(key: string, sp: Record<string, string | undefin
     throwIf(error);
     const rows = data ?? [];
     return {
-      title: "Client dues", sub: "Who owes us, oldest first",
+      title: "Client dues", sub: "Who owes us, oldest first. Includes confirmed cases, and enquiries or quotes once the client has paid an advance.",
       cols: [{ key: "max_id", label: "MAX ID" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" }, { key: "staff", label: "Staff" },
         { key: "billed", label: "Billed", money: true }, { key: "received", label: "Received", money: true }, { key: "due", label: "Due", money: true },
         { key: "due_since", label: "Due since", date: true }, { key: "days", label: "Days" }],
