@@ -10,6 +10,7 @@ export type Report = { title: string; sub: string; cols: Col[]; rows: Record<str
 export const REPORTS = [
   { key: "pnl", label: "Profit and loss", profit: true },
   { key: "client_dues", label: "Client dues" },
+  { key: "client_credits", label: "Client credits" },
   { key: "supplier_dues", label: "Supplier dues" },
   { key: "sales", label: "Sales by service and staff", profit: true },
   { key: "upcoming", label: "Upcoming travel" },
@@ -77,16 +78,28 @@ export async function runReport(key: string, sp: Record<string, string | undefin
       ],
     };
   }
+  if (key === "client_credits") {
+    const { data, error } = await sb.rpc("report_client_credits", { p_staff: f.p_staff, p_customer: f.p_customer });
+    throwIf(error);
+    const rows = (data ?? []).map((r: Record<string, unknown>) => ({ ...r, status: STATUS_LABEL[String(r.status)] }));
+    return {
+      title: "Client credits", sub: "Clients who paid more than they were billed, or are owed a refund after a cancellation. Refund or adjust each one.",
+      cols: [{ key: "max_id", label: "MAX ID" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" }, { key: "staff", label: "Staff" }, { key: "status", label: "Status" },
+        { key: "billed", label: "Billed", money: true }, { key: "received", label: "Received", money: true }, { key: "credit", label: "Credit", money: true }],
+      rows, link: (r) => `/cases/${r.case_id}?tab=payments`,
+      totals: { max_id: `Total (${rows.length})`, billed: sum(rows, "billed"), received: sum(rows, "received"), credit: sum(rows, "credit") },
+    };
+  }
   if (key === "upcoming") {
     const from = sp.range ? range.from : todayIST();
     const to = sp.range ? range.to : todayIST(30);
     const { data, error } = await sb.rpc("report_upcoming", { p_from: from, p_to: to, ...f });
     throwIf(error);
     return {
-      title: "Upcoming travel", sub: `Trips from ${fdate(from)} to ${fdate(to)}`,
+      title: "Upcoming travel", sub: `Trips from ${fdate(from)} to ${fdate(to)}. Uses each booking's date; a case with no dated booking yet is listed by its trip start date.`,
       cols: [{ key: "service_date", label: "Date", date: true }, { key: "max_id", label: "MAX ID" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" },
         { key: "service", label: "Service" }, { key: "summary", label: "Details" }, { key: "line_status", label: "Status" }, { key: "staff", label: "Staff" }],
-      rows: (data ?? []).map((r: Record<string, unknown>) => ({ ...r, service: SERVICE_LABEL[r.service as Service], line_status: STATUS_LABEL[String(r.line_status)] })),
+      rows: (data ?? []).map((r: Record<string, unknown>) => ({ ...r, service: r.service === "trip" ? "Trip (case dates)" : SERVICE_LABEL[r.service as Service], line_status: STATUS_LABEL[String(r.line_status)] })),
       link: (r) => `/cases/${r.case_id}?tab=bookings`,
     };
   }

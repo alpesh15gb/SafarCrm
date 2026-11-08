@@ -51,9 +51,36 @@ export async function createCase(input: CaseInput): Promise<ActionResult<{ id: s
   }
 }
 
-export async function updateCase(id: string, patch: Partial<CaseInput> & { cancel_reason?: string | null }): Promise<ActionResult> {
+export type OpenItems = { pending_lines: number; client_due: number; client_credit: number; supplier_due: number };
+
+/** Plain-language list of what is still open on a case (empty when it can be closed cleanly). */
+export async function getOpenItems(id: string): Promise<string[]> {
+  const sb = await createClient();
+  const { data } = await sb.rpc("case_open_items", { p_case: id });
+  const o = (data ?? {}) as OpenItems;
+  const inr = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
+  return [
+    o.pending_lines > 0 && `${o.pending_lines} booking${o.pending_lines === 1 ? " is" : "s are"} still Pending`,
+    o.client_due > 0 && `the client still owes ${inr(o.client_due)}`,
+    o.client_credit > 0 && `the client has a credit of ${inr(o.client_credit)} to refund or adjust`,
+    o.supplier_due > 0 && `${inr(o.supplier_due)} is still to be paid to suppliers`,
+  ].filter(Boolean) as string[];
+}
+
+export async function updateCase(id: string, patch: Partial<CaseInput> & { cancel_reason?: string | null; complete_reason?: string }): Promise<ActionResult> {
   try {
     const sb = await createClient();
+    // closing a case with loose ends needs a reason, which is kept in the case notes
+    if (patch.status === "completed") {
+      const open = await getOpenItems(id);
+      if (open.length) {
+        const why = patch.complete_reason?.trim();
+        if (!why) return { ok: false, error: `Can't complete yet: ${open.join("; ")}. Open the case to finish these, or complete it with a reason.` };
+        const { data: cur } = await sb.from("cases").select("notes").eq("id", id).single();
+        const stamp = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/\//g, "-");
+        patch.notes = `${cur?.notes ? cur.notes + "\n" : ""}[${stamp}] Completed with open items (${open.join("; ")}). Reason: ${why}`;
+      }
+    }
     const row: Record<string, unknown> = {};
     for (const k of ["title", "travel_start", "travel_end", "destination", "lead_source", "notes", "cancel_reason"] as const) {
       if (k in patch) row[k] = clean(patch[k] as string | null | undefined);

@@ -96,7 +96,9 @@ export default async function CasePage({ params, searchParams }: { params: Promi
           />
         )}
         {!me.can_see_profit && <Strip label="Received" icon={Receipt} tone="green" value={<Money value={money?.received} />} />}
-        <Strip label="Due from client" icon={Wallet} tone="amber" value={<Money value={money?.due} className={Number(money?.due) > 0 ? "text-amber-700" : ""} />} sub={`Billed ${Number(money?.billed ?? 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })}`} />
+        {Number(money?.due) < 0
+          ? <Strip label="Client credit" icon={Wallet} tone="blue" value={<Money value={-Number(money?.due)} className="text-sky-700" />} sub="Paid more than billed: refund or adjust" />
+          : <Strip label="Due from client" icon={Wallet} tone="amber" value={<Money value={money?.due} className={Number(money?.due) > 0 ? "text-amber-700" : ""} />} sub={`Billed ${Number(money?.billed ?? 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })}`} />}
       </div>
 
       <Tabs tabs={tabs} active={tab} base={`/cases/${id}`} />

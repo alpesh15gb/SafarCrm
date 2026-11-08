@@ -175,7 +175,9 @@ export function TripView({ trip, fileHref }: { trip: Trip; fileHref: (id: string
           <div className="grid grid-cols-3 gap-3 text-center">
             <div><div className="text-xs text-muted">Total</div><Money value={trip.payments.billed} className="font-semibold" /></div>
             <div><div className="text-xs text-muted">Paid</div><Money value={trip.payments.paid} className="font-semibold text-emerald-700" /></div>
-            <div><div className="text-xs text-muted">Due</div><Money value={trip.payments.due} className={Number(trip.payments.due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>
+            {Number(trip.payments.due) < 0
+              ? <div><div className="text-xs text-muted">Your credit</div><Money value={-Number(trip.payments.due)} className="font-semibold text-sky-700" /><div className="text-[11px] text-muted">Due ₹0</div></div>
+              : <div><div className="text-xs text-muted">Due</div><Money value={trip.payments.due} className={Number(trip.payments.due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>}
           </div>
         </Card>
       )}

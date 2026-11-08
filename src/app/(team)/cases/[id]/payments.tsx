@@ -94,7 +94,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
           <div className="grid grid-cols-3 gap-2 border-b border-line p-4 text-center">
             <div><div className="text-xs text-muted">Billed (incl. GST)</div><Money value={money?.billed as number} className="font-semibold" /></div>
             <div><div className="text-xs text-muted">Received</div><Money value={money?.received as number} className="font-semibold text-emerald-700" /></div>
-            <div><div className="text-xs text-muted">{Number(money?.due) < 0 ? "Refund due" : "Due"}</div><Money value={Math.abs(Number(money?.due ?? 0))} className={Number(money?.due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>
+            <div><div className="text-xs text-muted">{Number(money?.due) < 0 ? "Client credit" : "Due"}</div><Money value={Math.abs(Number(money?.due ?? 0))} className={Number(money?.due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>
           </div>
           {payments.length === 0 ? <p className="p-4 text-sm text-muted">No payments received yet.</p> : (
             <Table head={["Date", "Amount", "Mode", "Reference", "Received by", ""]}>
@@ -154,13 +154,13 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
         </Card>
       </div>
 
-      <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} status={status} />
+      <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} received={Number(money?.received ?? 0)} status={status} />
       <SupplierPaymentDialog sup={supPay} onClose={() => setSupPay(null)} caseId={caseId} />
     </div>
   );
 }
 
-function ClientPaymentDialog({ open, onClose, caseId, due, status }: { open: boolean; onClose: () => void; caseId: string; due: number; status: string }) {
+function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: { open: boolean; onClose: () => void; caseId: string; due: number; received: number; status: string }) {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "upi", reference: "", received_by: me.id, notes: "", refund: false });
@@ -169,9 +169,11 @@ function ClientPaymentDialog({ open, onClose, caseId, due, status }: { open: boo
   const isRefund = v.refund || amt < 0;
   const abs = Math.abs(amt) || 0;
   const over = !isRefund && due > 0 && abs > due;
+  const refundable = Math.max(0, received);
+  const tooMuchRefund = isRefund && abs > refundable;
   return (
     <Dialog open={open} onClose={onClose} title={isRefund ? "Record refund to client" : "Record payment from client"}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !abs}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !abs || tooMuchRefund}
         onClick={() => run(() => addClientPayment({ ...v, case_id: caseId, amount: (isRefund ? -1 : 1) * abs }), { then: () => { onClose(); setV({ ...v, amount: "", reference: "", notes: "", refund: false }); } })}>{isRefund ? "Save refund" : "Save payment"}</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Amount (₹)" required hint={due > 0 ? `Balance due ₹${due.toLocaleString("en-IN")}` : undefined}>
@@ -189,8 +191,10 @@ function ClientPaymentDialog({ open, onClose, caseId, due, status }: { open: boo
         )}
         <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={isRefund} disabled={amt < 0} onChange={(e) => setV({ ...v, refund: e.target.checked })} />This is a refund paid back to the client</label>
         {abs > 0 && (
-          <p className={cx("rounded-lg px-3 py-2 text-[13px] sm:col-span-2", isRefund ? "bg-amber-50 text-amber-900" : over ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900")}>
-            {isRefund ? `₹${abs.toLocaleString("en-IN")} will be recorded as money paid BACK to the client.`
+          <p className={cx("rounded-lg px-3 py-2 text-[13px] sm:col-span-2", tooMuchRefund ? "bg-red-50 font-medium text-red-700" : isRefund ? "bg-amber-50 text-amber-900" : over ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900")}>
+            {isRefund ? (tooMuchRefund
+              ? `The client has paid ₹${refundable.toLocaleString("en-IN")} on this case, so that is the most you can refund. For a goodwill payment above that, add it as a case expense with a note.`
+              : `₹${abs.toLocaleString("en-IN")} will be recorded as money paid BACK to the client (refundable: ₹${refundable.toLocaleString("en-IN")}).`)
               : over ? `This is ₹${(abs - due).toLocaleString("en-IN")} more than the balance due (₹${due.toLocaleString("en-IN")}). Check the amount, or save if the client paid extra.`
                 : `₹${abs.toLocaleString("en-IN")} received from the client. Balance after this: ₹${Math.max(0, due - abs).toLocaleString("en-IN")}.`}
           </p>

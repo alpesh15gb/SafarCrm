@@ -26,7 +26,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   let error = "";
   try { report = await runReport(key, sp); } catch (e) { error = e instanceof Error ? e.message : "Could not run report"; }
   const qs = new URLSearchParams(Object.entries({ ...sp, r: key }).filter(([, v]) => v) as [string, string][]).toString();
-  const uses = { date: ["pnl", "sales", "upcoming"].includes(key), service: ["pnl", "sales", "upcoming"].includes(key), staff: ["pnl", "sales", "upcoming", "client_dues"].includes(key), supplier: ["pnl", "sales", "upcoming", "supplier_dues"].includes(key), customer: ["pnl", "sales", "upcoming", "client_dues"].includes(key) };
+  const uses = { date: ["pnl", "sales", "upcoming"].includes(key), service: ["pnl", "sales", "upcoming"].includes(key), staff: ["pnl", "sales", "upcoming", "client_dues", "client_credits"].includes(key), supplier: ["pnl", "sales", "upcoming", "supplier_dues"].includes(key), customer: ["pnl", "sales", "upcoming", "client_dues", "client_credits"].includes(key) };
 
   return (
     <>

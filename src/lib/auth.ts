@@ -66,6 +66,11 @@ function friendly(msg: string) {
   if (msg.includes("violates foreign key") && msg.includes("restrict")) return "This record is in use and can't be deleted.";
   if (msg.includes("violates foreign key")) return "This record is linked to other records and can't be deleted.";
   if (msg.includes("cancel_needs_reason")) return "Please give a reason for cancelling.";
+  if (msg.includes("deleting this receipt")) return "Delete the refund first: removing this receipt would leave more refunded than the client paid.";
+  if (msg.includes("refund_exceeds_received")) {
+    const amt = Number(msg.match(/only ([\d.]+)/)?.[1] ?? 0);
+    return `You can refund at most ₹${amt.toLocaleString("en-IN")}, which is what the client has paid on this case. For a goodwill payment above that, add it as a case expense with a note.`;
+  }
   if (msg.includes("trip_dates_order")) return "The trip can't end before it starts. Check the travel dates.";
   return msg;
 }

@@ -29,8 +29,8 @@ export function DateRange() {
       </div>
       {cur === "custom" && (
         <span className="flex items-center gap-1">
-          <input type="date" className="field !h-8 !min-h-0 !w-36 !py-0 text-xs" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <input type="date" className="field !h-8 !min-h-0 !w-36 !py-0 text-xs" value={to} onChange={(e) => setTo(e.target.value)} />
+          <label className="flex items-center gap-1 text-xs text-muted">From<input type="date" aria-label="From" className="field !h-8 !min-h-0 !w-36 !py-0 text-xs" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <label className="flex items-center gap-1 text-xs text-muted">To<input type="date" aria-label="To" className="field !h-8 !min-h-0 !w-36 !py-0 text-xs" value={to} onChange={(e) => setTo(e.target.value)} /></label>
           <button type="button" className="rounded-full border border-line px-2.5 py-1 text-xs" onClick={() => from && to && go({ from, to })}>Apply</button>
         </span>
       )}

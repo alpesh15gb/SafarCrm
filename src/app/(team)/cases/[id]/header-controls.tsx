@@ -6,7 +6,7 @@ import { Button, Field } from "@/components/ui";
 import { Confirm, Dialog, Menu, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
-import { deleteCase, updateCase } from "@/actions/cases";
+import { deleteCase, getOpenItems, updateCase } from "@/actions/cases";
 import { CASE_STATUSES, STATUS_LABEL } from "@/lib/constants";
 
 export function CaseHeaderControls({ kase }: { kase: { id: string; status: string; assigned_to: string | null; max_id: string; cancel_reason: string | null } }) {
@@ -16,6 +16,8 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [delOpen, setDelOpen] = useState(false);
+  const [closing, setClosing] = useState<string[] | null>(null);
+  const [closeWhy, setCloseWhy] = useState("");
 
   return (
     <>
@@ -26,6 +28,14 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
         disabled={pending}
         onChange={(e) => {
           if (e.target.value === "cancelled") { setReason(""); setCancelOpen(true); return; }
+          if (e.target.value === "completed") {
+            // show what is still open before closing
+            getOpenItems(kase.id).then((open) => {
+              if (open.length) { setCloseWhy(""); setClosing(open); }
+              else run(() => updateCase(kase.id, { status: "completed" }), { success: "Status: Completed" });
+            });
+            return;
+          }
           run(() => updateCase(kase.id, { status: e.target.value }), { success: `Status: ${STATUS_LABEL[e.target.value]}` });
         }}
       >
@@ -57,6 +67,25 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
       >
         <p className="mb-3 text-[13px] text-muted">To record refunds and cancellation charges, cancel each booking from the Bookings tab.</p>
         <Field label="Reason" required><input className="field" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Client postponed the trip" /></Field>
+      </Dialog>
+      <Dialog
+        open={!!closing}
+        onClose={() => setClosing(null)}
+        title={`Complete ${kase.max_id}?`}
+        footer={
+          <>
+            <Button onClick={() => setClosing(null)}>Not yet</Button>
+            <Button variant="primary" disabled={pending || !closeWhy.trim()}
+              onClick={() => run(() => updateCase(kase.id, { status: "completed", complete_reason: closeWhy }), { success: "Status: Completed", then: () => setClosing(null) })}>
+              Complete anyway
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-2 text-[13px]">This case still has open items:</p>
+        <ul className="mb-3 list-disc space-y-1 pl-5 text-[13px] text-amber-900">{closing?.map((x) => <li key={x}>{x}</li>)}</ul>
+        <p className="mb-3 text-[13px] text-muted">Best is to finish these first. If the case really is done, give a reason. It is saved in the case notes.</p>
+        <Field label="Reason" required><input className="field" autoFocus value={closeWhy} onChange={(e) => setCloseWhy(e.target.value)} placeholder="Supplier confirmed by email; payment settled in cash" /></Field>
       </Dialog>
       <Confirm
         open={delOpen}

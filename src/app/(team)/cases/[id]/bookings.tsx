@@ -124,6 +124,11 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
       </div>
       <div className="grid gap-4 p-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-3 text-sm">
+          {!cancelled && lineProblem(l.service, l.details ?? {}) && (
+            <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-800">
+              <b>Incomplete:</b> {lineProblem(l.service, l.details ?? {})} Press Edit to fix it. Clients don&apos;t see this booking until it is complete.
+            </div>
+          )}
           {l.service === "visa"
             ? <VisaPanel lineId={l.id} details={l.details} travellers={travellers.filter((t) => l.traveller_ids.includes(t.id))} trip={trip} readOnly={cancelled} />
             : <BookingDetails service={l.service} details={l.details} />}
