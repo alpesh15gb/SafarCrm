@@ -106,6 +106,7 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
                   <span className="font-mono text-[13px] font-semibold">{o.max_id}</span>
                   <span className="min-w-0 flex-1 truncate text-sm">{o.title}<span className="text-xs text-muted"> · due {inr(o.due)}{o.due_date && ` by ${fdate(o.due_date)}`}</span></span>
                   <input className="field !w-28 tabular" inputMode="decimal" value={alloc[o.case_id] ?? ""} onChange={(e) => setAlloc((a) => ({ ...a, [o.case_id]: e.target.value }))} />
+                  {Number(alloc[o.case_id]) > Number(o.due) && <span className="text-xs text-amber-700" title="More than due; the extra stays as an advance">+{inr(Number(alloc[o.case_id]) - Number(o.due))} extra</span>}
                 </div>
               ))}
             </div>

@@ -4,17 +4,35 @@ import { createClient } from "@/lib/supabase/server";
 import { listCases, listCustomers, listSuppliers } from "@/lib/queries";
 import { REPORTS, runReport, type Col } from "@/lib/reports";
 import { SERVICE_LABEL, STATUS_LABEL, SUPPLIER_TYPE_LABEL, type Service } from "@/lib/constants";
-import { fdate, fdatetime, todayIST } from "@/lib/format";
+import { fdate, todayIST } from "@/lib/format";
 
 // Indian digit grouping (₹1,25,000)
 const INR = '[>=10000000]"₹"##\\,##\\,##\\,##0;[>=100000]"₹"##\\,##\\,##0;"₹"#,##0;-"₹"#,##0';
+
+/** A real Excel date (so sorting and filters work). Timestamps are shown in India time. */
+function excelDate(v: unknown): Date | null {
+  if (typeof v !== "string" || !v) return null;
+  const d = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (d) return new Date(Date.UTC(+d[1], +d[2] - 1, +d[3]));
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(v)) return null;
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date(v)).map((x) => [x.type, x.value]));
+  return new Date(Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute));
+}
 
 function addSheet(wb: ExcelJS.Workbook, name: string, cols: Col[], rows: Record<string, unknown>[], totals?: Record<string, unknown>) {
   const ws = wb.addWorksheet(name.slice(0, 31));
   ws.columns = cols.map((c) => ({ header: c.label || name, key: c.key, width: Math.max(12, (c.label || "").length + 4), style: c.money ? { numFmt: INR } : {} }));
   for (const r of rows) {
-    ws.addRow(Object.fromEntries(cols.map((c) => [c.key, c.money ? (r[c.key] === null || r[c.key] === undefined ? null : Number(r[c.key])) : c.date ? fdate(r[c.key] as string) : r[c.key] ?? ""])));
+    ws.addRow(Object.fromEntries(cols.map((c) => [c.key, c.money ? (r[c.key] === null || r[c.key] === undefined ? null : Number(r[c.key])) : c.date ? excelDate(r[c.key]) : r[c.key] ?? ""])));
   }
+  // dates: real Excel dates shown as DD-MM-YYYY (with time for timestamps)
+  ws.eachRow((row, n) => {
+    if (n === 1) return;
+    row.eachCell((cell) => {
+      if (cell.value instanceof Date) cell.numFmt = cell.value.getUTCHours() || cell.value.getUTCMinutes() ? "dd-mm-yyyy hh:mm" : "dd-mm-yyyy";
+    });
+  });
   if (totals) {
     const row = ws.addRow(Object.fromEntries(cols.map((c) => [c.key, totals[c.key] ?? ""])));
     row.font = { bold: true };
@@ -23,7 +41,7 @@ function addSheet(wb: ExcelJS.Workbook, name: string, cols: Col[], rows: Record<
   ws.views = [{ state: "frozen", ySplit: 1 }];
   ws.columns.forEach((col) => {
     let w = 10;
-    col.eachCell?.({ includeEmpty: false }, (cell) => { w = Math.max(w, String(cell.value ?? "").length + 2); });
+    col.eachCell?.({ includeEmpty: false }, (cell) => { w = Math.max(w, cell.value instanceof Date ? 17 : String(cell.value ?? "").length + 2); });
     col.width = Math.min(w, 50);
   });
   return ws;
@@ -113,8 +131,7 @@ export async function GET(req: Request) {
         const flat = all.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k,
           v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length <= 2 ? Object.values(v).join(" ") :
           Array.isArray(v) || (v && typeof v === "object") ? JSON.stringify(v) :
-          typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v) ? fdatetime(v) :
-          typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? fdate(v) : v])));
+          excelDate(v) ?? v])));
         const keys = flat.length ? Object.keys(flat[0]) : sel === "*" ? [] : sel.split(",").map((s) => s.trim().split(":")[0]);
         addSheet(wb, name, keys.map((k) => ({ key: k, label: k })), flat);
       }

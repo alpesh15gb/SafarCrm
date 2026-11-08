@@ -12,6 +12,7 @@ import { cancelLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLine
 import { DEFAULT_KIND, SERVICES, SERVICE_FIELDS, SERVICE_LABEL, visaTemplate, type FieldDef, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
 import { lineProblem } from "@/lib/validate";
+import { cancelBreakdown, commissionOf, lineProfit } from "@/lib/money";
 import { FlightPassengers, IssueList, type Pax } from "@/components/flight-pax";
 import { PAX_LABEL, checkAirport, checkFlightNo, checkPnr, checkTicket, airlineCodeOf, nextDay, normFlightNo, normTicket, paxType } from "@/lib/iata";
 import { fdate, inr } from "@/lib/format";
@@ -139,7 +140,16 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
           {l.notes && <div className="whitespace-pre-wrap rounded-lg bg-gray-50 px-3 py-2 text-[13px]">{l.notes}</div>}
           {cancelled && (
             <div className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-800">
-              Cancelled{l.cancel_reason && `: ${l.cancel_reason}`}. Charge {inr(l.cancellation_charge)} · refund to client {inr(l.refund_to_client)} · refund from supplier {inr(l.refund_from_supplier)}
+              <div className="font-medium">Cancelled{l.cancel_reason && `: ${l.cancel_reason}`}</div>
+              {(() => {
+                const b = cancelBreakdown({ ...l, base_fare: null });
+                return (
+                  <div className="mt-1 tabular">
+                    Kept from client {inr(l.selling_price)} − {inr(l.refund_to_client)} = <b>{inr(b.kept)}</b> · Supplier keeps (charge) {inr(l.supplier_cost)} − {inr(l.refund_from_supplier)} = <b>{inr(b.charge)}</b>
+                    {me.can_see_profit && <> · Profit {inr(b.kept)} − {inr(b.charge)} = <b>{inr(b.profit)}</b> (commission doesn&apos;t count after cancelling)</>}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -229,9 +239,14 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   }, [open, line, initService, travellers]);
 
   const num = (v: string) => Number(v) || 0;
-  const commissionBase = service === "flight" && num(String(d.base_fare ?? "")) > 0 ? num(String(d.base_fare)) : num(m.supplier_cost);
-  const commission = m.commission_type === "percent" ? Math.round(commissionBase * num(m.commission_value)) / 100 : num(m.commission_value);
-  const profit = num(m.selling_price) + commission - num(m.supplier_cost);
+  const isCancelled = line?.status === "cancelled";
+  const moneyNow = {
+    status: isCancelled ? "cancelled" : "active", selling_price: m.selling_price, supplier_cost: m.supplier_cost,
+    commission_type: m.commission_type, commission_value: m.commission_value, base_fare: service === "flight" ? (d.base_fare as number) : null,
+    refund_to_client: line?.refund_to_client, refund_from_supplier: line?.refund_from_supplier,
+  };
+  const commission = isCancelled ? 0 : commissionOf(moneyNow);
+  const profit = lineProfit(moneyNow);
   const margin = num(m.selling_price) ? Math.round((profit / num(m.selling_price)) * 1000) / 10 : null;
   const nights = useMemo(() => {
     if (service !== "hotel" || !d.check_in || !d.check_out) return null;
@@ -339,11 +354,11 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             <div className="text-[13px] font-medium">Sectors <span className="text-coral">*</span> <span className="font-normal text-muted">From and To airport codes are needed</span></div>
             {sectors.map((s, i) => (
               <div key={i} className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 sm:grid-cols-[70px_70px_140px_1fr_90px_80px_80px_28px]">
-                <input className="field uppercase" list="dl-airport" placeholder="From" value={s.from} onChange={(e) => setAirport(i, "from", e.target.value)} />
-                <input className="field uppercase" list="dl-airport" placeholder="To" value={s.to} onChange={(e) => setAirport(i, "to", e.target.value)} />
-                <input className="field" type="date" value={s.date} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} />
-                <input className="field" list="dl-airline" placeholder="Airline" value={s.airline} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, airline: e.target.value } : x)))} />
-                <input className="field" placeholder="Flight no." value={s.flight_no}
+                <input className="field uppercase" list="dl-airport" placeholder="From" aria-label={`Sector ${i + 1} from airport`} value={s.from} onChange={(e) => setAirport(i, "from", e.target.value)} />
+                <input className="field uppercase" list="dl-airport" placeholder="To" aria-label={`Sector ${i + 1} to airport`} value={s.to} onChange={(e) => setAirport(i, "to", e.target.value)} />
+                <input className="field col-span-2 sm:col-span-1" type="date" aria-label={`Sector ${i + 1} date`} title="Flight date" value={s.date} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} />
+                <input className="field" list="dl-airline" placeholder="Airline" aria-label={`Sector ${i + 1} airline`} value={s.airline} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, airline: e.target.value } : x)))} />
+                <input className="field" placeholder="Flight no." aria-label={`Sector ${i + 1} flight number`} value={s.flight_no}
                   onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, flight_no: e.target.value.toUpperCase() } : x)))}
                   onBlur={(e) => {
                     // "6e6311" → "6E 6311", and fill the airline from its IATA code
@@ -351,8 +366,8 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
                     const name = iata.airlineByCode.get(airlineCodeOf(fno) ?? "");
                     setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, flight_no: fno, airline: x.airline || name || x.airline } : x)));
                   }} />
-                <input className="field" type="time" title="Departure" value={s.dep} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, dep: e.target.value } : x)))} />
-                <input className={cx("field", nextDay(s.dep, s.arr) && "!pr-1")} type="time" title={nextDay(s.dep, s.arr) ? "Arrival (next day, +1)" : "Arrival"} value={s.arr} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, arr: e.target.value } : x)))} />
+                <input className="field" type="time" title="Departure" aria-label={`Sector ${i + 1} departure time`} value={s.dep} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, dep: e.target.value } : x)))} />
+                <input className={cx("field", nextDay(s.dep, s.arr) && "!pr-1")} type="time" title={nextDay(s.dep, s.arr) ? "Arrival (next day, +1)" : "Arrival"} aria-label={`Sector ${i + 1} arrival time`} value={s.arr} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, arr: e.target.value } : x)))} />
                 <button type="button" aria-label="Remove sector" className="text-muted hover:text-red-600 disabled:opacity-30" disabled={sectors.length === 1} onClick={() => setDet("sectors", sectors.filter((_, j) => j !== i))}><X className="h-4 w-4" /></button>
               </div>
             ))}
@@ -399,12 +414,13 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             <Field label="GST (₹, optional)"><input className="field tabular" inputMode="decimal" value={m.gst} onChange={(e) => setM({ ...m, gst: e.target.value })} /></Field>
           </div>
           {!supplier && num(m.supplier_cost) > 0 && addSup === null && (
-            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">Who do we pay this ₹{num(m.supplier_cost).toLocaleString("en-IN")} to? Choose the supplier at the top, so it shows in what we owe.</p>
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">Who do we pay this {inr(num(m.supplier_cost))} to? Choose the supplier at the top, so it shows in what we owe.</p>
           )}
           {me.can_see_profit && (
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 text-[13px]">
-              {!isVisa && <span>Commission <b className="tabular">{inr(commission)}</b></span>}
-              <span>Profit <b className={cx("tabular", profit < 0 ? "text-red-600" : "text-emerald-700")}>{inr(profit)}</b></span>
+              {!isVisa && !isCancelled && <span>Commission <b className="tabular">{inr(commission)}</b></span>}
+              {isCancelled && <span className="text-red-700">Cancelled: profit is (selling price − refund to client) − (supplier cost − refund from supplier). Commission doesn&apos;t count.</span>}
+              <span>{isCancelled ? "Profit after cancellation" : "Profit"} <b className={cx("tabular", profit < 0 ? "text-red-600" : "text-emerald-700")}>{inr(profit)}</b></span>
               {margin !== null && <span>Margin <b className="tabular">{margin}%</b></span>}
               {profit < 0 && <Badge tone="red">Loss</Badge>}
               <span className="text-muted">Client pays {inr(num(m.selling_price) + num(m.gst))}</span>
@@ -491,7 +507,7 @@ function CancelDialog({ line, onClose }: { line: Line | null; onClose: () => voi
   useEffect(() => { if (line) setV({ reason: "", cancellation_charge: "", refund_to_client: "", refund_from_supplier: "" }); }, [line]);
   if (!line) return null;
   const n = (x: string) => Number(x) || 0;
-  const after = (Number(line.selling_price) - n(v.refund_to_client)) - (Number(line.supplier_cost) - n(v.refund_from_supplier));
+  const after = lineProfit({ ...line, status: "cancelled", refund_to_client: n(v.refund_to_client), refund_from_supplier: n(v.refund_from_supplier) });
   return (
     <Dialog open={!!line} onClose={onClose} title="Cancel booking"
       footer={<><Button onClick={onClose}>Keep booking</Button><Button variant="primary" className="!border-red-600 !bg-red-600" disabled={pending || !v.reason.trim()}
@@ -502,9 +518,10 @@ function CancelDialog({ line, onClose }: { line: Line | null; onClose: () => voi
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Supplier cancellation charge (₹)">
             <input className="field tabular" inputMode="decimal" value={v.cancellation_charge}
-              onChange={(e) => setV({ ...v, cancellation_charge: e.target.value, refund_from_supplier: e.target.value === "" ? v.refund_from_supplier : String(Math.max(0, Number(line.supplier_cost) - n(e.target.value))) })} />
+              onChange={(e) => setV({ ...v, cancellation_charge: e.target.value, refund_from_supplier: e.target.value === "" ? v.refund_from_supplier : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} />
           </Field>
-          <Field label="Refund from supplier (₹)"><input className="field tabular" inputMode="decimal" value={v.refund_from_supplier} onChange={(e) => setV({ ...v, refund_from_supplier: e.target.value })} /></Field>
+          <Field label="Refund from supplier (₹)" hint={`Charge + refund = supplier cost ${inr(line.supplier_cost)}`}><input className="field tabular" inputMode="decimal" value={v.refund_from_supplier}
+            onChange={(e) => setV({ ...v, refund_from_supplier: e.target.value, cancellation_charge: e.target.value === "" ? v.cancellation_charge : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} /></Field>
           <Field label="Refund to client (₹)"><input className="field tabular" inputMode="decimal" value={v.refund_to_client} onChange={(e) => setV({ ...v, refund_to_client: e.target.value })} /></Field>
         </div>
         {me.can_see_profit && (

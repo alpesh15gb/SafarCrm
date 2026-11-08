@@ -35,8 +35,10 @@ export function visaWarnings(d: Record<string, unknown>, travellers: VisaTravell
   const back = trip.end || trip.start;
   for (const t of travellers) {
     if (!t.passport_expiry) out.push({ tone: "amber", text: `${t.full_name}'s passport expiry date is not saved. Add it on their profile so we can check it.` });
-    else if (back && t.passport_expiry < addMonths(back, 6)) {
-      out.push({ tone: "red", text: `${t.full_name}'s passport expires on ${fdate(t.passport_expiry)}, less than 6 months after the trip. Most countries refuse this. Renew the passport first.` });
+    else if (back && t.passport_expiry < addMonths(back, 3)) {
+      out.push({ tone: "red", text: `${t.full_name}'s passport expires on ${fdate(t.passport_expiry)}, less than 3 months after the trip. Almost every country refuses this. Renew the passport first.` });
+    } else if (back && t.passport_expiry < addMonths(back, 6)) {
+      out.push({ tone: "amber", text: `${t.full_name}'s passport expires on ${fdate(t.passport_expiry)}, less than 6 months after the trip. Many countries (and airlines) need 6 months; check this country's rule before applying.` });
     }
   }
   if (trip.start && !["Approved", "Passport collected", "Rejected"].includes(st)) {

@@ -39,7 +39,9 @@ export default async function SupplierPage({ params, searchParams }: { params: P
       <div className="mb-4 grid grid-cols-3 gap-3">
         <Stat label="Payable" value={inr(payable)} />
         <Stat label="Paid" value={inr(paid)} />
-        <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />
+        {payable - paid < 0
+          ? <Stat label="Advance with supplier" value={inr(paid - payable)} sub="Paid ahead; it is used up as new bookings with this supplier are added" />
+          : <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />}
       </div>
       <Tabs active={tab} base={`/suppliers/${id}`} tabs={[{ key: "ledger", label: "Ledger" }, { key: "details", label: "Details" }, { key: "files", label: "Files and notes" }, { key: "activity", label: "Activity" }]} />
       {tab === "ledger" && <Ledger id={id} />}

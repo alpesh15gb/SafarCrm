@@ -2,9 +2,12 @@
 const inrFmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2, minimumFractionDigits: 0 });
 const numFmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 
+const inrPaise = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** ₹1,25,000 for whole rupees, ₹20,000.50 when there are paise. */
 export function inr(n: number | string | null | undefined) {
   if (n === null || n === undefined || n === "") return "—";
-  return inrFmt.format(Number(n));
+  const v = Math.round(Number(n) * 100) / 100;
+  return (Number.isInteger(v) ? inrFmt : inrPaise).format(v);
 }
 export function num(n: number | string | null | undefined) {
   if (n === null || n === undefined || n === "") return "";

@@ -61,7 +61,12 @@ export type FieldDef = {
 export const VISA_TYPES = ["Tourist", "Business", "Visit (family)", "Transit", "Student", "Work", "Medical", "Conference"];
 export const VISA_MODES = ["Online (e-Visa)", "Appointment at VFS / embassy", "On arrival"];
 
-const BASE_DOCS = ["Original passport (valid 6 months after return, 2 blank pages)", "Passport-size photo, white background", "Flight tickets (return)", "Hotel booking"];
+const BASE_DOCS = [
+  "Original passport with 2 blank pages (check how long it must stay valid for this country; we advise 6 months after return)",
+  "Passport-size photo, white background",
+  "Return flight reservation (a confirmed itinerary; buy the ticket only if the embassy asks for one)",
+  "Hotel booking for the whole stay",
+];
 const MONEY_DOCS = ["Bank statement, last 6 months (bank stamped)", "Income tax returns (ITR), last 2–3 years", "Salary slips or business proof", "Leave letter or NOC from employer", "Cover letter with day-by-day plan"];
 const STRICT = ["Schengen (Europe)", "United Kingdom", "United States", "Canada", "Australia", "New Zealand", "Japan", "South Korea", "China"];
 const NEEDS_APPOINTMENT = ["Schengen (Europe)", "United Kingdom", "United States", "Canada"];
@@ -71,7 +76,7 @@ export function visaTemplate(country: string): { mode: string; checklist: string
   const c = country.trim();
   const strict = STRICT.some((x) => x.toLowerCase() === c.toLowerCase());
   const appt = NEEDS_APPOINTMENT.some((x) => x.toLowerCase() === c.toLowerCase());
-  const extra = c.startsWith("Schengen") ? ["Travel insurance with €30,000 medical cover (amount shown in euros)"]
+  const extra = c.startsWith("Schengen") ? ["Travel insurance with €30,000 medical cover (amount shown in euros)", "Passport valid 3 months after leaving the Schengen area and issued in the last 10 years (official rule)"]
     : c === "United States" ? ["DS-160 confirmation page", "Interview appointment letter"] : [];
   return {
     mode: appt ? VISA_MODES[1] : VISA_MODES[0],

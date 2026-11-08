@@ -42,7 +42,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                   <td data-label="Services"><span className="inline-flex gap-1">{(r.services as string[]).map((s) => <span key={s} className="flex h-6 w-6 items-center justify-center rounded-md bg-gray-100 text-gray-600"><ServiceIcon service={s} className="h-3.5 w-3.5" /></span>)}</span></td>
                   <td data-label="Contact">{r.contact_person ?? ""}{r.mobile && <div className="text-xs text-muted">{prettyPhone(r.mobile)}</div>}</td>
                   <td data-label="Terms">{r.terms === "credit" ? `Credit ${r.credit_days} days` : "Prepaid"}</td>
-                  <td data-label="We owe">{due ? <Money value={due} className={due > 0 ? "text-amber-700" : ""} /> : <span className="text-muted">—</span>}</td>
+                  <td data-label="We owe">{due < 0 ? <span className="text-sky-700">Advance <Money value={-due} /></span> : due ? <Money value={due} className="text-amber-700" /> : <span className="text-muted">—</span>}</td>
                   <td data-label="Status"><StatusBadge status={r.status} /></td>
                 </tr>
               );

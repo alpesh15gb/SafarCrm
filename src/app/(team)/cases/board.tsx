@@ -7,7 +7,7 @@ import { Avatar, LossDot, ServiceIcon, cx } from "@/components/ui";
 import { useAction } from "@/components/client";
 import { updateCase } from "@/actions/cases";
 import { STATUS_LABEL } from "@/lib/constants";
-import { fdate, inrShort } from "@/lib/format";
+import { fdate, inr, inrShort } from "@/lib/format";
 
 export type BoardCase = {
   id: string; max_id: string; title: string; status: string; travel_start: string | null; destination: string | null;
@@ -85,7 +85,7 @@ export function CaseBoard({ cases: initial }: { cases: BoardCase[] }) {
                         <span className="truncate text-xs">{c.customer}</span>
                       </span>
                       <span className="flex items-center gap-1.5">
-                        {c.due > 0 && <span className="whitespace-nowrap rounded-full bg-amber-50 px-1.5 py-px text-[10.5px] font-semibold text-amber-700 tabular" title="Due from client">{inrShort(c.due)} due</span>}
+                        {c.due > 0 && <span className="whitespace-nowrap rounded-full bg-amber-50 px-1.5 py-px text-[10.5px] font-semibold text-amber-700 tabular" title={`Due from client: ${inr(c.due)}`}>{inrShort(c.due)} due</span>}
                         {c.staff && <Avatar name={c.staff} size="xs" title={`Handled by ${c.staff}`} />}
                       </span>
                     </div>

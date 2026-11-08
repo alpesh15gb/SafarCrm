@@ -7,7 +7,7 @@ import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
 import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment } from "@/actions/money";
 import { PAY_MODES, PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
-import { fdate, todayIST } from "@/lib/format";
+import { fdate, todayIST, inr } from "@/lib/format";
 import type { Line } from "./bookings";
 
 type Pay = { id: string; pay_date: string; amount: number; mode: string; reference: string | null; notes: string | null; receiver: { full_name: string } | null };
@@ -116,7 +116,9 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
           <div className="grid grid-cols-3 gap-2 border-b border-line p-4 text-center">
             <div><div className="text-xs text-muted">Payable</div><Money value={money?.supplier_payable as number} className="font-semibold" /></div>
             <div><div className="text-xs text-muted">Paid</div><Money value={money?.supplier_paid as number} className="font-semibold text-emerald-700" /></div>
-            <div><div className="text-xs text-muted">Due</div><Money value={money?.supplier_due as number} className={Number(money?.supplier_due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>
+            {Number(money?.supplier_due) < 0
+              ? <div><div className="text-xs text-muted">Advance</div><Money value={-Number(money?.supplier_due)} className="font-semibold text-sky-700" /></div>
+              : <div><div className="text-xs text-muted">Due</div><Money value={money?.supplier_due as number} className={Number(money?.supplier_due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>}
           </div>
           {(() => {
             // cost on bookings that have no supplier can't be paid from here; say so plainly
@@ -124,7 +126,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
             const amt = orphan.reduce((a, l) => a + Number(l.supplier_cost), 0);
             return orphan.length > 0 ? (
               <p className="mx-4 mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-                ₹{amt.toLocaleString("en-IN")} of cost has no supplier ({orphan.map((l) => l.summary || l.service).join(", ")}). Open the Bookings tab, press Edit and choose who we pay.
+                {inr(amt)} of cost has no supplier ({orphan.map((l) => l.summary || l.service).join(", ")}). Open the Bookings tab, press Edit and choose who we pay.
               </p>
             ) : null;
           })()}
@@ -137,7 +139,9 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
                     <td data-label="Supplier">{s.supplier_name}{s.due_date && due > 0 && <div className="text-xs text-muted">due {fdate(s.due_date)}</div>}</td>
                     <td data-label="Payable"><Money value={s.payable} /></td>
                     <td data-label="Paid"><Money value={s.paid} /></td>
-                    <td data-label="Due"><Money value={due} className={due > 0 ? "text-amber-700" : ""} /></td>
+                    <td data-label="Due">{due < 0
+                      ? <span className="text-sky-700" title="Paid more than this booking costs; stays as an advance with the supplier">Advance <Money value={-due} /></span>
+                      : <Money value={due} className={due > 0 ? "text-amber-700" : ""} />}</td>
                     <td data-label="">{due > 0 && <Button size="sm" onClick={() => setSupPay(s)}>Pay</Button>}</td>
                   </tr>
                 );
@@ -176,7 +180,7 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !abs || tooMuchRefund}
         onClick={() => run(() => addClientPayment({ ...v, case_id: caseId, amount: (isRefund ? -1 : 1) * abs }), { then: () => { onClose(); setV({ ...v, amount: "", reference: "", notes: "", refund: false }); } })}>{isRefund ? "Save refund" : "Save payment"}</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Amount (₹)" required hint={due > 0 ? `Balance due ₹${due.toLocaleString("en-IN")}` : undefined}>
+        <Field label="Amount (₹)" required hint={due > 0 ? `Balance due ${inr(due)}` : undefined}>
           <input className="field tabular" autoFocus inputMode="decimal" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} />
         </Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
@@ -193,10 +197,10 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
         {abs > 0 && (
           <p className={cx("rounded-lg px-3 py-2 text-[13px] sm:col-span-2", tooMuchRefund ? "bg-red-50 font-medium text-red-700" : isRefund ? "bg-amber-50 text-amber-900" : over ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900")}>
             {isRefund ? (tooMuchRefund
-              ? `The client has paid ₹${refundable.toLocaleString("en-IN")} on this case, so that is the most you can refund. For a goodwill payment above that, add it as a case expense with a note.`
-              : `₹${abs.toLocaleString("en-IN")} will be recorded as money paid BACK to the client (refundable: ₹${refundable.toLocaleString("en-IN")}).`)
-              : over ? `This is ₹${(abs - due).toLocaleString("en-IN")} more than the balance due (₹${due.toLocaleString("en-IN")}). Check the amount, or save if the client paid extra.`
-                : `₹${abs.toLocaleString("en-IN")} received from the client. Balance after this: ₹${Math.max(0, due - abs).toLocaleString("en-IN")}.`}
+              ? `The client has paid ${inr(refundable)} on this case, so that is the most you can refund. For a goodwill payment above that, add it as a case expense with a note.`
+              : `${inr(abs)} will be recorded as money paid BACK to the client (refundable: ${inr(refundable)}).`)
+              : over ? `This is ${inr((abs - due))} more than the balance due (${inr(due)}). Check the amount, or save if the client paid extra.`
+                : `${inr(abs)} received from the client. Balance after this: ${inr(Math.max(0, due - abs))}.`}
           </p>
         )}
       </div>
@@ -209,16 +213,23 @@ function SupplierPaymentDialog({ sup, onClose, caseId }: { sup: SupMoney | null;
   const due = sup ? Number(sup.payable) - Number(sup.paid) : 0;
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" });
   if (!sup) return null;
+  const amt = Number(v.amount || due);
+  const extra = Math.round((amt - Math.max(due, 0)) * 100) / 100;
   return (
     <Dialog open={!!sup} onClose={onClose} title={`Pay ${sup.supplier_name}`}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending}
         onClick={() => { const amt = Number(v.amount || due); run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: amt }] }), { then: onClose }); }}>Save payment</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Amount (₹)" hint={`Due on this case ₹${due.toLocaleString("en-IN")}`}><input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
+        <Field label="Amount (₹)" hint={`Due on this case ${inr(due)}`}><input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
         <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
         <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
       </div>
+      {extra > 0 && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+          This is {inr(extra)} more than is due on this case ({inr(Math.max(due, 0))}). Check the amount. If you are paying in advance, save it: the extra shows as an advance with {sup.supplier_name}.
+        </p>
+      )}
       <p className="mt-3 text-xs text-muted">To pay for several MAX IDs at once, use “Record payment” on the supplier page.</p>
     </Dialog>
   );

@@ -9,7 +9,7 @@ import type { PaxSource } from "@/lib/iata";
 
 type PaxRow = PaxSource & { id: string; full_name: string; dob: string | null; passport_expiry: string | null; mobile: string };
 import { MaxId } from "@/components/client";
-import { fdate, prettyPhone } from "@/lib/format";
+import { fdate, prettyPhone, inr } from "@/lib/format";
 import { CaseHeaderControls } from "./header-controls";
 import { OverviewTab } from "./overview";
 import { BookingsTab, type Line } from "./bookings";
@@ -98,7 +98,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         {!me.can_see_profit && <Strip label="Received" icon={Receipt} tone="green" value={<Money value={money?.received} />} />}
         {Number(money?.due) < 0
           ? <Strip label="Client credit" icon={Wallet} tone="blue" value={<Money value={-Number(money?.due)} className="text-sky-700" />} sub="Paid more than billed: refund or adjust" />
-          : <Strip label="Due from client" icon={Wallet} tone="amber" value={<Money value={money?.due} className={Number(money?.due) > 0 ? "text-amber-700" : ""} />} sub={`Billed ${Number(money?.billed ?? 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })}`} />}
+          : <Strip label="Due from client" icon={Wallet} tone="amber" value={<Money value={money?.due} className={Number(money?.due) > 0 ? "text-amber-700" : ""} />} sub={`Billed ${inr(money?.billed ?? 0)}`} />}
       </div>
 
       <Tabs tabs={tabs} active={tab} base={`/cases/${id}`} />

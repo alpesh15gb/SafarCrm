@@ -1,5 +1,6 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
+import { inr } from "@/lib/format";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
 
 type CaseInput = {
@@ -58,7 +59,7 @@ export async function getOpenItems(id: string): Promise<string[]> {
   const sb = await createClient();
   const { data } = await sb.rpc("case_open_items", { p_case: id });
   const o = (data ?? {}) as OpenItems;
-  const inr = (n: number) => "₹" + Number(n).toLocaleString("en-IN");
+  
   return [
     o.pending_lines > 0 && `${o.pending_lines} booking${o.pending_lines === 1 ? " is" : "s are"} still Pending`,
     o.client_due > 0 && `the client still owes ${inr(o.client_due)}`,
@@ -109,7 +110,23 @@ export async function setTravellers(caseId: string, ids: string[]): Promise<Acti
     if (de) throw de;
     const { error } = await sb.from("case_travellers").upsert(all.map((customer_id) => ({ case_id: caseId, customer_id })));
     if (error) throw error;
-    return { ok: true, message: "Travellers updated" };
+    // anyone no longer on the trip comes off every booking too (and off its ticket list), so lists never disagree
+    const { data: lines } = await sb.from("booking_lines").select("id, traveller_ids, details").eq("case_id", caseId);
+    const { data: gone } = await sb.from("customers").select("id, full_name")
+      .in("id", Array.from(new Set((lines ?? []).flatMap((l) => (l.traveller_ids as string[]).filter((t) => !all.includes(t))))));
+    const goneIds = new Set((gone ?? []).map((g) => g.id));
+    const goneNames = new Set((gone ?? []).map((g) => g.full_name));
+    let touched = 0;
+    for (const l of lines ?? []) {
+      const keep = (l.traveller_ids as string[]).filter((t) => !goneIds.has(t));
+      if (keep.length === (l.traveller_ids as string[]).length) continue;
+      const d = { ...(l.details ?? {}) } as Record<string, unknown>;
+      if (Array.isArray(d.tickets)) d.tickets = (d.tickets as { passenger: string }[]).filter((t) => !goneNames.has(t.passenger));
+      const { error: ue } = await sb.from("booking_lines").update({ traveller_ids: keep, details: d }).eq("id", l.id);
+      if (ue) throw ue;
+      touched++;
+    }
+    return { ok: true, message: touched ? `Travellers updated, and removed from ${touched} booking${touched === 1 ? "" : "s"}` : "Travellers updated" };
   } catch (e) {
     return fail(e);
   }
