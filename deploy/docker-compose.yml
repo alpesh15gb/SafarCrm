@@ -1,0 +1,20 @@
+# The CRM web app. Supabase runs separately (deploy/supabase-docker, the official setup).
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    image: safar-crm:latest
+    container_name: safar-crm
+    restart: unless-stopped
+    env_file: .env.production
+    # only nginx on this server can reach it
+    ports:
+      - "127.0.0.1:${APP_PORT:-3100}:3000"
+    # the app talks to Supabase through the public address; resolve it to this server's nginx
+    extra_hosts:
+      - "${CRM_DOMAIN}:host-gateway"

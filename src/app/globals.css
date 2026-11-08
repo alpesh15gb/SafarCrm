@@ -1,26 +1,131 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
+  --color-page: #f7f8fa;
+  --color-line: #e9ebf0;
+  --color-ink: #111827;
+  --color-muted: #6b7280;
+  --color-coral: #fa7070;
+  --color-coral-dark: #e14f4f;
+  --color-coral-soft: #fff1f1;
+  --color-navy: #0f172a;
+  --color-navy-2: #1e293b;
+  --radius-card: 14px;
+  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-lift: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px -6px rgba(16, 24, 40, 0.1);
+  --shadow-pop: 0 12px 40px -8px rgba(16, 24, 40, 0.22), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --animate-fade-up: fade-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pop: pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+    to { opacity: 1; transform: none; }
   }
 }
 
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  /* crisp text on Retina (MacBook) screens */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Inter: open digits, straight-sided 1, disambiguated l/I */
+  font-feature-settings: "cv11", "ss01", "ss03", "cv05";
+  /* stop the whole app rubber-banding on trackpad scroll in Safari */
+  overscroll-behavior-y: none;
+}
+::selection { background: rgba(250, 112, 112, 0.22); }
+@layer base { a { color: inherit; } }
+.link { color: var(--color-coral-dark); font-weight: 500; }
+.link:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* slim, mac-like scrollbars on Chrome/Edge; Safari overlay scrollbars stay native */
+* { scrollbar-width: thin; scrollbar-color: #d4d7de transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #d4d7de; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background-color: #b8bcc6; }
+.scroll-dark { scrollbar-color: #334155 transparent; }
+
+:focus-visible { outline: 2px solid var(--color-coral); outline-offset: 2px; border-radius: 6px; }
+
+@layer components {
+  input, select, textarea { font-size: 14px; }
+  .field {
+    width: 100%;
+    border: 1px solid #dfe2e8;
+    background: #fff;
+    border-radius: 9px;
+    padding: 7px 11px;
+    outline: none;
+    min-height: 36px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-shadow: 0 1px 1px rgba(16, 24, 40, 0.03);
+  }
+  .field:hover:not(:disabled):not(:focus) { border-color: #c9cdd6; }
+  .field:focus { border-color: var(--color-coral); box-shadow: 0 0 0 3px rgba(250, 112, 112, 0.16); }
+  .field:focus-visible { outline: none; }
+  .field:disabled { background: #f3f4f6; color: var(--color-muted); }
+  .field::placeholder { color: #9aa0ab; }
+  /* custom chevron so selects look the same in Safari and Chrome */
+  select.field {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 30px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 16px;
+  }
+  /* Safari renders date inputs short and left-aligned; normalise */
+  input[type="date"].field, input[type="datetime-local"].field, input[type="time"].field { min-height: 36px; line-height: 20px; }
+  input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+
+  .kbd {
+    display: inline-flex; align-items: center; justify-content: center; gap: 1px;
+    min-width: 20px; height: 20px; padding: 0 5px;
+    border: 1px solid #dfe2e8; border-bottom-width: 2px; border-radius: 5px;
+    background: #fff; color: var(--color-muted);
+    font-size: 11px; font-weight: 500; font-family: var(--font-sans);
+  }
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* soft dotted backdrop used on hero banners */
+.bg-dots { background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px); background-size: 16px 16px; }
+
+/* tables turn into stacked cards on phones */
+@media (max-width: 767px) {
+  table.rtable thead { display: none; }
+  table.rtable, table.rtable tbody, table.rtable tr, table.rtable td { display: block; width: 100%; }
+  table.rtable tr { background: #fff; border: 1px solid var(--color-line); border-radius: 12px; margin-bottom: 8px; padding: 8px 12px; }
+  table.rtable td { border: 0 !important; padding: 3px 0 !important; display: flex; justify-content: space-between; gap: 12px; text-align: right; }
+  table.rtable td::before { content: attr(data-label); color: var(--color-muted); text-align: left; flex-shrink: 0; }
+  table.rtable td[data-label=""]::before { content: none; }
+  table.rtable tfoot { display: block; }
+  table.rtable tfoot tr { background: #f9fafb; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+  .print-full { margin: 0 !important; padding: 0 !important; }
 }

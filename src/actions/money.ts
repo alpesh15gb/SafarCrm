@@ -1,0 +1,81 @@
+"use server";
+import { createClient } from "@/lib/supabase/server";
+import { fail, getMe, type ActionResult } from "@/lib/auth";
+
+type PayIn = { case_id: string; pay_date: string; amount: number; mode: string; reference?: string; received_by?: string; notes?: string };
+
+export async function addClientPayment(p: PayIn): Promise<ActionResult> {
+  try {
+    if (!Number(p.amount)) return { ok: false, error: "Enter an amount." };
+    const me = await getMe();
+    const sb = await createClient();
+    const { error } = await sb.from("payments").insert({
+      direction: "in", case_id: p.case_id, pay_date: p.pay_date, amount: Number(p.amount), mode: p.mode,
+      reference: p.reference?.trim() || null, received_by: p.received_by || me?.id, notes: p.notes?.trim() || null,
+    });
+    if (error) throw error;
+    return { ok: true, message: Number(p.amount) < 0 ? "Refund recorded" : "Payment recorded" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+type PayOut = { supplier_id: string; pay_date: string; amount: number; mode: string; reference?: string; notes?: string; allocations: { case_id: string; amount: number }[] };
+
+export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
+  try {
+    if (!Number(p.amount)) return { ok: false, error: "Enter an amount." };
+    const alloc = p.allocations.filter((a) => Number(a.amount));
+    const sum = alloc.reduce((s, a) => s + Number(a.amount), 0);
+    if (alloc.length && Math.abs(sum - Number(p.amount)) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, not ₹${p.amount}.` };
+    const sb = await createClient();
+    const { data, error } = await sb.from("payments").insert({
+      direction: "out", supplier_id: p.supplier_id, pay_date: p.pay_date, amount: Number(p.amount), mode: p.mode,
+      reference: p.reference?.trim() || null, notes: p.notes?.trim() || null,
+    }).select("id").single();
+    if (error) throw error;
+    if (alloc.length) {
+      const { error: ae } = await sb.from("payment_allocations").insert(alloc.map((a) => ({ payment_id: data.id, case_id: a.case_id, amount: Number(a.amount) })));
+      if (ae) throw ae;
+    }
+    return { ok: true, message: "Supplier payment recorded" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deletePayment(id: string): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { data, error } = await sb.from("payments").delete().eq("id", id).select("id");
+    if (error) throw error;
+    if (!data?.length) return { ok: false, error: "Only the boss can delete payments." };
+    return { ok: true, message: "Payment deleted" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function addExpense(case_id: string, name: string, amount: number): Promise<ActionResult> {
+  try {
+    if (!name.trim() || !Number(amount)) return { ok: false, error: "Enter a name and an amount." };
+    const sb = await createClient();
+    const { error } = await sb.from("expenses").insert({ case_id, name: name.trim(), amount: Number(amount) });
+    if (error) throw error;
+    return { ok: true, message: "Expense added" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteExpense(id: string): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { data, error } = await sb.from("expenses").delete().eq("id", id).select("id");
+    if (error) throw error;
+    if (!data?.length) return { ok: false, error: "Only the boss can delete expenses." };
+    return { ok: true, message: "Expense deleted" };
+  } catch (e) {
+    return fail(e);
+  }
+}

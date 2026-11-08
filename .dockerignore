@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+backups
+deploy/supabase-docker
+.env*
+!.env.example
+supabase/.temp
+*.log

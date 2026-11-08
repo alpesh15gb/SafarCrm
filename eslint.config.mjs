@@ -5,6 +5,10 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // Dialogs reset their form state when opened; that pattern is intentional here.
+    rules: { "react-hooks/set-state-in-effect": "warn", "react-hooks/purity": "warn" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

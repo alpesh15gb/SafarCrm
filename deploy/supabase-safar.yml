@@ -1,0 +1,16 @@
+# Added to the official Supabase setup by deploy/setup.sh (listed in COMPOSE_FILE in its .env).
+# Keeps the database pooler private to this server (Docker ignores ufw) and sets login rules for the CRM.
+# Needs Docker Compose v2.24.4+ for "!override".
+services:
+  supavisor:
+    ports: !override
+      - "127.0.0.1:54322:5432"
+      - "127.0.0.1:54323:6543"
+  auth:
+    environment:
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: "true"
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: "true"
+      GOTRUE_PASSWORD_MIN_LENGTH: "8"
+  db:
+    environment:
+      TZ: Asia/Kolkata
