@@ -23,6 +23,10 @@ fi
 
 # 3. build and (re)start the app
 echo "• Building and starting the CRM app"
+# a CRM container left over from an older version of this script (wrong project name) is removed first;
+# containers of other apps are never touched
+owner=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' safar-crm 2>/dev/null || true)
+if [ -n "$owner" ] && [ "$owner" != "safar-crm" ]; then docker rm -f safar-crm >/dev/null; fi
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env.production up -d --build
 for i in $(seq 1 30); do
   s=$(docker inspect --format '{{.State.Health.Status}}' safar-crm 2>/dev/null || echo starting)

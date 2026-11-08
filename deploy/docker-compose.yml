@@ -1,6 +1,9 @@
 # The CRM web app. Supabase runs separately (deploy/supabase-docker, the official setup).
+# A fixed, unique project name: without it Docker uses the folder name ("deploy"), which can collide
+# with another app's project on a shared server and replace its containers.
+name: safar-crm
 services:
-  app:
+  safar-crm:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
