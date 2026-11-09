@@ -67,11 +67,11 @@ export async function runReport(key: string, sp: Record<string, string | undefin
     const { data, error } = await sb.rpc("report_sales", { p_from: range.from, p_to: range.to, ...f });
     throwIf(error);
     const all = (data ?? []) as { group_kind: string; group_key: string; bookings: number; sale: number; profit: number }[];
-    const cols: Col[] = [{ key: "group_key", label: "" }, { key: "bookings", label: "Bookings" }, { key: "sale", label: "Sale", money: true }, { key: "profit", label: "Profit", money: true, profit: true }];
+    const cols: Col[] = [{ key: "group_key", label: "" }, { key: "bookings", label: "Bookings" }, { key: "sale", label: "Sale", money: true }, { key: "profit", label: "Profit before case expenses", money: true, profit: true }];
     const svc = all.filter((r) => r.group_kind === "service").map((r) => ({ ...r, group_key: SERVICE_LABEL[r.group_key as Service] ?? r.group_key }));
     const staff = all.filter((r) => r.group_kind === "staff");
     return {
-      title: "Sales by service and staff", sub: `Bookings on cases booked ${range.label.toLowerCase()}`, cols, rows: [],
+      title: "Sales by service and staff", sub: `Bookings on cases booked ${range.label.toLowerCase()}. Profit here is per booking, before case expenses (the Profit and loss report takes those off).`, cols, rows: [],
       sections: [
         { title: "By service", cols: [{ ...cols[0], label: "Service" }, ...cols.slice(1)], rows: svc },
         { title: "By staff", cols: [{ ...cols[0], label: "Staff" }, ...cols.slice(1)], rows: staff },

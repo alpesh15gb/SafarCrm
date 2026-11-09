@@ -331,7 +331,7 @@ async function MyOpenCases({ userId }: { userId: string }) {
 function StaffBoard({ rows }: { rows: Money["by_staff"] }) {
   const max = Math.max(1, ...rows.map((r) => Math.abs(Number(r.profit))));
   return (
-    <Card title="Team performance" sub="Cases, tasks and profit in this period" icon={Users2} pad={false}>
+    <Card title="Team performance" sub="Cases, tasks and booking profit (before case expenses) in this period" icon={Users2} pad={false}>
       <ul className="divide-y divide-line">
         {[...rows].sort((a, b) => Number(b.profit) - Number(a.profit)).map((s, i) => (
           <li key={s.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[auto_1fr_90px_90px_1.2fr]">
@@ -361,7 +361,7 @@ function ProfitByService({ rows }: { rows: { service: string; profit: number; sa
   const data = SERVICES.filter((s) => s !== "other" || rows.some((r) => r.service === "other")).map((s) => ({ s, p: Number(rows.find((r) => r.service === s)?.profit ?? 0), sale: Number(rows.find((r) => r.service === s)?.sale ?? 0) }));
   const max = Math.max(1, ...data.map((d) => Math.abs(d.p)));
   return (
-    <Card title="Profit by service" sub="This period" icon={Layers}>
+    <Card title="Profit by service" sub="This period, before case expenses" icon={Layers}>
       <div className="space-y-3" role="table" aria-label="Profit by service">
         {data.map((d) => (
           <div key={d.s} role="row" className="group" title={`${SERVICE_LABEL[d.s]}: profit ${inr(d.p)} on sales of ${inr(d.sale)}`}>

@@ -44,7 +44,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
           : <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />}
       </div>
       <Tabs active={tab} base={`/suppliers/${id}`} tabs={[{ key: "ledger", label: "Ledger" }, { key: "details", label: "Details" }, { key: "files", label: "Files and notes" }, { key: "activity", label: "Activity" }]} />
-      {tab === "ledger" && <Ledger id={id} />}
+      {tab === "ledger" && <Ledger id={id} isBoss={me.role === "boss" || me.can_see_all_cases} />}
       {tab === "details" && <div className="max-w-3xl"><SupplierForm supplier={s} /></div>}
       {tab === "files" && <FilesLoader id={id} notes={s.notes} isBoss={me.role === "boss"} />}
       {tab === "activity" && <ActivityLoader id={id} />}
@@ -52,18 +52,19 @@ export default async function SupplierPage({ params, searchParams }: { params: P
   );
 }
 
-async function Ledger({ id }: { id: string }) {
+async function Ledger({ id, isBoss }: { id: string; isBoss: boolean }) {
   const sb = await createClient();
   const [{ data: lines }, { data: pays }] = await Promise.all([
     sb.from("booking_lines").select("id, service, summary, service_date, status, supplier_cost, refund_from_supplier, supplier_due_date, case:cases(id, max_id)").eq("supplier_id", id).order("created_at", { ascending: false }).limit(300),
     sb.from("payments").select("id, pay_date, amount, mode, reference, allocations:payment_allocations(amount, case:cases(id, max_id))").eq("supplier_id", id).eq("direction", "out").order("pay_date", { ascending: false }),
   ]);
   type L = { id: string; service: Service; summary: string | null; service_date: string | null; status: string; supplier_cost: number; refund_from_supplier: number; supplier_due_date: string | null; case: { id: string; max_id: string } };
-  type P = { id: string; pay_date: string; amount: number; mode: string; reference: string | null; allocations: { amount: number; case: { id: string; max_id: string } }[] };
+  // a payment can cover a case this staff member may not open; the case then comes back empty
+  type P = { id: string; pay_date: string; amount: number; mode: string; reference: string | null; allocations: { amount: number; case: { id: string; max_id: string } | null }[] };
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
-      <Card title="Bookings with this supplier" pad={false}>
-        {(lines ?? []).length === 0 ? <p className="p-4 text-sm text-muted">No bookings yet.</p> : (
+      <Card title="Bookings with this supplier" sub={isBoss ? undefined : "Your cases only. The totals above are for the whole agency."} pad={false}>
+        {(lines ?? []).length === 0 ? <p className="p-4 text-sm text-muted">{isBoss ? "No bookings yet." : "None of your cases has a booking with this supplier yet."}</p> : (
           <Table head={["MAX ID", "Booking", "Date", "Payable", "Due by", "Status"]}>
             {((lines ?? []) as unknown as L[]).map((l) => (
               <tr key={l.id}>
@@ -84,7 +85,7 @@ async function Ledger({ id }: { id: string }) {
             {((pays ?? []) as unknown as P[]).map((p) => (
               <li key={p.id} className="border-b border-line px-4 py-2.5 text-sm last:border-0">
                 <div className="flex justify-between"><span>{fdate(p.pay_date)} · {PAY_MODE_LABEL[p.mode]}{p.reference && ` · ${p.reference}`}</span><Money value={p.amount} className="font-medium" /></div>
-                {p.allocations.length > 0 && <div className="text-xs text-muted">For {p.allocations.map((a) => `${a.case.max_id} (${inr(a.amount)})`).join(", ")}</div>}
+                {p.allocations.length > 0 && <div className="text-xs text-muted">For {p.allocations.map((a) => `${a.case?.max_id ?? "another staff member's case"} (${inr(a.amount)})`).join(", ")}</div>}
               </li>
             ))}
           </ul>
