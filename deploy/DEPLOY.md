@@ -116,6 +116,15 @@ bash deploy/restore.sh /var/backups/safar-crm/db-DATE.dump /var/backups/safar-cr
 
 To rebuild on a brand-new server: do steps 2–5 with the **same `deploy/.secrets` file**, skip step 6, then run the restore. Logins, two-step login devices, encrypted ID numbers and the MAX numbering all come back.
 
+### Deleting test data before real use
+
+Removes all cases, customers, suppliers, bookings, payments, tasks, files and client portal logins, and restarts the numbering. Owner and staff logins, settings and lists are kept. It shows what it will delete, asks you to type WIPE, and takes a backup first:
+
+```bash
+cd /opt/safar-crm && DRY_RUN=1 bash deploy/wipe-data.sh 1001   # check only: changes nothing
+cd /opt/safar-crm && bash deploy/wipe-data.sh 1001             # the real wipe; first case = MAX-1001
+```
+
 ## Updating the CRM later
 
 ```bash
