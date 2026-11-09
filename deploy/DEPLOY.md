@@ -125,6 +125,14 @@ cd /opt/safar-crm && DRY_RUN=1 bash deploy/wipe-data.sh 1001   # check only: cha
 cd /opt/safar-crm && bash deploy/wipe-data.sh 1001             # the real wipe; first case = MAX-1001
 ```
 
+To also remove **every login** (boss, staff, clients) and start with one new owner login, add `--new-owner`. You are asked for the new password (hidden). The new owner is created before the old logins are removed:
+
+```bash
+cd /opt/safar-crm && bash deploy/wipe-data.sh 1001 --new-owner owner@maxtravel.in "Owner Name"
+```
+
+Then log in as the new owner and add staff again in **Settings → Users**.
+
 ## Updating the CRM later
 
 ```bash
