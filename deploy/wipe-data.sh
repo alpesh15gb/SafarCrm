@@ -18,7 +18,11 @@ START=1001; NEW_EMAIL=""; NEW_NAME=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --new-owner) NEW_EMAIL="${2:-}"; NEW_NAME="${3:-}"; shift 3 || { echo 'Use: --new-owner owner@maxtravel.in "Owner Name"'; exit 1; } ;;
-    *) START="$1"; shift ;;
+    [0-9]*) START="$1"; shift ;;
+    *) echo "Not understood: $1"
+       echo 'Use:  bash deploy/wipe-data.sh 1001'
+       echo '  or: bash deploy/wipe-data.sh 1001 --new-owner owner@maxtravel.in "Owner Name"   (type --new-owner exactly like this)'
+       exit 1 ;;
   esac
 done
 [[ "$START" =~ ^[0-9]+$ ]] || { echo "The first MAX number must be a number, e.g. 1001"; exit 1; }
