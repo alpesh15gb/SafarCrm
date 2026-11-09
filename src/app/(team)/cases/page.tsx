@@ -39,7 +39,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                 </Link>
               ))}
             </div>
-            <a className={btnClass("secondary")} href={`/api/export?type=cases&${qs}`}><Download className="h-4 w-4" />Export to Excel</a>
+            <a className={btnClass("secondary")} href={`/api/export?export=cases&${qs}`}><Download className="h-4 w-4" />Export to Excel</a>
             <NewButton kind="case" label="New case" />
           </>
         }

@@ -78,12 +78,26 @@ export async function revealAadhaar(id: string): Promise<ActionResult<string>> {
 export async function deleteCustomer(id: string): Promise<ActionResult> {
   try {
     const sb = await createClient();
+    // remember their uploaded scans (passport, Aadhaar...) so they can be removed from storage too
+    const [{ data: docs }, { data: cu }] = await Promise.all([
+      sb.from("customer_documents").select("storage_path").eq("customer_id", id),
+      sb.from("customers").select("photo_path").eq("id", id).maybeSingle(),
+    ]);
     const { data, error } = await sb.from("customers").delete().eq("id", id).select("id");
     if (error) {
       if (error.message.includes("foreign key")) return { ok: false, error: "This customer has cases. Delete or move those first." };
       throw error;
     }
     if (!data?.length) return { ok: false, error: "Only the boss can delete customers." };
+    const paths = [...new Set([...(docs ?? []).map((d) => d.storage_path), cu?.photo_path].filter(Boolean) as string[])];
+    if (paths.length) {
+      const admin = createAdmin();
+      // a scan attached to someone else's case is still in use there: keep it
+      const { data: used } = await admin.from("files").select("storage_path").in("storage_path", paths);
+      const keep = new Set((used ?? []).map((f) => f.storage_path));
+      const gone = paths.filter((p) => !keep.has(p));
+      if (gone.length) await admin.storage.from("files").remove(gone);
+    }
     return { ok: true, message: "Customer deleted" };
   } catch (e) {
     return fail(e);

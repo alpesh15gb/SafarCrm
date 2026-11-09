@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { fail, type ActionResult } from "@/lib/auth";
 import { normPhone, phoneError } from "@/lib/format";
+import { amount } from "@/lib/money";
 
 export async function saveSupplier(input: Record<string, unknown> & { id?: string; name: string }): Promise<ActionResult<{ id: string; name: string }>> {
   try {
@@ -15,8 +16,8 @@ export async function saveSupplier(input: Record<string, unknown> & { id?: strin
       if (["id", "created_at", "updated_at", "created_by"].includes(k)) continue;
       let val = typeof v === "string" ? v.trim() : v;
       if (["mobile", "whatsapp"].includes(k)) val = normPhone(val as string) || null;
-      if (["credit_days", "default_commission"].includes(k)) val = Number(val) || 0;
-      if (k === "credit_limit") val = val === "" || val === null ? null : Number(val);
+      if (["credit_days", "default_commission"].includes(k)) val = amount(val);
+      if (k === "credit_limit") val = val === "" || val === null ? null : amount(val);
       if (val === "") val = null;
       row[k] = val;
     }

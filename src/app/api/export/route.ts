@@ -62,11 +62,15 @@ export async function GET(req: Request) {
   const me = await getMe();
   if (!me || me.role === "client" || me.mfa_pending) return new Response("Not allowed", { status: 403 });
   const sp = Object.fromEntries(new URL(req.url).searchParams) as Record<string, string>;
+  // "export" names what to export; every other parameter is the list's own filters (e.g. type=individual)
+  let kind = sp.export ?? "";
+  // old links used ?type=customers; keep them working
+  if (!kind && ["cases", "customers", "suppliers", "report", "all"].includes(sp.type)) { kind = sp.type; delete sp.type; }
   const wb = new ExcelJS.Workbook();
   wb.creator = "Safar CRM";
 
   try {
-    if (sp.type === "cases") {
+    if (kind === "cases") {
       const { rows } = await listCases(sp, true);
       const cols: Col[] = [{ key: "max_id", label: "MAX ID" }, { key: "title", label: "Title" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" },
         { key: "travel_start", label: "Travel start", date: true }, { key: "travel_end", label: "Travel end", date: true }, { key: "destination", label: "Destination" },
@@ -79,7 +83,7 @@ export async function GET(req: Request) {
       })));
       return respond(wb, "Cases");
     }
-    if (sp.type === "customers") {
+    if (kind === "customers") {
       const { rows } = await listCustomers(sp, true);
       addSheet(wb, "Customers", [{ key: "code", label: "Code" }, { key: "full_name", label: "Name" }, { key: "customer_type", label: "Type" }, { key: "mobile", label: "Mobile" },
         { key: "email", label: "Email" }, { key: "city", label: "City" }, { key: "dob", label: "Date of birth", date: true }, { key: "passport_expiry", label: "Passport expiry", date: true },
@@ -87,14 +91,14 @@ export async function GET(req: Request) {
         rows.map((r) => ({ ...r, tags: r.tags.join(", "), family: r.family?.name, cases: r.cases?.[0]?.count ?? 0 })));
       return respond(wb, "Customers");
     }
-    if (sp.type === "suppliers") {
+    if (kind === "suppliers") {
       const { rows } = await listSuppliers(sp, true);
       addSheet(wb, "Suppliers", [{ key: "name", label: "Supplier" }, { key: "type", label: "Type" }, { key: "contact_person", label: "Contact" }, { key: "mobile", label: "Mobile" },
         { key: "city", label: "City" }, { key: "terms", label: "Terms" }, { key: "payable", label: "Payable", money: true }, { key: "paid", label: "Paid", money: true }, { key: "due", label: "Due", money: true }],
         rows.map((r) => ({ ...r, type: SUPPLIER_TYPE_LABEL[r.supplier_type], terms: r.terms === "credit" ? `Credit ${r.credit_days} days` : "Prepaid", due: r.payable - r.paid })));
       return respond(wb, "Suppliers");
     }
-    if (sp.type === "report") {
+    if (kind === "report") {
       const key = sp.r ?? "client_dues";
       const def = REPORTS.find((r) => r.key === key);
       if (!def || ("profit" in def && def.profit && !me.can_see_profit)) return new Response("Not allowed", { status: 403 });
@@ -103,7 +107,7 @@ export async function GET(req: Request) {
       else addSheet(wb, rep.title, rep.cols, rep.rows, rep.totals);
       return respond(wb, rep.title.replace(/\W+/g, "_"));
     }
-    if (sp.type === "all") {
+    if (kind === "all") {
       if (me.role !== "boss") return new Response("Only the boss can export all data", { status: 403 });
       const sb = await createClient();
       const tables: [string, string, string][] = [
@@ -123,7 +127,8 @@ export async function GET(req: Request) {
       for (const [name, table, sel] of tables) {
         const all: Record<string, unknown>[] = [];
         for (let from = 0; ; from += 1000) {
-          const { data, error } = await sb.from(table).select(sel).range(from, from + 999);
+          // a fixed order, so pages never skip or repeat rows
+          const { data, error } = await sb.from(table).select(sel).order("id").range(from, from + 999);
           if (error) throw error;
           all.push(...((data ?? []) as unknown as Record<string, unknown>[]));
           if ((data ?? []).length < 1000) break;

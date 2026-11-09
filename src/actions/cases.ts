@@ -44,7 +44,8 @@ export async function createCase(input: CaseInput): Promise<ActionResult<{ id: s
     const extra = (input.traveller_ids ?? []).filter((t) => t !== input.customer_id);
     if (extra.length) {
       const { error: te } = await sb.from("case_travellers").insert(extra.map((customer_id) => ({ case_id: data.id, customer_id })));
-      if (te) throw te;
+      // the case already exists: report success (so nobody retries and makes a duplicate MAX ID) and say what to redo
+      if (te) return { ok: true, data, message: `${data.max_id} created, but the other travellers weren't added. Add them on the case page.` };
     }
     return { ok: true, data, message: `${data.max_id} created` };
   } catch (e) {
@@ -82,6 +83,20 @@ export async function updateCase(id: string, patch: Partial<CaseInput> & { cance
         patch.notes = `${cur?.notes ? cur.notes + "\n" : ""}[${stamp}] Completed with open items (${open.join("; ")}). Reason: ${why}`;
       }
     }
+    // cancelling a case: confirmed bookings must be cancelled one by one first (so refunds and charges are recorded);
+    // bookings still Pending were never bought, so they close at zero and any advance shows as a client credit
+    let closePending = false;
+    if (patch.status === "cancelled") {
+      const { data: b } = await sb.rpc("case_cancel_blockers", { p_case: id });
+      const o = (b ?? {}) as { confirmed_lines: number; pending_lines: number; supplier_paid: number };
+      if (o.confirmed_lines > 0) {
+        return { ok: false, error: `This case has ${o.confirmed_lines} confirmed booking${o.confirmed_lines === 1 ? "" : "s"}. Cancel ${o.confirmed_lines === 1 ? "it" : "each one"} on the Bookings tab first, so the refunds and supplier charges are recorded. Then cancel the case.` };
+      }
+      if (o.pending_lines > 0 && Number(o.supplier_paid) !== 0) {
+        return { ok: false, error: "A supplier has already been paid on this case. Cancel each booking on the Bookings tab first and enter what the supplier refunds. Then cancel the case." };
+      }
+      closePending = o.pending_lines > 0;
+    }
     const row: Record<string, unknown> = {};
     for (const k of ["title", "travel_start", "travel_end", "destination", "lead_source", "notes", "cancel_reason"] as const) {
       if (k in patch) row[k] = clean(patch[k] as string | null | undefined);
@@ -92,6 +107,15 @@ export async function updateCase(id: string, patch: Partial<CaseInput> & { cance
     if ("customer_id" in patch && patch.customer_id) row.customer_id = patch.customer_id;
     const { error } = await sb.from("cases").update(row).eq("id", id);
     if (error) throw error;
+    if (closePending) {
+      const { data: pend } = await sb.from("booking_lines").select("id, selling_price, supplier_cost").eq("case_id", id).eq("status", "pending");
+      for (const l of pend ?? []) {
+        const { error: le } = await sb.from("booking_lines").update({
+          status: "cancelled", cancel_reason: "Case cancelled before booking", refund_to_client: l.selling_price, refund_from_supplier: l.supplier_cost,
+        }).eq("id", l.id);
+        if (le) throw le;
+      }
+    }
     if ("customer_id" in patch && patch.customer_id) {
       await sb.from("case_travellers").upsert({ case_id: id, customer_id: patch.customer_id });
     }

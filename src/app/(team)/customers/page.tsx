@@ -17,7 +17,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Customers" sub={`One record per traveller, with every document · ${count} found`}
-        action={<><a className={btnClass("secondary")} href={`/api/export?type=customers&${qs}`}><Download className="h-4 w-4" />Export to Excel</a><NewButton kind="customer" label="New customer" /></>} />
+        action={<><a className={btnClass("secondary")} href={`/api/export?export=customers&${qs}`}><Download className="h-4 w-4" />Export to Excel</a><NewButton kind="customer" label="New customer" /></>} />
       <div className="mb-3 space-y-2">
         <SearchBox placeholder="Name, mobile, code, email, city or company" />
         <div className="flex flex-wrap gap-x-4 gap-y-2">

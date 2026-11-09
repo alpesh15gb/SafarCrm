@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { fail, type ActionResult } from "@/lib/auth";
 import { lineProblem } from "@/lib/validate";
+import { amount } from "@/lib/money";
 import type { Service } from "@/lib/constants";
 
 export type LineInput = {
@@ -24,7 +25,7 @@ export type LineInput = {
   visible_to_client?: boolean;
 };
 
-const n = (v: unknown) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? 0 : Number(v));
+const n = amount;
 
 export async function saveLine(input: LineInput): Promise<ActionResult<{ id: string }>> {
   try {

@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: { bodySizeLimit: "12mb" },
+    // the proxy buffers request bodies; above this they are cut off. Files are capped at 10 MB plus form overhead
+    proxyClientMaxBodySize: "12mb",
   },
 };
 

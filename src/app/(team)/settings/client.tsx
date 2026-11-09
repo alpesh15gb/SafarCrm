@@ -186,7 +186,7 @@ export function DataTab() {
     <div className="grid max-w-4xl gap-4 lg:grid-cols-2">
       <Card title="Export all data">
         <p className="mb-3 text-[13px] text-muted">Download every customer, case, booking, payment, task and the activity log as one Excel workbook. ID numbers stay encrypted and are not included.</p>
-        <a className={btnClass("primary")} href="/api/export?type=all"><Download className="h-4 w-4" />Export all data to Excel</a>
+        <a className={btnClass("primary")} href="/api/export?export=all"><Download className="h-4 w-4" />Export all data to Excel</a>
       </Card>
       <Card title="Backups">
         <p className="text-[13px] text-muted">The database is backed up automatically every day by Supabase (enable daily backups on your Supabase plan). Uploaded files live in private storage. Last checked {fdate(new Date().toISOString())}.</p>

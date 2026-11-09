@@ -1,7 +1,14 @@
 // One place for booking money maths, mirroring the database functions line_profit / line_sale / line_cost.
 // Work in paise (integers) so the browser and Postgres always round the same way.
 
-const paise = (x: unknown) => Math.round((Number(x) || 0) * 100);
+/** A money amount as typed by staff: "11,000", "₹ 11000", "1,25,000.50" all work. Anything unreadable is 0. */
+export function amount(x: unknown): number {
+  if (typeof x === "number") return Number.isFinite(x) ? x : 0;
+  const v = Number(String(x ?? "").replace(/[,\s₹]/g, "").replace(/^rs\.?/i, ""));
+  return Number.isFinite(v) ? v : 0;
+}
+
+const paise = (x: unknown) => Math.round(amount(x) * 100);
 const rupees = (p: number) => p / 100;
 
 export type LineMoney = {
@@ -13,9 +20,9 @@ export type LineMoney = {
 /** Commission in rupees: % of the base fare when given (flights), otherwise % of supplier cost. */
 export function commissionOf(l: LineMoney) {
   if (l.commission_type !== "percent") return rupees(paise(l.commission_value));
-  const base = Number(l.base_fare) > 0 ? Number(l.base_fare) : Number(l.supplier_cost) || 0;
+  const base = amount(l.base_fare) > 0 ? amount(l.base_fare) : amount(l.supplier_cost);
   // Postgres: round(base * value / 100, 2)
-  return Math.round(base * (Number(l.commission_value) || 0)) / 100;
+  return Math.round(base * amount(l.commission_value)) / 100;
 }
 
 /** Profit as the CRM reports it everywhere.

@@ -65,7 +65,7 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
           </>
         }
       >
-        <p className="mb-3 text-[13px] text-muted">To record refunds and cancellation charges, cancel each booking from the Bookings tab.</p>
+        <p className="mb-3 text-[13px] text-muted">Confirmed bookings must be cancelled first on the Bookings tab, so refunds and supplier charges are recorded. Bookings still Pending are closed at no charge, and any advance the client paid shows as a credit to refund.</p>
         <Field label="Reason" required><input className="field" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Client postponed the trip" /></Field>
       </Dialog>
       <Dialog

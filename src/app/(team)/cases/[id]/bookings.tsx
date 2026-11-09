@@ -12,7 +12,7 @@ import { cancelLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLine
 import { DEFAULT_KIND, SERVICES, SERVICE_FIELDS, SERVICE_LABEL, visaTemplate, type FieldDef, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
 import { lineProblem } from "@/lib/validate";
-import { cancelBreakdown, commissionOf, lineProfit } from "@/lib/money";
+import { amount, cancelBreakdown, commissionOf, lineProfit } from "@/lib/money";
 import { FlightPassengers, IssueList, type Pax } from "@/components/flight-pax";
 import { PAX_LABEL, checkAirport, checkFlightNo, checkPnr, checkTicket, airlineCodeOf, nextDay, normFlightNo, normTicket, paxType } from "@/lib/iata";
 import { fdate, inr } from "@/lib/format";
@@ -238,7 +238,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     setTried(false);
   }, [open, line, initService, travellers]);
 
-  const num = (v: string) => Number(v) || 0;
+  const num = amount;
   const isCancelled = line?.status === "cancelled";
   const moneyNow = {
     status: isCancelled ? "cancelled" : "active", selling_price: m.selling_price, supplier_cost: m.supplier_cost,
@@ -506,7 +506,7 @@ function CancelDialog({ line, onClose }: { line: Line | null; onClose: () => voi
   const [v, setV] = useState({ reason: "", cancellation_charge: "", refund_to_client: "", refund_from_supplier: "" });
   useEffect(() => { if (line) setV({ reason: "", cancellation_charge: "", refund_to_client: "", refund_from_supplier: "" }); }, [line]);
   if (!line) return null;
-  const n = (x: string) => Number(x) || 0;
+  const n = amount;
   const after = lineProfit({ ...line, status: "cancelled", refund_to_client: n(v.refund_to_client), refund_from_supplier: n(v.refund_from_supplier) });
   return (
     <Dialog open={!!line} onClose={onClose} title="Cancel booking"
@@ -524,6 +524,12 @@ function CancelDialog({ line, onClose }: { line: Line | null; onClose: () => voi
             onChange={(e) => setV({ ...v, refund_from_supplier: e.target.value, cancellation_charge: e.target.value === "" ? v.cancellation_charge : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} /></Field>
           <Field label="Refund to client (₹)"><input className="field tabular" inputMode="decimal" value={v.refund_to_client} onChange={(e) => setV({ ...v, refund_to_client: e.target.value })} /></Field>
         </div>
+        {Number(line.gst) > 0 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+            The client also paid {inr(line.gst)} GST on this booking. It goes back to them with the refund, so they are owed{" "}
+            <b>{inr(n(v.refund_to_client) + Number(line.gst))}</b> in total ({inr(n(v.refund_to_client))} refund + {inr(line.gst)} GST).
+          </p>
+        )}
         {me.can_see_profit && (
           <p className="rounded-lg bg-gray-50 px-3 py-2 text-[13px]">Profit after cancellation: <b className={after < 0 ? "text-red-600" : "text-emerald-700"}>{inr(after)}</b></p>
         )}

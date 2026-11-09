@@ -8,6 +8,7 @@ import { DropZone } from "@/components/files";
 import { useApp } from "@/components/shell/shell";
 import { deleteSupplier, saveSupplier, saveSupplierNotes } from "@/actions/suppliers";
 import { addSupplierPayment } from "@/actions/money";
+import { amount } from "@/lib/money";
 import { deleteFile } from "@/actions/files";
 import { PAY_MODES, SERVICES, SERVICE_LABEL, SUPPLIER_TYPES } from "@/lib/constants";
 import { fdate, fdatetime, inr, todayIST } from "@/lib/format";
@@ -79,13 +80,13 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
   const [show, setShow] = useState(false);
   const [v, setV] = useState({ pay_date: todayIST(), mode: "bank", reference: "", notes: "" });
   const [alloc, setAlloc] = useState<Record<string, string>>({});
-  const total = Object.values(alloc).reduce((s, a) => s + (Number(a) || 0), 0);
+  const total = Object.values(alloc).reduce((s, a) => s + amount(a), 0);
   return (
     <>
       <Button variant="primary" onClick={() => { setAlloc({}); setShow(true); }}>Record payment</Button>
       <Dialog open={show} onClose={() => setShow(false)} title={`Payment to ${supplier.name}`} wide
         footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !total}
-          onClick={() => run(() => addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: Number(a) || 0 })) }), { then: () => setShow(false) })}>
+          onClick={() => run(() => addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: amount(a) })) }), { then: () => setShow(false) })}>
           Save payment of {inr(total)}</Button></>}>
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -106,7 +107,7 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
                   <span className="font-mono text-[13px] font-semibold">{o.max_id}</span>
                   <span className="min-w-0 flex-1 truncate text-sm">{o.title}<span className="text-xs text-muted"> · due {inr(o.due)}{o.due_date && ` by ${fdate(o.due_date)}`}</span></span>
                   <input className="field !w-28 tabular" inputMode="decimal" value={alloc[o.case_id] ?? ""} onChange={(e) => setAlloc((a) => ({ ...a, [o.case_id]: e.target.value }))} />
-                  {Number(alloc[o.case_id]) > Number(o.due) && <span className="text-xs text-amber-700" title="More than due; the extra stays as an advance">+{inr(Number(alloc[o.case_id]) - Number(o.due))} extra</span>}
+                  {amount(alloc[o.case_id]) > Number(o.due) && <span className="text-xs text-amber-700" title="More than due; the extra stays as an advance">+{inr(amount(alloc[o.case_id]) - Number(o.due))} extra</span>}
                 </div>
               ))}
             </div>

@@ -16,7 +16,7 @@ export async function searchCustomers(q: string) {
   if (t) {
     const digits = t.replace(/\D/g, "");
     query = digits.length >= 4
-      ? query.or(`mobile.ilike.%${digits}%,full_name.ilike.%${t.replace(/[,()%]/g, "")}%`)
+      ? query.or(`mobile.ilike.%${digits}%,full_name.ilike.%${t.replace(/[,()%]/g, "")}%,code.ilike.%${t.replace(/[,()%]/g, "")}%`)
       : query.or(`full_name.ilike.%${t.replace(/[,()%]/g, "")}%,code.ilike.${t.replace(/[,()%]/g, "")}%`);
   }
   const { data } = await query;

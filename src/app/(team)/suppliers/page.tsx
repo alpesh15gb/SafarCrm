@@ -18,7 +18,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Suppliers" sub="Who we buy from, and what we owe them."
-        action={<><a className={btnClass("secondary")} href={`/api/export?type=suppliers&${qs}`}><Download className="h-4 w-4" />Export to Excel</a><NewButton kind="supplier" label="New supplier" /></>} />
+        action={<><a className={btnClass("secondary")} href={`/api/export?export=suppliers&${qs}`}><Download className="h-4 w-4" />Export to Excel</a><NewButton kind="supplier" label="New supplier" /></>} />
       <div className="mb-3 space-y-2">
         <SearchBox placeholder="Supplier name" />
         <Chips param="type" current={sp.type} base={sp} allLabel="All types" items={SUPPLIER_TYPES} />

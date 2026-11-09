@@ -5,6 +5,7 @@ import { Badge, Button, Card, Field, Money, ServiceIcon, Table, cx } from "@/com
 import { Dialog, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
+import { amount } from "@/lib/money";
 import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment } from "@/actions/money";
 import { PAY_MODES, PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
 import { fdate, todayIST, inr } from "@/lib/format";
@@ -83,7 +84,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
             <div className="mt-2 flex flex-wrap gap-2">
               <input className="field !w-56" placeholder="Expense name" value={exp.name} onChange={(e) => setExp({ ...exp, name: e.target.value })} />
               <input className="field !w-32 tabular" placeholder="₹" inputMode="decimal" value={exp.amount} onChange={(e) => setExp({ ...exp, amount: e.target.value })} />
-              <Button disabled={pending || !exp.name || !exp.amount} onClick={() => run(() => addExpense(caseId, exp.name, Number(exp.amount)), { then: () => setExp({ name: "", amount: "" }) })}>Add expense</Button>
+              <Button disabled={pending || !exp.name || !exp.amount} onClick={() => run(() => addExpense(caseId, exp.name, amount(exp.amount)), { then: () => setExp({ name: "", amount: "" }) })}>Add expense</Button>
             </div>
           </div>
         </Card>
@@ -168,7 +169,7 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "upi", reference: "", received_by: me.id, notes: "", refund: false });
-  const amt = Number(String(v.amount).replace(/[,\s₹]/g, ""));
+  const amt = amount(v.amount);
   // typing a minus sign is the same as ticking "refund"
   const isRefund = v.refund || amt < 0;
   const abs = Math.abs(amt) || 0;
@@ -213,12 +214,12 @@ function SupplierPaymentDialog({ sup, onClose, caseId }: { sup: SupMoney | null;
   const due = sup ? Number(sup.payable) - Number(sup.paid) : 0;
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" });
   if (!sup) return null;
-  const amt = Number(v.amount || due);
+  const amt = v.amount.trim() ? amount(v.amount) : due;
   const extra = Math.round((amt - Math.max(due, 0)) * 100) / 100;
   return (
     <Dialog open={!!sup} onClose={onClose} title={`Pay ${sup.supplier_name}`}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending}
-        onClick={() => { const amt = Number(v.amount || due); run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: amt }] }), { then: onClose }); }}>Save payment</Button></>}>
+        onClick={() => { run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: amt }] }), { then: onClose }); }}>Save payment</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Amount (₹)" hint={`Due on this case ${inr(due)}`}><input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
