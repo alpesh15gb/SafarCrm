@@ -12,9 +12,11 @@ import { cancelLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLine
 import { DEFAULT_KIND, SERVICES, SERVICE_FIELDS, SERVICE_LABEL, visaTemplate, type FieldDef, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
 import { lineProblem } from "@/lib/validate";
-import { amount, cancelBreakdown, commissionOf, lineProfit } from "@/lib/money";
+import { amount, cancelBreakdown, commissionOf, lineProfit, moneyProblem } from "@/lib/money";
+import { offsetLabel, sectorTimeIssues } from "@/lib/flight-time";
+import { InlineTravellerAdd } from "@/components/inline-traveller";
 import { FlightPassengers, IssueList, type Pax } from "@/components/flight-pax";
-import { PAX_LABEL, checkAirport, checkFlightNo, checkPnr, checkTicket, airlineCodeOf, nextDay, normFlightNo, normTicket, paxType } from "@/lib/iata";
+import { PAX_LABEL, checkAirport, checkFlightNo, checkPnr, checkTicket, airlineCodeOf, normFlightNo, normTicket, paxType } from "@/lib/iata";
 import { fdate, inr } from "@/lib/format";
 
 export type Line = {
@@ -33,12 +35,14 @@ type Cust = { full_name: string; mobile: string; whatsapp: string | null; email:
 
 type Trip = { start: string | null; end: string | null };
 /** What we know about airports and airlines, for IATA checks. */
-type Iata = { airports: Set<string>; indian: Set<string>; airlineByCode: Map<string, string> };
+type Iata = { airports: Set<string>; indian: Set<string>; airlineByCode: Map<string, string>; tzByCode: Map<string, string> };
 function iataFrom(lookups: Lookups): Iata {
   return {
     airports: new Set((lookups.airport ?? []).map((a) => a.value)),
     indian: new Set((lookups.airport ?? []).filter((a) => a.extra?.country === "IN").map((a) => a.value)),
     airlineByCode: new Map((lookups.airline ?? []).filter((a) => a.extra?.code).map((a) => [a.extra.code, a.value])),
+    // only airports whose zone is recorded; an unknown zone stays unknown
+    tzByCode: new Map((lookups.airport ?? []).filter((a) => a.extra?.tz).map((a) => [a.value, a.extra.tz])),
   };
 }
 const isIntl = (d: Record<string, unknown>, iata: Iata) =>
@@ -184,8 +188,10 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 // ---------------------------------------------------------------- add / edit
-type Sector = { from: string; to: string; date: string; airline: string; flight_no: string; dep: string; arr: string };
-const blankSector = (): Sector => ({ from: "", to: "", date: "", airline: "", flight_no: "", dep: "", arr: "" });
+// date = departure local date; arr_date = arrival local date (explicit, never inferred from the times)
+type Sector = { from: string; to: string; date: string; airline: string; flight_no: string; dep: string; arr: string; arr_date?: string; dep_tz?: string; arr_tz?: string };
+const blankSector = (): Sector => ({ from: "", to: "", date: "", airline: "", flight_no: "", dep: "", arr: "", arr_date: "" });
+type Ticket = { passenger: string; number: string; customer_id?: string; name_as_issued?: string; source?: string };
 
 const VISA_CHECKLIST = [
   "Passport (valid 6+ months, 2 blank pages)", "Recent photo, white background", "Confirmed return flight tickets", "Hotel booking",
@@ -214,9 +220,14 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   const [notes, setNotes] = useState("");
   const [visible, setVisible] = useState(true);
   const [tried, setTried] = useState(false);   // show "what's missing" only after a save attempt
+  // people added inline while this form is open (the page's traveller list refreshes behind the dialog)
+  const [added, setAdded] = useState<Pax[]>([]);
+  const allTravellers = useMemo(() => [...travellers, ...added.filter((a) => !travellers.some((t) => t.id === a.id))], [travellers, added]);
 
+  // reset only when the dialog opens or a different booking is opened: a background refresh must never wipe what was typed
   useEffect(() => {
     if (!open) return;
+    setAdded([]);
     if (line) {
       setService(line.service);
       setSupplier(line.supplier ? { id: line.supplier.id, label: line.supplier.name } : null);
@@ -236,7 +247,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     }
     setAddSup(null);
     setTried(false);
-  }, [open, line, initService, travellers]);
+  }, [open, line?.id, initService]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const num = amount;
   const isCancelled = line?.status === "cancelled";
@@ -265,16 +276,19 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   // return trip: typing the outbound airports fills the return leg in reverse, until someone edits the return leg
   function setAirport(i: number, key: "from" | "to", raw: string) {
     const v = raw.toUpperCase();
-    const next = sectors.map((x, j) => (j === i ? { ...x, [key]: v } : x));
+    const tzKey = (k: "from" | "to") => (k === "from" ? "dep_tz" : "arr_tz");
+    // the airport's time zone comes from the airport list when it is recorded there; otherwise it stays unknown
+    const withTz = (s: Sector, k: "from" | "to", code: string): Sector => ({ ...s, [k]: code, [tzKey(k)]: iata.tzByCode.get(code) ?? "" });
+    const next = sectors.map((x, j) => (j === i ? withTz(x, key, v) : x));
     if (d.trip_type === "return" && i === 0 && next[1]) {
       const mirror = key === "from" ? "to" : "from";
       const old = sectors[0][key];
-      if (!next[1][mirror] || next[1][mirror] === old) next[1] = { ...next[1], [mirror]: v };
+      if (!next[1][mirror] || next[1][mirror] === old) next[1] = withTz(next[1], mirror, v);
     }
     setDet("sectors", next);
   }
   // a ticket belongs to a person (customer_id); older tickets without one are matched by name
-  const tickets = (d.tickets as { passenger: string; number: string; customer_id?: string }[]) ?? [];
+  const tickets = (d.tickets as Ticket[]) ?? [];
   const isMine = (x: { passenger: string; customer_id?: string }, t: { id: string; full_name: string }) => (x.customer_id ? x.customer_id === t.id : x.passenger === t.full_name);
 
   function setTripType(t: string) {
@@ -286,15 +300,20 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
 
   const visaPerPerson = service === "visa" && !line && trav.length > 1;
   // check before sending, and say exactly what is missing
-  const problem = lineProblem(service, d);
+  // the same checks the server runs: an unreadable amount is refused, an empty one means "not priced yet"
+  const problem = lineProblem(service, d)
+    ?? moneyProblem(service === "visa" ? "Our cost" : "Supplier cost", m.supplier_cost)
+    ?? moneyProblem(service === "visa" ? "Charge to client" : "Selling price", m.selling_price)
+    ?? moneyProblem("Commission", m.commission_value) ?? moneyProblem("GST", m.gst) ?? moneyProblem("Base fare", d.base_fare);
+  const unpriced = !m.selling_price.trim() && !m.supplier_cost.trim();
   const save = () => {
     setTried(true);
     if (problem) return;
     return run(
       () => visaPerPerson ? saveVisaPerPerson() : saveLine({
         id: line?.id, case_id: caseId, service, supplier_id: supplier?.id ?? null, status, reference, traveller_ids: trav,
-        supplier_cost: num(m.supplier_cost), selling_price: num(m.selling_price), commission_type: m.commission_type, commission_value: num(m.commission_value),
-        gst: num(m.gst), payment_due_date: m.payment_due_date || null, supplier_due_date: line ? m.supplier_due_date || null : undefined, notes,
+        supplier_cost: m.supplier_cost, selling_price: m.selling_price, commission_type: m.commission_type, commission_value: m.commission_value,
+        gst: m.gst, payment_due_date: m.payment_due_date || null, supplier_due_date: line ? m.supplier_due_date || null : undefined, notes,
         details: service === "hotel" && nights !== null ? { ...d, nights } : d, visible_to_client: visible,
       }),
       { then: () => onClose() },
@@ -305,8 +324,8 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     for (const id of trav) {
       const r = await saveLine({
         case_id: caseId, service, supplier_id: supplier?.id ?? null, status: "pending", reference, traveller_ids: [id],
-        supplier_cost: num(m.supplier_cost), selling_price: num(m.selling_price), commission_type: m.commission_type, commission_value: num(m.commission_value),
-        gst: num(m.gst), payment_due_date: m.payment_due_date || null, notes, details: d, visible_to_client: visible,
+        supplier_cost: m.supplier_cost, selling_price: m.selling_price, commission_type: m.commission_type, commission_value: m.commission_value,
+        gst: m.gst, payment_due_date: m.payment_due_date || null, notes, details: d, visible_to_client: visible,
       });
       if (!r.ok) return r;
     }
@@ -355,7 +374,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           <div className="space-y-2">
             <div className="text-[13px] font-medium">Sectors <span className="text-coral">*</span> <span className="font-normal text-muted">From and To airport codes are needed</span></div>
             {sectors.map((s, i) => (
-              <div key={i} className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 sm:grid-cols-[70px_70px_140px_1fr_90px_80px_80px_28px]">
+              <div key={i} className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 sm:grid-cols-[64px_64px_132px_1fr_84px_76px_132px_76px_24px]">
                 <input className="field uppercase" list="dl-airport" placeholder="From" aria-label={`Sector ${i + 1} from airport`} value={s.from} onChange={(e) => setAirport(i, "from", e.target.value)} />
                 <input className="field uppercase" list="dl-airport" placeholder="To" aria-label={`Sector ${i + 1} to airport`} value={s.to} onChange={(e) => setAirport(i, "to", e.target.value)} />
                 <input className="field col-span-2 sm:col-span-1" type="date" aria-label={`Sector ${i + 1} date`} title="Flight date" value={s.date} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} />
@@ -369,13 +388,17 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
                     setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, flight_no: fno, airline: x.airline || name || x.airline } : x)));
                   }} />
                 <input className="field" type="time" title="Departure" aria-label={`Sector ${i + 1} departure time`} value={s.dep} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, dep: e.target.value } : x)))} />
-                <input className={cx("field", nextDay(s.dep, s.arr) && "!pr-1")} type="time" title={nextDay(s.dep, s.arr) ? "Arrival (next day, +1)" : "Arrival"} aria-label={`Sector ${i + 1} arrival time`} value={s.arr} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, arr: e.target.value } : x)))} />
+                <input className="field col-span-2 sm:col-span-1" type="date" title="Arrival date (local, from the ticket)" aria-label={`Sector ${i + 1} arrival date`} value={s.arr_date ?? ""} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, arr_date: e.target.value } : x)))} />
+                <span className="relative">
+                  <input className="field" type="time" title="Arrival time (local)" aria-label={`Sector ${i + 1} arrival time`} value={s.arr} onChange={(e) => setDet("sectors", sectors.map((x, j) => (j === i ? { ...x, arr: e.target.value } : x)))} />
+                  {offsetLabel(s) ? <sup className="absolute -right-1 -top-1 rounded bg-coral px-1 text-[10px] font-semibold text-white" aria-label={`Arrives ${offsetLabel(s)} day`}>{offsetLabel(s)}</sup> : null}
+                </span>
                 <button type="button" aria-label="Remove sector" className="text-muted hover:text-red-600 disabled:opacity-30" disabled={sectors.length === 1} onClick={() => setDet("sectors", sectors.filter((_, j) => j !== i))}><X className="h-4 w-4" /></button>
               </div>
             ))}
             <IssueList issues={[
               ...sectors.flatMap((x) => [checkAirport(x.from, iata.airports), checkAirport(x.to, iata.airports), checkFlightNo(x.flight_no)]),
-              ...sectors.filter((x) => nextDay(x.dep, x.arr)).map((x) => ({ tone: "amber" as const, text: `${x.from} → ${x.to} lands the next day (+1). Plan the pickup for ${x.date ? "the day after " + fdate(x.date) : "the next day"}.` })),
+              ...sectors.flatMap((x, i) => sectorTimeIssues(x, sectors.length > 1 ? `Sector ${i + 1}` : `${x.from || "?"} → ${x.to || "?"}`)),
             ]} />
             <Button size="sm" onClick={() => { setDet("sectors", [...sectors, { ...blankSector(), from: sectors.at(-1)?.to ?? "" }]); if (sectors.length >= 1 && d.trip_type === "one-way") setDet("trip_type", "multi-city"); }}><Plus className="h-3.5 w-3.5" />Add sector</Button>
           </div>
@@ -391,16 +414,21 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </p>
         )}
         <Field label={isVisa ? "Who needs this visa?" : "Travellers on this booking"} hint={visaPerPerson ? `We'll make ${trav.length} visa files, one per person, because each is approved separately.` : undefined}>
-          {travellers.length === 0 && <p className="text-[13px] text-amber-800">This case has no travellers yet. Close this, add them under Travellers on the Overview tab, then come back.</p>}
+          {allTravellers.length === 0 && <p className="text-[13px] text-amber-800">This case has no travellers yet. Add one below; what you typed here stays.</p>}
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            {travellers.map((t) => (
+            {allTravellers.map((t) => (
               <label key={t.id} className="flex items-center gap-1.5 text-sm">
                 <input type="checkbox" checked={trav.includes(t.id)} onChange={(e) => setTrav((x) => (e.target.checked ? [...x, t.id] : x.filter((y) => y !== t.id)))} />{t.full_name}
                 {service === "flight" && (() => { const pt = paxType(t.dob, sectors[0]?.date || new Date().toISOString().slice(0, 10)); return pt ? <span className="text-xs text-muted">· {PAX_LABEL[pt]}</span> : null; })()}
               </label>
             ))}
           </div>
+          <InlineTravellerAdd caseId={caseId} exclude={allTravellers.map((t) => t.id)}
+            onAdded={(p) => { setAdded((a) => [...a, { id: p.id, full_name: p.full_name } as Pax]); setTrav((x) => (x.includes(p.id) ? x : [...x, p.id])); }} />
         </Field>
+        {unpriced && !isCancelled && (
+          <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">No prices entered yet. That is fine to save; the booking is marked “not priced” until someone enters them (enter 0 if it really is free).</p>
+        )}
 
         <div className="rounded-lg border border-line p-3">
           <div className="grid gap-3 sm:grid-cols-4">
@@ -445,20 +473,26 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             {service === "flight" && (
               <Field label="Ticket number per passenger">
                 <div className="space-y-2">
-                  {travellers.filter((t) => trav.includes(t.id)).map((t) => {
-                    const cur = tickets.find((x) => isMine(x, t))?.number ?? "";
+                  {allTravellers.filter((t) => trav.includes(t.id)).map((t) => {
+                    const mine = tickets.find((x) => isMine(x, t));
+                    const cur = mine?.number ?? "";
+                    // keep what the ticket already carries (issued name, source); a new number starts a new ticket
+                    const put = (number: string): Ticket => ({ ...(mine && mine.number === number ? mine : {}), customer_id: t.id, passenger: t.full_name, number });
                     return (
                       <div key={t.id} className="flex items-center gap-2">
                         <span className="w-40 shrink-0 truncate text-sm">{t.full_name}</span>
                         <div className="min-w-0 flex-1">
                           <input className={cx("field font-mono", checkTicket(cur) && "!border-red-300")} value={cur} placeholder="13 digits, e.g. 098-1234567890" onChange={(e) => {
                             const rest = tickets.filter((x) => !isMine(x, t));
-                            setDet("tickets", e.target.value ? [...rest, { customer_id: t.id, passenger: t.full_name, number: e.target.value }] : rest);
+                            setDet("tickets", e.target.value ? [...rest, put(e.target.value)] : rest);
                           }} onBlur={(e) => {
                             const rest = tickets.filter((x) => !isMine(x, t));
-                            if (e.target.value) setDet("tickets", [...rest, { customer_id: t.id, passenger: t.full_name, number: normTicket(e.target.value) }]);
+                            if (e.target.value) setDet("tickets", [...rest, put(normTicket(e.target.value))]);
                           }} />
                           {checkTicket(cur) && <p className="mt-1 text-xs text-red-700">{checkTicket(cur)!.text}</p>}
+                          {mine?.name_as_issued && mine.name_as_issued !== t.full_name && (
+                            <p className="mt-1 text-xs text-muted">Issued as <span className="font-mono">{mine.name_as_issued}</span>. The issued name never changes; a reissue keeps the old ticket in history.</p>
+                          )}
                         </div>
                       </div>
                     );
@@ -514,7 +548,7 @@ function CancelDialog({ line, onClose }: { line: Line | null; onClose: () => voi
   return (
     <Dialog open={!!line} onClose={onClose} title="Cancel booking"
       footer={<><Button onClick={onClose}>Keep booking</Button><Button variant="primary" className="!border-red-600 !bg-red-600" disabled={pending || !v.reason.trim()}
-        onClick={() => run(() => cancelLine(line.id, { reason: v.reason, cancellation_charge: n(v.cancellation_charge), refund_to_client: n(v.refund_to_client), refund_from_supplier: n(v.refund_from_supplier) }), { then: onClose })}>Cancel booking</Button></>}>
+        onClick={() => run(() => cancelLine(line.id, { reason: v.reason, cancellation_charge: v.cancellation_charge, refund_to_client: v.refund_to_client, refund_from_supplier: v.refund_from_supplier }), { then: onClose })}>Cancel booking</Button></>}>
       <div className="space-y-3">
         <p className="text-[13px] text-muted">{SERVICE_LABEL[line.service]} {line.summary} · sold for {inr(line.selling_price)}, cost {inr(line.supplier_cost)}</p>
         <Field label="Reason" required><input className="field" autoFocus value={v.reason} onChange={(e) => setV({ ...v, reason: e.target.value })} /></Field>

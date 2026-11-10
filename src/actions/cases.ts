@@ -1,7 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
-import { inr } from "@/lib/format";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
+import { readinessText, type Readiness } from "@/lib/readiness";
 
 type CaseInput = {
   customer_id: string;
@@ -19,84 +19,63 @@ type CaseInput = {
 
 const clean = (v: string | null | undefined) => (v === undefined ? undefined : v?.toString().trim() || null);
 
-export async function createCase(input: CaseInput): Promise<ActionResult<{ id: string; max_id: string }>> {
+/** Case and its travellers in one transaction. The request key makes a double click or retry return the same MAX ID. */
+export async function createCase(input: CaseInput, requestKey?: string): Promise<ActionResult<{ id: string; max_id: string }>> {
   try {
     if (!input.customer_id) return { ok: false, error: "Pick a customer." };
     if (!input.title?.trim()) return { ok: false, error: "Give the case a title." };
     const sb = await createClient();
-    const { data, error } = await sb
-      .from("cases")
-      .insert({
-        customer_id: input.customer_id,
-        title: input.title.trim(),
-        travel_start: clean(input.travel_start),
-        travel_end: clean(input.travel_end),
-        destination: clean(input.destination),
-        lead_source: clean(input.lead_source),
-        assigned_to: input.assigned_to || undefined,
-        status: input.status || "enquiry",
-        notes: clean(input.notes),
-        tags: input.tags ?? [],
-      })
-      .select("id, max_id")
-      .single();
+    const { data, error } = await sb.rpc("create_case", {
+      p: {
+        customer_id: input.customer_id, title: input.title.trim(), travel_start: clean(input.travel_start) ?? null,
+        travel_end: clean(input.travel_end) ?? null, destination: clean(input.destination) ?? null, lead_source: clean(input.lead_source) ?? null,
+        assigned_to: input.assigned_to || null, status: input.status || "enquiry", notes: clean(input.notes) ?? null, tags: input.tags ?? [],
+      },
+      p_travellers: Array.from(new Set(input.traveller_ids ?? [])),
+      p_request_key: requestKey ?? null,
+    });
     if (error) throw error;
-    // exactly the people ticked on the form (the paying customer is ticked by default, a company never is)
-    const extra = Array.from(new Set(input.traveller_ids ?? []));
-    if (extra.length) {
-      const { error: te } = await sb.from("case_travellers").insert(extra.map((customer_id) => ({ case_id: data.id, customer_id })));
-      // the case already exists: report success (so nobody retries and makes a duplicate MAX ID) and say what to redo
-      if (te) return { ok: true, data, message: `${data.max_id} created, but the other travellers weren't added. Add them on the case page.` };
-    }
-    return { ok: true, data, message: `${data.max_id} created` };
+    const r = data as { id: string; max_id: string; existing: boolean };
+    return { ok: true, data: { id: r.id, max_id: r.max_id }, message: r.existing ? `${r.max_id} was already created` : `${r.max_id} created` };
   } catch (e) {
     return fail(e);
   }
 }
 
-export type OpenItems = { pending_lines: number; client_due: number; client_credit: number; supplier_due: number };
+/** What stands between this case and Completed: blockers (need the boss to override), loose ends (need a reason), optional follow-ups. */
+export async function getReadiness(id: string): Promise<Readiness> {
+  const sb = await createClient();
+  const { data, error } = await sb.rpc("case_readiness", { p_case: id });
+  if (error) return { blockers: [], loose_ends: [{ code: "unknown", count: 0, text: "Could not check what is still open. Try again." }], optional: [] };
+  return data as Readiness;
+}
 
 /** Plain-language list of what is still open on a case (empty when it can be closed cleanly). */
 export async function getOpenItems(id: string): Promise<string[]> {
-  const sb = await createClient();
-  const { data } = await sb.rpc("case_open_items", { p_case: id });
-  const o = (data ?? {}) as OpenItems;
-  
-  return [
-    o.pending_lines > 0 && `${o.pending_lines} booking${o.pending_lines === 1 ? " is" : "s are"} still Pending`,
-    o.client_due > 0 && `the client still owes ${inr(o.client_due)}`,
-    o.client_credit > 0 && `the client has a credit of ${inr(o.client_credit)} to refund or adjust`,
-    o.supplier_due > 0 && `${inr(o.supplier_due)} is still to be paid to suppliers`,
-  ].filter(Boolean) as string[];
+  return readinessText(await getReadiness(id));
 }
 
 export async function updateCase(id: string, patch: Partial<CaseInput> & { cancel_reason?: string | null; complete_reason?: string }): Promise<ActionResult> {
   try {
     const sb = await createClient();
-    // closing a case with loose ends needs a reason, which is kept in the case notes
+    // closing and cancelling each run as one checked transaction in the database
     if (patch.status === "completed") {
-      const open = await getOpenItems(id);
-      if (open.length) {
-        const why = patch.complete_reason?.trim();
-        if (!why) return { ok: false, error: `Can't complete yet: ${open.join("; ")}. Open the case to finish these, or complete it with a reason.` };
-        const { data: cur } = await sb.from("cases").select("notes").eq("id", id).single();
-        const stamp = new Date().toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/\//g, "-");
-        patch.notes = `${cur?.notes ? cur.notes + "\n" : ""}[${stamp}] Completed with open items (${open.join("; ")}). Reason: ${why}`;
+      const { data, error } = await sb.rpc("complete_case", { p_case: id, p_reason: patch.complete_reason?.trim() || null });
+      if (error) throw error;
+      const r = data as { completed: boolean; overridden: boolean; readiness: Readiness };
+      if (!r.completed) {
+        const open = readinessText(r.readiness);
+        return { ok: false, error: `Can't complete yet: ${open.join("; ")}. Open the case to finish these, or complete it with a reason.` };
       }
+      const rest = { ...patch };
+      delete rest.status; delete rest.complete_reason;
+      if (Object.keys(rest).length) return updateCase(id, rest);
+      return { ok: true, message: r.overridden ? "Completed. The open items and your reason are in the activity history." : "Completed" };
     }
-    // cancelling a case: confirmed bookings must be cancelled one by one first (so refunds and charges are recorded);
-    // bookings still Pending were never bought, so they close at zero and any advance shows as a client credit
-    let closePending = false;
     if (patch.status === "cancelled") {
-      const { data: b } = await sb.rpc("case_cancel_blockers", { p_case: id });
-      const o = (b ?? {}) as { confirmed_lines: number; pending_lines: number; supplier_paid: number };
-      if (o.confirmed_lines > 0) {
-        return { ok: false, error: `This case has ${o.confirmed_lines} confirmed booking${o.confirmed_lines === 1 ? "" : "s"}. Cancel ${o.confirmed_lines === 1 ? "it" : "each one"} on the Bookings tab first, so the refunds and supplier charges are recorded. Then cancel the case.` };
-      }
-      if (o.pending_lines > 0 && Number(o.supplier_paid) !== 0) {
-        return { ok: false, error: "A supplier has already been paid on this case. Cancel each booking on the Bookings tab first and enter what the supplier refunds. Then cancel the case." };
-      }
-      closePending = o.pending_lines > 0;
+      const { error } = await sb.rpc("cancel_case", { p_case: id, p_reason: patch.cancel_reason?.trim() || "" });
+      if (error) throw error;
+      return { ok: true, message: "Case cancelled" };
     }
     const row: Record<string, unknown> = {};
     for (const k of ["title", "travel_start", "travel_end", "destination", "lead_source", "notes", "cancel_reason"] as const) {
@@ -105,21 +84,11 @@ export async function updateCase(id: string, patch: Partial<CaseInput> & { cance
     if ("assigned_to" in patch) row.assigned_to = patch.assigned_to || null;
     if ("status" in patch) row.status = patch.status;
     if ("tags" in patch) row.tags = patch.tags;
+    // changing who pays never changes who travels
     if ("customer_id" in patch && patch.customer_id) row.customer_id = patch.customer_id;
-    const { error } = await sb.from("cases").update(row).eq("id", id);
+    const { data, error } = await sb.from("cases").update(row).eq("id", id).select("id");
     if (error) throw error;
-    if (closePending) {
-      const { data: pend } = await sb.from("booking_lines").select("id, selling_price, supplier_cost").eq("case_id", id).eq("status", "pending");
-      for (const l of pend ?? []) {
-        const { error: le } = await sb.from("booking_lines").update({
-          status: "cancelled", cancel_reason: "Case cancelled before booking", refund_to_client: l.selling_price, refund_from_supplier: l.supplier_cost,
-        }).eq("id", l.id);
-        if (le) throw le;
-      }
-    }
-    if ("customer_id" in patch && patch.customer_id) {
-      await sb.from("case_travellers").upsert({ case_id: id, customer_id: patch.customer_id });
-    }
+    if (!data?.length) return { ok: false, error: "You can't change this case." };
     return { ok: true, message: "Saved" };
   } catch (e) {
     return fail(e);
@@ -129,32 +98,23 @@ export async function updateCase(id: string, patch: Partial<CaseInput> & { cance
 export async function setTravellers(caseId: string, ids: string[]): Promise<ActionResult> {
   try {
     const sb = await createClient();
-    const all = Array.from(new Set(ids.filter(Boolean)));
-    let del = sb.from("case_travellers").delete().eq("case_id", caseId);
-    if (all.length) del = del.not("customer_id", "in", `(${all.join(",")})`);
-    const { error: de } = await del;
-    if (de) throw de;
-    if (all.length) {
-      const { error } = await sb.from("case_travellers").upsert(all.map((customer_id) => ({ case_id: caseId, customer_id })));
-      if (error) throw error;
-    }
-    // anyone no longer on the trip comes off every booking too (and off its ticket list), so lists never disagree
-    const { data: lines } = await sb.from("booking_lines").select("id, traveller_ids, details").eq("case_id", caseId);
-    const { data: gone } = await sb.from("customers").select("id, full_name")
-      .in("id", Array.from(new Set((lines ?? []).flatMap((l) => (l.traveller_ids as string[]).filter((t) => !all.includes(t))))));
-    const goneIds = new Set((gone ?? []).map((g) => g.id));
-    const goneNames = new Set((gone ?? []).map((g) => g.full_name));
-    let touched = 0;
-    for (const l of lines ?? []) {
-      const keep = (l.traveller_ids as string[]).filter((t) => !goneIds.has(t));
-      if (keep.length === (l.traveller_ids as string[]).length) continue;
-      const d = { ...(l.details ?? {}) } as Record<string, unknown>;
-      if (Array.isArray(d.tickets)) d.tickets = (d.tickets as { passenger: string; customer_id?: string }[]).filter((t) => (t.customer_id ? !goneIds.has(t.customer_id) : !goneNames.has(t.passenger)));
-      const { error: ue } = await sb.from("booking_lines").update({ traveller_ids: keep, details: d }).eq("id", l.id);
-      if (ue) throw ue;
-      touched++;
-    }
+    const { data, error } = await sb.rpc("set_case_travellers", { p_case: caseId, p_ids: Array.from(new Set(ids.filter(Boolean))) });
+    if (error) throw error;
+    const touched = Number(data ?? 0);
     return { ok: true, message: touched ? `Travellers updated, and removed from ${touched} booking${touched === 1 ? "" : "s"}` : "Travellers updated" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Adds one person to a case's travellers (used inline from a booking or an import, without closing the form). */
+export async function addCaseTraveller(caseId: string, customerId: string): Promise<ActionResult<{ id: string; full_name: string }>> {
+  try {
+    const sb = await createClient();
+    const { error } = await sb.from("case_travellers").upsert({ case_id: caseId, customer_id: customerId }, { ignoreDuplicates: true });
+    if (error) throw error;
+    const { data: c } = await sb.from("customers").select("id, full_name").eq("id", customerId).single();
+    return { ok: true, data: c ?? { id: customerId, full_name: "" }, message: "Added to the travellers" };
   } catch (e) {
     return fail(e);
   }
@@ -168,6 +128,18 @@ export async function setClientView(caseId: string, view: Record<string, boolean
     const { error } = await sb.from("cases").update({ client_view: view }).eq("id", caseId);
     if (error) throw error;
     return { ok: true, message: "Client view updated" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Sets the work summary (new / in progress / waiting). Waiting needs a reason and a follow-up time. */
+export async function setWorkState(caseId: string, state: string, reason?: string | null, followUpAt?: string | null): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { error } = await sb.rpc("set_case_work_state", { p_case: caseId, p_state: state, p_reason: reason?.trim() || null, p_follow_up_at: followUpAt || null });
+    if (error) throw error;
+    return { ok: true, message: "Work status updated" };
   } catch (e) {
     return fail(e);
   }

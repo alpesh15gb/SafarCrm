@@ -5,6 +5,7 @@ import { fail, getMe, type ActionResult } from "@/lib/auth";
 export type TaskInput = {
   id?: string;
   case_id: string | null;
+  customer_id?: string | null;
   title: string;
   assigned_to: string;
   due_at: string | null;
@@ -12,6 +13,7 @@ export type TaskInput = {
   alert: string;
   notes?: string | null;
   status?: string;
+  blocking?: boolean;
 };
 
 export async function saveTask(t: TaskInput): Promise<ActionResult<{ id: string }>> {
@@ -21,16 +23,27 @@ export async function saveTask(t: TaskInput): Promise<ActionResult<{ id: string 
     if (!me) return { ok: false, error: "Please log in again." };
     if (me.role !== "boss" && t.assigned_to !== me.id) return { ok: false, error: "Staff can only assign tasks to themselves." };
     const sb = await createClient();
-    const row = {
-      case_id: t.case_id || null, title: t.title.trim(), assigned_to: t.assigned_to || me.id, due_at: t.due_at, priority: t.priority,
+    const row: Record<string, unknown> = {
+      title: t.title.trim(), assigned_to: t.assigned_to || me.id, due_at: t.due_at, priority: t.priority,
       alert: t.due_at ? t.alert : "none", notes: t.notes?.trim() || null, ...(t.status ? { status: t.status } : {}),
+      ...(t.blocking !== undefined ? { blocking: !!t.blocking } : {}),
     };
+    if ("customer_id" in t) row.customer_id = t.customer_id || null;
     if (t.id) {
-      const { error } = await sb.from("tasks").update(row).eq("id", t.id);
+      // a task's link to a case changes only through linkTaskToCase / createCaseFromTask (checked and recorded)
+      const { data: cur } = await sb.from("tasks").select("case_id").eq("id", t.id).maybeSingle();
+      if (!cur) return { ok: false, error: "You can't change this task." };
+      if ((t.case_id || null) !== (cur.case_id ?? null)) {
+        if (cur.case_id) return { ok: false, error: "Use “Move to another case” to change the MAX ID of a linked task." };
+        const l = await linkTaskToCase(t.id, t.case_id as string);
+        if (!l.ok) return l;
+      }
+      const { data, error } = await sb.from("tasks").update(row).eq("id", t.id).select("id");
       if (error) throw error;
+      if (!data?.length) return { ok: false, error: "You can't change this task." };
       return { ok: true, data: { id: t.id }, message: "Task saved" };
     }
-    const { data, error } = await sb.from("tasks").insert(row).select("id").single();
+    const { data, error } = await sb.from("tasks").insert({ ...row, case_id: t.case_id || null }).select("id").single();
     if (error) throw error;
     return { ok: true, data, message: "Task created" };
   } catch (e) {
@@ -66,10 +79,57 @@ export async function addTaskComment(task_id: string, body: string): Promise<Act
 export async function getTaskDetail(id: string) {
   const sb = await createClient();
   const [{ data: task }, { data: comments }] = await Promise.all([
-    sb.from("tasks").select("*, case:cases(id, max_id, title), customer:customers(full_name), assignee:profiles!tasks_assigned_to_fkey(full_name), completer:profiles!tasks_completed_by_fkey(full_name), creator:profiles!tasks_created_by_fkey(full_name)").eq("id", id).maybeSingle(),
+    sb.from("tasks").select("*, case:cases(id, max_id, title, status), customer:customers(id, full_name, customer_type), assignee:profiles!tasks_assigned_to_fkey(full_name), completer:profiles!tasks_completed_by_fkey(full_name), creator:profiles!tasks_created_by_fkey(full_name)").eq("id", id).maybeSingle(),
     sb.from("task_comments").select("id, body, created_at, author:profiles(full_name)").eq("task_id", id).order("created_at"),
   ]);
   return { task, comments: comments ?? [] };
+}
+
+/** Existing MAX IDs for this customer (as payer or traveller) the user may open, so a duplicate trip isn't created. */
+export async function suggestCases(customerId: string | null | undefined) {
+  if (!customerId) return [];
+  const sb = await createClient();
+  const { data } = await sb.rpc("suggest_cases", { p_customer: customerId, p_limit: 8 });
+  return (data ?? []) as { id: string; max_id: string; title: string; status: string; travel_start: string | null; relationship: string }[];
+}
+
+/** Link a task to a MAX ID. Moving an already-linked task needs a reason; both are recorded in the activity history. */
+export async function linkTaskToCase(taskId: string, caseId: string, reason?: string): Promise<ActionResult<{ case_id: string; max_id: string }>> {
+  try {
+    const sb = await createClient();
+    const { data, error } = await sb.rpc("link_task_to_case", { p_task: taskId, p_case: caseId, p_reason: reason?.trim() || null });
+    if (error) throw error;
+    const r = data as { case_id: string; max_id: string; unchanged: boolean };
+    return { ok: true, data: { case_id: r.case_id, max_id: r.max_id }, message: r.unchanged ? `Already on ${r.max_id}` : `Linked to ${r.max_id}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Make a new MAX ID from a task, with its travellers, and link the task, all in one transaction.
+ *  Repeating it (double click, retry, second tab) returns the case made the first time. */
+export async function createCaseFromTask(taskId: string, c: {
+  customer_id: string; title: string; travel_start?: string | null; travel_end?: string | null; destination?: string | null;
+  assigned_to?: string | null; lead_source?: string | null;
+}, travellerIds: string[]): Promise<ActionResult<{ id: string; max_id: string }>> {
+  try {
+    if (!c.customer_id) return { ok: false, error: "Pick who the trip is for (the paying customer)." };
+    if (!c.title?.trim()) return { ok: false, error: "Give the case a title." };
+    const sb = await createClient();
+    const { data, error } = await sb.rpc("create_case_from_task", {
+      p_task: taskId,
+      p_case: {
+        customer_id: c.customer_id, title: c.title.trim(), travel_start: c.travel_start || null, travel_end: c.travel_end || null,
+        destination: c.destination?.trim() || null, assigned_to: c.assigned_to || null, lead_source: c.lead_source || null,
+      },
+      p_travellers: Array.from(new Set(travellerIds.filter(Boolean))),
+    });
+    if (error) throw error;
+    const r = data as { id: string; max_id: string; existing: boolean };
+    return { ok: true, data: { id: r.id, max_id: r.max_id }, message: r.existing ? `This task already made ${r.max_id}` : `${r.max_id} created from the task` };
+  } catch (e) {
+    return fail(e);
+  }
 }
 
 export async function deleteTask(id: string): Promise<ActionResult> {

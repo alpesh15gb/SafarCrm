@@ -6,8 +6,9 @@ import { Button, Field } from "@/components/ui";
 import { Confirm, Dialog, Menu, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
-import { deleteCase, getOpenItems, updateCase } from "@/actions/cases";
+import { deleteCase, getReadiness, updateCase } from "@/actions/cases";
 import { CASE_STATUSES, STATUS_LABEL } from "@/lib/constants";
+import type { Readiness } from "@/lib/readiness";
 
 export function CaseHeaderControls({ kase }: { kase: { id: string; status: string; assigned_to: string | null; max_id: string; cancel_reason: string | null } }) {
   const { me, staff } = useApp();
@@ -16,7 +17,8 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [delOpen, setDelOpen] = useState(false);
-  const [closing, setClosing] = useState<string[] | null>(null);
+  const [closing, setClosing] = useState<Readiness | null>(null);
+  const blocked = !!closing && closing.blockers.length > 0 && me.role !== "boss";
   const [closeWhy, setCloseWhy] = useState("");
 
   return (
@@ -30,8 +32,8 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
           if (e.target.value === "cancelled") { setReason(""); setCancelOpen(true); return; }
           if (e.target.value === "completed") {
             // show what is still open before closing
-            getOpenItems(kase.id).then((open) => {
-              if (open.length) { setCloseWhy(""); setClosing(open); }
+            getReadiness(kase.id).then((r) => {
+              if (r.blockers.length || r.loose_ends.length) { setCloseWhy(""); setClosing(r); }
               else run(() => updateCase(kase.id, { status: "completed" }), { success: "Status: Completed" });
             });
             return;
@@ -75,17 +77,32 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
         footer={
           <>
             <Button onClick={() => setClosing(null)}>Not yet</Button>
-            <Button variant="primary" disabled={pending || !closeWhy.trim()}
-              onClick={() => run(() => updateCase(kase.id, { status: "completed", complete_reason: closeWhy }), { success: "Status: Completed", then: () => setClosing(null) })}>
+            <Button variant="primary" disabled={pending || !closeWhy.trim() || blocked}
+              onClick={() => run(() => updateCase(kase.id, { status: "completed", complete_reason: closeWhy }), { then: () => setClosing(null) })}>
               Complete anyway
             </Button>
           </>
         }
       >
-        <p className="mb-2 text-[13px]">This case still has open items:</p>
-        <ul className="mb-3 list-disc space-y-1 pl-5 text-[13px] text-amber-900">{closing?.map((x) => <li key={x}>{x}</li>)}</ul>
-        <p className="mb-3 text-[13px] text-muted">Best is to finish these first. If the case really is done, give a reason. It is saved in the case notes.</p>
-        <Field label="Reason" required><input className="field" autoFocus value={closeWhy} onChange={(e) => setCloseWhy(e.target.value)} placeholder="Supplier confirmed by email; payment settled in cash" /></Field>
+        {!!closing?.blockers.length && (
+          <>
+            <p className="mb-2 text-[13px] font-medium">Required work still open:</p>
+            <ul className="mb-3 list-disc space-y-1 pl-5 text-[13px] text-red-800">{closing.blockers.map((x) => <li key={x.code}>{x.text}</li>)}</ul>
+          </>
+        )}
+        {!!closing?.loose_ends.length && (
+          <>
+            <p className="mb-2 text-[13px]">Loose ends:</p>
+            <ul className="mb-3 list-disc space-y-1 pl-5 text-[13px] text-amber-900">{closing.loose_ends.map((x) => <li key={x.code}>{x.text}</li>)}</ul>
+          </>
+        )}
+        {!!closing?.optional.length && (
+          <p className="mb-3 text-[13px] text-muted">Optional follow-ups still open (they don&apos;t stop completion): {closing.optional.map((x) => x.text).join("; ")}.</p>
+        )}
+        {blocked
+          ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-800">Finish the required work first. Only the boss can complete a case past required work.</p>
+          : <p className="mb-3 text-[13px] text-muted">Best is to finish these first. If the case really is done, give a reason. It is saved in the case notes and the activity history.</p>}
+        <Field label="Reason" required><input className="field" autoFocus disabled={blocked} value={closeWhy} onChange={(e) => setCloseWhy(e.target.value)} placeholder="Supplier confirmed by email; payment settled in cash" /></Field>
       </Dialog>
       <Confirm
         open={delOpen}

@@ -27,6 +27,8 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   const [assigned, setAssigned] = useState(me.id);
   const [family, setFamily] = useState<{ last_name: string | null; corporate: boolean; members: { id: string; full_name: string; relation?: string | null; designation?: string | null }[] }>({ last_name: null, corporate: false, members: [] });
   const [travellers, setTravellers] = useState<string[]>([]);
+  // one key per form: a double click or a retry after a lost response returns the same MAX ID
+  const [requestKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (!customer) { setFamily({ last_name: null, corporate: false, members: [] }); setTravellers([]); return; }
@@ -43,7 +45,7 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   }, [customer, dest, from, family, titleTouched]);
 
   const submit = () =>
-    run(() => createCase({ customer_id: customer?.id ?? "", title, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers }), {
+    run(() => createCase({ customer_id: customer?.id ?? "", title, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers }, requestKey), {
       then: (r) => onDone(r.data as { id: string; max_id: string }),
     });
 

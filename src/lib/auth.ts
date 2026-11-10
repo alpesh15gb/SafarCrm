@@ -73,5 +73,21 @@ function friendly(msg: string) {
     return `You can refund at most ${inr(amt)}, which is what the client has paid on this case. For a goodwill payment above that, add it as a case expense with a note.`;
   }
   if (msg.includes("trip_dates_order")) return "The trip can't end before it starts. Check the travel dates.";
+  if (msg.includes("corporate_not_passenger")) return "A company can pay for a trip but can't be a traveller. Add the employees who travel instead.";
+  if (msg.includes("traveller_not_on_case")) return "Add the person to the case's travellers first, then to the booking.";
+  if (msg.includes("sector_arrival_date")) return `Check the flight dates: ${msg.split("sector_arrival_date:")[1]?.trim() ?? "the arrival date doesn't fit the departure date"}.`;
+  if (msg.includes("sector_timezone")) return "One of the airports has an unknown time zone. Clear it or pick the airport again.";
+  if (msg.includes("invalid_amount")) return `That amount isn't a number${msg.match(/"([^"]*)"/) ? `: “${msg.match(/"([^"]*)"/)![1]}”` : ""}. Use digits, e.g. 12500.`;
+  if (msg.includes("cancel_blocked_confirmed")) return "This case has confirmed bookings. Cancel each one on the Bookings tab first, so refunds and supplier charges are recorded. Then cancel the case.";
+  if (msg.includes("cancel_blocked_supplier_paid")) return "A supplier has already been paid on this case. Cancel each booking on the Bookings tab first and enter what the supplier refunds. Then cancel the case.";
+  if (msg.includes("override_not_permitted")) return "Required work is still open (blocking tasks, ticket imports or documents). Only the boss can complete a case past that.";
+  if (msg.includes("override_needs_reason")) return "Give a reason for completing with open items.";
+  if (msg.includes("case_completion_direct")) return "Use Completed from the case page so open items are checked.";
+  if (msg.includes("waiting_needs_reason")) return "Waiting needs a reason and a follow-up date and time.";
+  if (msg.includes("relink_needs_reason")) return "This task is already linked to another MAX ID. Give a reason to move it.";
+  if (msg.includes("import_version_conflict")) return "Someone else saved this import after you opened it. Reload to see their changes; your edits are kept on screen.";
+  if (msg.includes("import_not_reviewable")) return "This import can't be changed in its current state.";
+  if (msg.includes("import_incomplete")) return `Not ready to confirm: ${msg.split("import_incomplete:")[1]?.trim() ?? "some required fields are empty"}.`;
+  if (msg.includes("comparison_required")) return "This booking already has tickets. Review the field-by-field comparison and tick that you checked it.";
   return msg;
 }

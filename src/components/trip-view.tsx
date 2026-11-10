@@ -2,7 +2,7 @@ import { FileText, Download, CalendarClock, Check, X, ListChecks } from "lucide-
 import { Badge, Card, KV, Money, ServiceIcon, StatusBadge, cx } from "./ui";
 import { DETAIL_LABELS, SERVICE_LABEL, STATUS_LABEL, VISA_STATUS_TONE, type Service } from "@/lib/constants";
 import { fdate, inr } from "@/lib/format";
-import { nextDay } from "@/lib/iata";
+import { offsetLabel } from "@/lib/flight-time";
 
 export type Trip = {
   id: string; max_id: string; title: string; status: string; travel_start: string | null; travel_end: string | null; destination: string | null;
@@ -34,7 +34,14 @@ export function BookingDetails({ service, details }: { service: string; details:
                 <span className="font-semibold">{s.from} → {s.to}</span>
                 <span>{fdate(s.date)}</span>
                 <span className="text-muted">{[s.airline, s.flight_no].filter(Boolean).join(" ")}</span>
-                {(s.dep || s.arr) && <span className="text-muted">{s.dep}{s.arr && ` – ${s.arr}`}{nextDay(s.dep, s.arr) && <sup className="ml-0.5 font-semibold text-coral-dark" title="Lands the next day">+1</sup>}</span>}
+                {(s.dep || s.arr) && (
+                  <span className="text-muted">
+                    {s.dep}{s.arr && ` – ${s.arr}`}
+                    {/* the day shift comes only from a recorded arrival date, never from comparing the two times */}
+                    {s.arr && offsetLabel(s) ? <sup className="ml-0.5 font-semibold text-coral-dark" title={`Lands ${fdate(s.arr_date)}`}>{offsetLabel(s)}</sup> : null}
+                    {s.arr_date && s.arr_date !== s.date && <span className="ml-1 text-xs">(arrives {fdate(s.arr_date)})</span>}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -45,7 +52,12 @@ export function BookingDetails({ service, details }: { service: string; details:
         {tickets.length > 0 && (
           <div className="text-sm">
             <div className="mb-1 text-xs text-muted">Ticket numbers</div>
-            {tickets.map((t, i) => <div key={i}>{t.passenger}: <span className="font-mono">{t.number}</span></div>)}
+            {tickets.map((t, i) => (
+              <div key={i}>
+                {t.name_as_issued || t.passenger}: <span className="font-mono">{t.number}</span>
+                {t.name_as_issued && t.passenger && t.name_as_issued !== t.passenger && <span className="ml-1 text-xs text-muted">(profile name: {t.passenger})</span>}
+              </div>
+            ))}
           </div>
         )}
       </div>

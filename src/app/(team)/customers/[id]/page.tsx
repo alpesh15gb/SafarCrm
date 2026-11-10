@@ -127,21 +127,20 @@ async function FamilyLoader({ head, familyId, companyId, type }: { head: { id: s
 
 async function CasesLoader({ id }: { id: string }) {
   const sb = await createClient();
-  const { data: trav } = await sb.from("case_travellers").select("case_id").eq("customer_id", id);
-  const ids = (trav ?? []).map((t) => t.case_id);
-  const { data } = ids.length
-    ? await sb.from("cases").select("id, max_id, title, status, travel_start, customer_id").in("id", ids).order("created_at", { ascending: false })
-    : { data: [] };
+  // every case where this person pays, travels, or both (one row per case), limited to the cases the viewer may open
+  const { data: hist, error } = await sb.rpc("customer_case_history", { p_customer: id });
+  const data = (hist ?? []) as { id: string; max_id: string; title: string; status: string; travel_start: string | null; relationship: "payer" | "traveller" | "payer_and_traveller" }[];
+  const ROLE = { payer: "Pays (not travelling)", traveller: "Traveller", payer_and_traveller: "Pays and travels" } as const;
   return (
     <Card pad={false}>
-      {(data ?? []).length === 0 ? <p className="p-4 text-muted">No cases yet.</p> : (
+      {error ? <p className="p-4 text-red-700">Could not load the case history. Refresh to try again.</p> : data.length === 0 ? <p className="p-4 text-muted">No cases yet.</p> : (
         <Table head={["MAX ID", "Title", "Travel", "Role", "Status"]}>
-          {(data ?? []).map((c) => (
+          {data.map((c) => (
             <tr key={c.id} className="relative hover:bg-gray-50">
               <td data-label="MAX ID" className="font-mono text-[13px] font-semibold"><Link href={`/cases/${c.id}`} className="after:absolute after:inset-0">{c.max_id}</Link></td>
               <td data-label="Title">{c.title}</td>
               <td data-label="Travel">{fdate(c.travel_start) || "—"}</td>
-              <td data-label="Role">{c.customer_id === id ? "Customer" : "Traveller"}</td>
+              <td data-label="Role">{ROLE[c.relationship] ?? c.relationship}</td>
               <td data-label="Status"><StatusBadge status={c.status} /></td>
             </tr>
           ))}

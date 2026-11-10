@@ -2,8 +2,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { fail, type ActionResult } from "@/lib/auth";
 import { lineProblem } from "@/lib/validate";
-import { amount } from "@/lib/money";
+import { moneyProblem, parseMoney, strictAmount } from "@/lib/money";
 import type { Service } from "@/lib/constants";
+
+type Amount = number | string | null | undefined;
 
 export type LineInput = {
   id?: string;
@@ -13,11 +15,11 @@ export type LineInput = {
   status: string;
   reference?: string | null;
   traveller_ids: string[];
-  supplier_cost: number;
-  selling_price: number;
+  supplier_cost: Amount;
+  selling_price: Amount;
   commission_type: "amount" | "percent";
-  commission_value: number;
-  gst: number;
+  commission_value: Amount;
+  gst: Amount;
   payment_due_date?: string | null;
   supplier_due_date?: string | null;
   notes?: string | null;
@@ -25,12 +27,22 @@ export type LineInput = {
   visible_to_client?: boolean;
 };
 
-const n = amount;
+const n = strictAmount;
+
+/** Missing, unreadable and zero are three different things: unreadable is refused, missing is recorded as "not priced yet". */
+function moneyProblems(input: LineInput): string | null {
+  return moneyProblem("Supplier cost", input.supplier_cost)
+    ?? moneyProblem("Selling price", input.selling_price)
+    ?? moneyProblem("Commission", input.commission_value)
+    ?? moneyProblem("GST", input.gst)
+    ?? moneyProblem("Base fare", (input.details ?? {}).base_fare);
+}
 
 export async function saveLine(input: LineInput): Promise<ActionResult<{ id: string }>> {
   try {
-    const problem = lineProblem(input.service as Service, (input.details ?? {}) as Record<string, unknown>);
+    const problem = lineProblem(input.service as Service, (input.details ?? {}) as Record<string, unknown>) ?? moneyProblems(input);
     if (problem) return { ok: false, error: problem };
+    const priced = parseMoney(input.selling_price).kind === "value" || parseMoney(input.supplier_cost).kind === "value";
     const sb = await createClient();
     const row: Record<string, unknown> = {
       case_id: input.case_id,
@@ -47,6 +59,8 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
       payment_due_date: input.payment_due_date || null,
       notes: input.notes?.trim() || null,
       details: input.details,
+      // a booking nobody has priced yet (both prices left empty) is flagged, so it isn't mistaken for a free one
+      pricing_state: priced ? "entered" : "not_entered",
     };
     if (input.supplier_due_date !== undefined) row.supplier_due_date = input.supplier_due_date || null;
     if (input.visible_to_client !== undefined && !input.id) row.visible_to_client = input.visible_to_client;
@@ -96,9 +110,11 @@ export async function duplicateLine(id: string): Promise<ActionResult<{ id: stri
   }
 }
 
-export async function cancelLine(id: string, v: { reason: string; cancellation_charge: number; refund_to_client: number; refund_from_supplier: number }): Promise<ActionResult> {
+export async function cancelLine(id: string, v: { reason: string; cancellation_charge: Amount; refund_to_client: Amount; refund_from_supplier: Amount }): Promise<ActionResult> {
   try {
     if (!v.reason?.trim()) return { ok: false, error: "Give a reason for cancelling." };
+    const bad = moneyProblem("Cancellation charge", v.cancellation_charge) ?? moneyProblem("Refund to client", v.refund_to_client) ?? moneyProblem("Refund from supplier", v.refund_from_supplier);
+    if (bad) return { ok: false, error: bad };
     const sb = await createClient();
     const { error } = await sb.from("booking_lines").update({
       status: "cancelled", cancel_reason: v.reason.trim(), cancellation_charge: n(v.cancellation_charge),

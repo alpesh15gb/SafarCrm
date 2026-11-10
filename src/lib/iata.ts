@@ -82,7 +82,5 @@ export function missingForAirline(p: PaxSource, international: boolean): string[
   return out;
 }
 
-/** Arrival earlier than departure → lands the next day. */
-export const nextDay = (dep?: string, arr?: string) => !!dep && !!arr && arr < dep;
 
 export const IATA_TRAVEL_CENTRE = "https://www.iatatravelcentre.com/";

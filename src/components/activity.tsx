@@ -3,8 +3,11 @@ import { Avatar } from "./ui";
 
 type Item = { id: number; actor_name: string | null; action: string; entity: string; summary: string | null; changes: Record<string, { from?: unknown; to?: unknown }> | null; created_at: string };
 
-const VERB: Record<string, string> = { insert: "added", update: "changed", delete: "deleted", reveal: "revealed" };
-const ENTITY: Record<string, string> = { case: "case", booking_line: "booking", payment: "payment", expense: "expense", file: "file", customer: "customer", document: "document", supplier: "supplier", task: "task" };
+const VERB: Record<string, string> = {
+  insert: "added", update: "changed", delete: "deleted", reveal: "revealed", convert: "converted", link: "linked", relink: "moved",
+  override: "completed with open items", confirm: "confirmed", review: "reviewed", reject: "rejected", publish: "published",
+};
+const ENTITY: Record<string, string> = { case: "case", booking_line: "booking", payment: "payment", expense: "expense", file: "file", customer: "customer", document: "document", supplier: "supplier", task: "task", ticket_import: "ticket import" };
 const HIDE = new Set(["details", "client_view", "traveller_ids", "visas", "loyalty", "other_ids"]);
 
 function show(v: unknown) {
@@ -22,13 +25,13 @@ export function ActivityList({ items }: { items: Item[] }) {
           <Avatar name={a.actor_name ?? "System"} size="sm" className="mt-0.5 !h-7 !w-7" />
           <div className="min-w-0">
             <div>
-              <b className="font-medium">{a.actor_name ?? "System"}</b> {VERB[a.action] ?? a.action} {a.action === "reveal" ? "" : `the ${ENTITY[a.entity] ?? a.entity}`} <span className="text-muted">{a.summary}</span>
+              <b className="font-medium">{a.actor_name ?? "System"}</b> {VERB[a.action] ?? a.action} {["reveal", "override"].includes(a.action) ? "" : `the ${ENTITY[a.entity] ?? a.entity}`} <span className="text-muted">{a.summary}</span>
             </div>
             {a.changes && Object.keys(a.changes).length > 0 && (
               <div className="mt-0.5 text-xs text-muted">
                 {Object.entries(a.changes).map(([k, v]) => (
                   <span key={k} className="mr-3 inline-block">
-                    {k.replace(/_/g, " ")}{HIDE.has(k) || !v || typeof v !== "object" ? " updated" : `: ${show(v.from)} → ${show(v.to)}`}
+                    {k.replace(/_/g, " ")}{HIDE.has(k) ? " updated" : !v || typeof v !== "object" || Array.isArray(v) ? `: ${show(v)}` : `: ${show(v.from)} → ${show(v.to)}`}
                   </span>
                 ))}
               </div>
