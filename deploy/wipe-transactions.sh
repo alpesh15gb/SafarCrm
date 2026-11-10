@@ -68,7 +68,7 @@ do \$\$ begin
     raise exception 'transactions still present; stopping';
   end if;
 end \$\$;
-$([ "$DRY" = 1 ] && echo "rollback;" || printf "select setval('public.max_seq', %s, false);\nselect setval('public.receipt_seq', 1, false);\ncommit;" "$START")
+$([ "$DRY" = 1 ] && echo "rollback;" || printf "do \$\$ begin perform setval('public.max_seq', %s, false); perform setval('public.receipt_seq', 1, false); end \$\$;\ncommit;" "$START")
 SQL
 
 if [ "$DRY" = 1 ]; then
