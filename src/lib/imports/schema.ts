@@ -95,7 +95,7 @@ export function validateProviderOutput(x: unknown): { ok: true; value: ProviderO
   if (!pax || !segs || !pnrs || !refs || !amts || !unc) return bad("missing or oversized lists");
   for (const p of pax) {
     if (!isObj(p) || !isStr(p.name_as_issued) || !isStr(p.pax_type) || !isInt(p.page) || !isStr(p.evidence) || !Array.isArray(p.tickets)) return bad("bad passenger");
-    if (p.tickets.length > LIMITS.tickets) return bad("too many tickets");
+    if ((p.tickets as unknown[]).length > LIMITS.tickets) return bad("too many tickets");
     for (const t of p.tickets as unknown[]) {
       if (!isObj(t) || !isStr(t.number) || !isInt(t.page) || !Array.isArray(t.segment_refs) || !(t.segment_refs as unknown[]).every(isInt)) return bad("bad ticket");
     }
