@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/s/"];
+// the import worker endpoint checks its own shared secret (scheduled caller, no user session)
+const PUBLIC = ["/login", "/s/", "/api/imports/worker"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });

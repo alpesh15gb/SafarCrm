@@ -6,11 +6,23 @@ import { Button, Field } from "@/components/ui";
 import { Confirm, Dialog, Menu, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
-import { deleteCase, getReadiness, updateCase } from "@/actions/cases";
+import { deleteCase, getReadiness, setWorkState, updateCase } from "@/actions/cases";
+import { istLocalToISO } from "@/lib/format";
 import { CASE_STATUSES, STATUS_LABEL } from "@/lib/constants";
 import type { Readiness } from "@/lib/readiness";
 
-export function CaseHeaderControls({ kase }: { kase: { id: string; status: string; assigned_to: string | null; max_id: string; cancel_reason: string | null } }) {
+const WORK = [
+  { v: "new", l: "Work: new" }, { v: "in_progress", l: "Work: in progress" },
+  { v: "waiting_customer", l: "Waiting on customer" }, { v: "waiting_supplier", l: "Waiting on supplier" },
+];
+
+export function CaseHeaderControls({ kase }: { kase: {
+  id: string; status: string; assigned_to: string | null; max_id: string; cancel_reason: string | null;
+  work_state?: string; waiting_reason?: string | null; waiting_follow_up_at?: string | null;
+} }) {
+  const [waitFor, setWaitFor] = useState<string | null>(null);
+  const [waitWhy, setWaitWhy] = useState("");
+  const [waitUntil, setWaitUntil] = useState("");
   const { me, staff } = useApp();
   const router = useRouter();
   const { run, pending } = useAction();
@@ -42,6 +54,15 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
         }}
       >
         {CASE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+      </select>
+      <select aria-label="Work status" className="field !w-auto" value={kase.work_state ?? "new"} disabled={pending}
+        title={kase.waiting_reason ? `Waiting: ${kase.waiting_reason}` : "What the team is doing on this job (separate from the booking stage)"}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v.startsWith("waiting")) { setWaitWhy(""); setWaitUntil(""); setWaitFor(v); return; }
+          run(() => setWorkState(kase.id, v));
+        }}>
+        {WORK.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
       </select>
       <div className="w-44">
         <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Reassigned" })} />
@@ -103,6 +124,24 @@ export function CaseHeaderControls({ kase }: { kase: { id: string; status: strin
           ? <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-800">Finish the required work first. Only the boss can complete a case past required work.</p>
           : <p className="mb-3 text-[13px] text-muted">Best is to finish these first. If the case really is done, give a reason. It is saved in the case notes and the activity history.</p>}
         <Field label="Reason" required><input className="field" autoFocus disabled={blocked} value={closeWhy} onChange={(e) => setCloseWhy(e.target.value)} placeholder="Supplier confirmed by email; payment settled in cash" /></Field>
+      </Dialog>
+      <Dialog
+        open={!!waitFor}
+        onClose={() => setWaitFor(null)}
+        title={waitFor === "waiting_customer" ? "Waiting on the customer" : "Waiting on the supplier"}
+        footer={
+          <>
+            <Button onClick={() => setWaitFor(null)}>Cancel</Button>
+            <Button variant="primary" disabled={pending || !waitWhy.trim() || !waitUntil}
+              onClick={() => run(() => setWorkState(kase.id, waitFor!, waitWhy, istLocalToISO(waitUntil)), { then: () => setWaitFor(null) })}>Save</Button>
+          </>
+        }
+      >
+        <p className="mb-3 text-[13px] text-muted">A follow-up task is created at the time you set. Departure dates and cancellation deadlines keep running while you wait.</p>
+        <div className="space-y-3">
+          <Field label="Waiting for what?" required><input className="field" autoFocus value={waitWhy} onChange={(e) => setWaitWhy(e.target.value)} placeholder="Passport copy for the son" /></Field>
+          <Field label="Follow up on (IST)" required><input className="field" type="datetime-local" value={waitUntil} onChange={(e) => setWaitUntil(e.target.value)} /></Field>
+        </div>
       </Dialog>
       <Confirm
         open={delOpen}

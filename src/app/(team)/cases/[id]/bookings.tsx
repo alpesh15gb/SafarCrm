@@ -15,6 +15,7 @@ import { lineProblem } from "@/lib/validate";
 import { amount, cancelBreakdown, commissionOf, lineProfit, moneyProblem } from "@/lib/money";
 import { offsetLabel, sectorTimeIssues } from "@/lib/flight-time";
 import { InlineTravellerAdd } from "@/components/inline-traveller";
+import { TicketUploadButton } from "@/components/ticket-upload";
 import { FlightPassengers, IssueList, type Pax } from "@/components/flight-pax";
 import { PAX_LABEL, checkAirport, checkFlightNo, checkPnr, checkTicket, airlineCodeOf, normFlightNo, normTicket, paxType } from "@/lib/iata";
 import { fdate, inr } from "@/lib/format";
@@ -63,6 +64,7 @@ export function BookingsTab({ caseId, lines, travellers, maxId, customer, lookup
         {SERVICES.map((s) => (
           <Button key={s} size="sm" onClick={() => setDlg({ service: s })}><ServiceIcon service={s} />{SERVICE_LABEL[s]}</Button>
         ))}
+        <span className="ml-auto"><TicketUploadButton size="sm" scope={{ case_id: caseId }} /></span>
       </div>
       {lines.length === 0 && <Card><Empty text="No bookings yet. Add the first flight, hotel or other service." action={<Button variant="primary" onClick={() => setDlg({ service: "flight" })}><Plus className="h-4 w-4" />Add booking</Button>} /></Card>}
       {lines.map((l) => (
@@ -120,6 +122,7 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
         <Toggle checked={l.visible_to_client} disabled={me.role !== "boss" || pending} onChange={(v) => run(() => setLineVisible(l.id, v))} label={<span className="text-xs text-muted">Visible to client</span>} />
         {(l.service !== "visa" || cancelled) && <StatusBadge status={l.status} />}
         <Button size="sm" onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</Button>
+        {l.service === "flight" && !cancelled && <TicketUploadButton size="sm" label="Import ticket" scope={{ case_id: l.case_id, line_id: l.id }} />}
         <Menu trigger={<Button size="sm" aria-label="More" className="!px-2"><MoreHorizontal className="h-4 w-4" /></Button>}>
           <button type="button" onClick={() => run(() => duplicateLine(l.id))}><Copy className="mr-2 inline h-4 w-4" />{l.service === "visa" ? "Copy for another traveller" : "Duplicate (return trip)"}</button>
           {!cancelled && <button type="button" onClick={onCancel}><Ban className="mr-2 inline h-4 w-4" />Cancel booking</button>}

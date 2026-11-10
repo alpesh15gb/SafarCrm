@@ -5,6 +5,7 @@ import { LogOut } from "lucide-react";
 import { Button, Field } from "@/components/ui";
 import { useToast } from "@/components/client";
 import { DropZone } from "@/components/files";
+import { TicketUploadButton } from "@/components/ticket-upload";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { normPhone, phoneError } from "@/lib/format";
 
@@ -78,6 +79,24 @@ export function PortalUpload({ me, family }: { me: { id: string; full_name: stri
         <Field label="Expiry date (if any)"><input type="date" className="field" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
       </div>
       <DropZone fields={{ target: "portal_doc", for_customer: who, doc_type: type, expiry }} label="Drop a PDF, JPG or PNG here, or tap to choose (up to 10 MB)" />
+    </div>
+  );
+}
+
+/** A traveller sends a ticket they booked themselves. It goes to the office for review; nothing changes on the trip until then. */
+export function PortalTicketUpload({ me, family }: { me: { id: string; full_name: string }; family: { id: string; full_name: string; relation: string | null }[] }) {
+  const [who, setWho] = useState(me.id);
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      {family.length > 0 && (
+        <Field label="Whose ticket?">
+          <select className="field" value={who} onChange={(e) => setWho(e.target.value)}>
+            <option value={me.id}>Mine ({me.full_name})</option>
+            {family.map((f) => <option key={f.id} value={f.id}>{f.full_name}{f.relation ? ` (${f.relation})` : ""}</option>)}
+          </select>
+        </Field>
+      )}
+      <TicketUploadButton portal variant="primary" label="Send a booked ticket" scope={{ for_customer: who || undefined }} />
     </div>
   );
 }

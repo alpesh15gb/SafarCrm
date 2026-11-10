@@ -10,11 +10,16 @@ export const STATUS_LABEL: Record<string, string> = {
   enquiry: "Enquiry", quoted: "Quoted", confirmed: "Confirmed", booked: "Booked", completed: "Completed", cancelled: "Cancelled",
   pending: "Pending", todo: "To do", in_progress: "In progress", done: "Done", active: "Active", inactive: "Inactive",
   ok: "Reviewed", pending_review: "Pending review",
+  // ticket imports and the case work summary
+  received: "Queued", processing: "Reading", needs_review: "Needs review", failed: "Needs manual entry", duplicate: "Duplicate", rejected: "Rejected",
+  new: "New", waiting_customer: "Waiting on customer", waiting_supplier: "Waiting on supplier", up_to_date: "Up to date",
 };
 export const STATUS_TONE: Record<string, Tone> = {
   enquiry: "grey", quoted: "blue", confirmed: "amber", booked: "green", completed: "green", cancelled: "red",
   pending: "grey", todo: "grey", in_progress: "blue", done: "green", active: "green", inactive: "grey",
   ok: "green", pending_review: "amber",
+  received: "grey", processing: "blue", needs_review: "amber", failed: "red", duplicate: "grey", rejected: "grey",
+  new: "grey", waiting_customer: "amber", waiting_supplier: "amber", up_to_date: "green",
 };
 export type Tone = "grey" | "blue" | "amber" | "green" | "red" | "coral";
 

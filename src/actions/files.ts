@@ -22,11 +22,13 @@ export async function deleteFile(id: string): Promise<ActionResult> {
     // the same object may be shared with a customer document; only remove it if nothing else points at it
     const path = data[0].storage_path;
     const admin = createAdmin();
-    const [{ count: f }, { count: d }] = await Promise.all([
+    const [{ count: f }, { count: d }, { count: i }] = await Promise.all([
       admin.from("files").select("id", { count: "exact", head: true }).eq("storage_path", path),
       admin.from("customer_documents").select("id", { count: "exact", head: true }).eq("storage_path", path),
+      // a confirmed ticket import keeps its original as evidence
+      admin.from("ticket_imports").select("id", { count: "exact", head: true }).eq("storage_path", path),
     ]);
-    if (!f && !d) await admin.storage.from("files").remove([path]);
+    if (!f && !d && !i) await admin.storage.from("files").remove([path]);
     return { ok: true, message: "File deleted" };
   } catch (e) {
     return fail(e);

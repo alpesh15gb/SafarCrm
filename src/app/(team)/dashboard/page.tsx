@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   IndianRupee, TrendingUp, Wallet, Briefcase, PlaneTakeoff, ListChecks, CalendarClock, Users2, Activity, Layers, ArrowRight,
-  AlertCircle, Clock, PieChart, Stamp,
+  AlertCircle, Clock, PieChart, Stamp, Ticket, Hotel,
 } from "lucide-react";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +12,7 @@ import { DateRange } from "@/components/date-range";
 import { TrendChart } from "@/components/charts";
 import { ActivityList } from "@/components/activity";
 import { NewButton } from "@/components/list-tools";
+import { TicketUploadButton } from "@/components/ticket-upload";
 import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, VISA_STATUS_TONE } from "@/lib/constants";
 import { fdate, inr, inrShort, todayIST } from "@/lib/format";
 import { resolveRange, type RangeSP as SP } from "@/lib/range";
@@ -52,21 +53,27 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const weekAhead = new Date(Date.now() + 8 * 86400e3).toISOString();
   const tasksQ = sb.from("tasks").select(TASK_SEL).neq("status", "done").lte("due_at", weekAhead).order("due_at");
   const none = Promise.resolve({ data: null });
-  const [{ data: tasks }, { data: travel }, money, moneyPrev, trend, { data: pipe }, activity] = await Promise.all([
+  const [{ data: tasks }, { data: travel }, money, moneyPrev, trend, { data: pipe }, activity, { data: other }, imports] = await Promise.all([
     boss ? tasksQ : tasksQ.eq("assigned_to", me.id),
-    sb.from("booking_lines").select("id, service, summary, service_date, case:cases!inner(id, max_id, status, assigned_to, customer:customers!cases_customer_id_fkey(full_name))")
-      .gte("service_date", todayIST()).lte("service_date", todayIST(7)).neq("status", "cancelled").neq("case.status", "cancelled").order("service_date").limit(30),
+    // one row per departing flight leg, rail or bus journey (outbound and return each count; hotels and visas don't)
+    sb.rpc("departures", { p_from: todayIST(), p_to: todayIST(7) }),
     profitOk ? sb.rpc("dashboard_money", { p_from: range.from, p_to: range.to }) : none,
     profitOk ? sb.rpc("dashboard_money", { p_from: prev.from, p_to: prev.to }) : none,
     profitOk ? sb.rpc("dashboard_trend", { p_months: 6 }) : none,
     sb.rpc("dashboard_pipeline"),
     boss ? sb.from("activity_log").select("*").order("created_at", { ascending: false }).limit(7) : none,
+    sb.rpc("service_dates", { p_from: todayIST(), p_to: todayIST(7) }),
+    sb.from("ticket_imports").select("id, status, file_name, created_at, channel", { count: "exact" }).in("status", ["received", "processing", "needs_review", "failed"]).order("created_at").limit(5),
   ]);
   const m = money.data as Money | null;
   const mp = moneyPrev.data as Money | null;
   const tr = ((trend.data ?? []) as { month: string; sales: number; profit: number; cases: number }[]).map((r) => ({ ...r, sales: Number(r.sales), profit: Number(r.profit), cases: Number(r.cases) }));
   const t = (tasks ?? []) as unknown as TaskRow[];
-  const trips = (travel ?? []) as unknown as { id: string; service: string; summary: string | null; service_date: string; case: { id: string; max_id: string; assigned_to: string; customer: { full_name: string } } }[];
+  type Dep = { case_id: string; max_id: string; customer: string; line_id: string; service: string; dep_date: string; dep_time: string | null; from_code: string | null; to_code: string | null; carrier: string | null; leg: number; legs: number };
+  const trips = ((travel ?? []) as Dep[]).sort((a, b) => (a.dep_date + (a.dep_time ?? "")).localeCompare(b.dep_date + (b.dep_time ?? "")));
+  const otherDates = (other ?? []) as { case_id: string; max_id: string; customer: string; line_id: string; service: string; kind: string; on_date: string; label: string | null }[];
+  const pendingImports = (imports.data ?? []) as { id: string; status: string; file_name: string; created_at: string; channel: string }[];
+  const pendingImportCount = imports.count ?? pendingImports.length;
   const pipeline = (pipe ?? []) as { status: string; cases: number; sale: number; due: number }[];
   const openCases = pipeline.filter((p) => !["completed", "cancelled"].includes(p.status)).reduce((a, p) => a + Number(p.cases), 0);
   const overdue = t.filter((x) => dueBucket(x) === "overdue").length;
@@ -93,11 +100,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="mt-3 flex flex-wrap gap-2 text-[13px]">
               <HeroChip href="/tasks?due=overdue" icon={AlertCircle} hot={overdue > 0}>{overdue} overdue</HeroChip>
               <HeroChip href="/tasks?due=today" icon={Clock}>{today} due today</HeroChip>
-              <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departures this week</HeroChip>
+              <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departure{trips.length === 1 ? "" : "s"} this week</HeroChip>
               <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open cases</HeroChip>
+              {pendingImportCount > 0 && <HeroChip href="/imports" icon={Ticket} hot>{pendingImportCount} ticket{pendingImportCount === 1 ? "" : "s"} to review</HeroChip>}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <TicketUploadButton />
+
             <NewButton kind="task" label="Task" variant="secondary" className="!border-white/15 !bg-white/10 !text-white !shadow-none hover:!bg-white/20" />
             <NewButton kind="case" label="New case" />
           </div>
@@ -131,6 +141,21 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               <TrendChart data={tr} />
             </Card>
           )}
+          {pendingImports.length > 0 && (
+            <Card title="Tickets to review" sub={`${pendingImportCount} waiting · nothing is added to a case until someone confirms`} icon={Ticket} pad={false}
+              action={<Link href="/imports" className="text-xs link">All imports</Link>}>
+              <ul className="divide-y divide-line">
+                {pendingImports.map((i) => (
+                  <li key={i.id}>
+                    <Link href={`/imports/${i.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[#fafbfc]">
+                      <span className="min-w-0 flex-1 truncate">{i.file_name}{i.channel === "portal" && <span className="ml-1 text-xs text-muted">· from the client</span>}</span>
+                      <StatusBadge status={i.status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {boss ? <TasksByStaff tasks={t} /> : <MyDay tasks={t} />}
           {boss ? <PaymentsDue /> : <MyOpenCases userId={me.id} />}
           {boss && m && <StaffBoard rows={m.by_staff} />}
@@ -144,29 +169,49 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div id="departures" />
             {trips.length === 0 ? <p className="p-4 text-sm text-muted">No one is travelling in the next 7 days.</p> : (
               <ul className="divide-y divide-line">
-                {trips.slice(0, 8).map((l) => {
-                  const d = new Date(l.service_date + "T00:00:00");
-                  const isToday = l.service_date === todayIST();
+                {trips.slice(0, 10).map((l) => {
+                  const d = new Date(l.dep_date + "T00:00:00");
+                  const isToday = l.dep_date === todayIST();
                   return (
-                    <li key={l.id}>
-                      <Link href={`/cases/${l.case.id}?tab=bookings`} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[#fafbfc]">
+                    <li key={`${l.line_id}-${l.leg}`}>
+                      <Link href={`/cases/${l.case_id}?tab=bookings`} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[#fafbfc]">
                         <span className={cx("flex w-11 shrink-0 flex-col items-center rounded-[10px] py-1 ring-1 ring-inset", isToday ? "bg-coral text-white ring-coral" : "bg-gray-50 ring-line")}>
                           <span className={cx("text-[10px] font-semibold uppercase", isToday ? "text-white/80" : "text-coral-dark")}>{d.toLocaleDateString("en-IN", { month: "short" })}</span>
                           <span className="text-[15px] font-semibold leading-tight">{d.getDate()}</span>
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{l.case.customer?.full_name}</span>
+                          <span className="block truncate text-sm font-medium">{l.customer}</span>
                           <span className="flex items-center gap-1.5 truncate text-xs text-muted">
                             <ServiceIcon service={l.service} className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">{l.summary ?? SERVICE_LABEL[l.service as keyof typeof SERVICE_LABEL]}</span>
+                            <span className="truncate">
+                              {[l.from_code && l.to_code ? `${l.from_code} → ${l.to_code}` : SERVICE_LABEL[l.service as keyof typeof SERVICE_LABEL], l.dep_time, l.carrier].filter(Boolean).join(" · ")}
+                              {l.legs > 1 && ` · leg ${l.leg} of ${l.legs}`}
+                            </span>
                           </span>
                         </span>
-                        <span className="font-mono text-[11px] font-semibold text-gray-500">{l.case.max_id}</span>
+                        <span className="font-mono text-[11px] font-semibold text-gray-500">{l.max_id}</span>
                       </Link>
                     </li>
                   );
                 })}
               </ul>
+            )}
+            {otherDates.length > 0 && (
+              <div className="border-t border-line">
+                <div className="px-4 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Hotel and visa dates (not departures)</div>
+                <ul className="divide-y divide-line">
+                  {otherDates.slice(0, 6).map((o) => (
+                    <li key={`${o.line_id}-${o.kind}`}>
+                      <Link href={`/cases/${o.case_id}?tab=bookings`} className="flex items-center gap-3 px-4 py-2 text-xs hover:bg-[#fafbfc]">
+                        {o.service === "hotel" ? <Hotel className="h-3.5 w-3.5 text-muted" /> : <Stamp className="h-3.5 w-3.5 text-muted" />}
+                        <span className="w-16 shrink-0 tabular">{fdate(o.on_date)}</span>
+                        <span className="min-w-0 flex-1 truncate">{o.kind === "check_in" ? "Check-in" : o.kind === "check_out" ? "Check-out" : "Appointment"}: {o.label} · {o.customer}</span>
+                        <span className="font-mono font-semibold text-gray-500">{o.max_id}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </Card>
           {profitOk && m && <ProfitByService rows={m.by_service} />}

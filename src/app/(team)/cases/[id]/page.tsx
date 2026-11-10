@@ -78,7 +78,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
             {c.destination && <> · {c.destination}</>}
           </span>
         }
-        action={<CaseHeaderControls kase={{ id: c.id, status: c.status, assigned_to: c.assigned_to, max_id: c.max_id, cancel_reason: c.cancel_reason }} />}
+        action={<CaseHeaderControls kase={{ id: c.id, status: c.status, assigned_to: c.assigned_to, max_id: c.max_id, cancel_reason: c.cancel_reason, work_state: c.work_state, waiting_reason: c.waiting_reason, waiting_follow_up_at: c.waiting_follow_up_at }} />}
       />
 
       <StatusSteps status={c.status} />

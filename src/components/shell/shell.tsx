@@ -29,6 +29,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cases", label: "Cases", icon: Briefcase, count: "cases" as const },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, count: "tasks" as const },
+  { href: "/imports", label: "Ticket imports", icon: Ticket },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },

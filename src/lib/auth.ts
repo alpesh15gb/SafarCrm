@@ -88,6 +88,10 @@ function friendly(msg: string) {
   if (msg.includes("import_version_conflict")) return "Someone else saved this import after you opened it. Reload to see their changes; your edits are kept on screen.";
   if (msg.includes("import_not_reviewable")) return "This import can't be changed in its current state.";
   if (msg.includes("import_incomplete")) return `Not ready to confirm: ${msg.split("import_incomplete:")[1]?.trim() ?? "some required fields are empty"}.`;
+  if (msg.includes("unpublished_file")) return "This file is waiting for the boss to publish it, so it can't be shared yet.";
+  if (msg.includes("task_already_linked")) return "This task is already linked to a MAX ID. Open it, or move the task to another case.";
+  if (msg.includes("case_title_required")) return "Give the case a title.";
+  if (msg.includes("case_customer_required")) return "Pick who the trip is for (the paying customer).";
   if (msg.includes("comparison_required")) return "This booking already has tickets. Review the field-by-field comparison and tick that you checked it.";
   return msg;
 }

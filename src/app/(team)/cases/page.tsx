@@ -4,8 +4,9 @@ import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { listCases, PER_PAGE, type SP } from "@/lib/queries";
 import { Card, Chips, Empty, LossDot, Money, PageHeader, Pager, Person, ServiceIcon, StatusBadge, Table, LinkButton, btnClass, cx } from "@/components/ui";
-import { CaseBoard, type BoardCase } from "./board";
+import { CaseBoard, WorkCell, type BoardCase, type WorkSummary } from "./board";
 import { NewButton, SearchBox } from "@/components/list-tools";
+import { TicketUploadButton } from "@/components/ticket-upload";
 import { CASE_STATUSES, SERVICES, SERVICE_LABEL, STATUS_LABEL } from "@/lib/constants";
 import { fdate } from "@/lib/format";
 
@@ -20,6 +21,9 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
     board ? boardCases(sp) : listCases(sp),
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
   ]);
+  // work summary per case: owner, next action, overdue tasks, pending imports and the main blocker (separate from the booking stage)
+  const { data: wsData } = rows.length ? await sb.rpc("case_work_summary", { p_cases: rows.map((r) => r.id) }) : { data: [] };
+  const work = new Map(((wsData ?? []) as WorkSummary[]).map((w) => [w.case_id, w]));
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "page" && k !== "view") as [string, string][]).toString();
   const viewHref = (v: string) => `/cases?${new URLSearchParams(Object.entries({ ...sp, view: v, page: undefined, ...(v === "board" ? { status: undefined } : {}) }).filter(([, x]) => x) as [string, string][])}`;
   const filtered = Object.keys(sp).some((k) => k !== "page" && sp[k]);
@@ -40,6 +44,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
               ))}
             </div>
             <a className={btnClass("secondary")} href={`/api/export?export=cases&${qs}`}><Download className="h-4 w-4" />Export to Excel</a>
+            <TicketUploadButton />
             <NewButton kind="case" label="New case" />
           </>
         }
@@ -64,13 +69,14 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         services: Array.from(new Set(r.lines.filter((l) => l.status !== "cancelled").map((l) => l.service))),
         due: Number(r.money?.due ?? 0), sale: Number(r.money?.sale ?? 0),
         loss: me.can_see_profit && r.money?.profit != null && Number(r.money.profit) < 0,
+        work: work.get(r.id) ?? null,
       }))} /> : (
       <Card pad={false}>
         {rows.length === 0 ? (
           filtered ? <Empty text="No cases match these filters." action={<LinkButton href="/cases">Clear filters</LinkButton>} />
             : <Empty text="No cases yet. Create your first MAX ID." action={<NewButton kind="case" label="New case" />} />
         ) : (
-          <Table head={["MAX ID", "Case", "Travel", "Services", "Staff", "Status", "Due from client", ...(me.can_see_profit ? ["Profit"] : [])]}>
+          <Table head={["MAX ID", "Case", "Travel", "Services", "Staff", "Status", "Work", "Due from client", ...(me.can_see_profit ? ["Profit"] : [])]}>
             {rows.map((r) => {
               const loss = me.can_see_profit && r.money?.profit != null && Number(r.money.profit) < 0;
               return (
@@ -94,6 +100,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                   </td>
                   <td data-label="Staff" className="whitespace-nowrap"><Person name={r.staff?.full_name} size="xs" /></td>
                   <td data-label="Status"><StatusBadge status={r.status} /></td>
+                  <td data-label="Work"><WorkCell w={work.get(r.id)} /></td>
                   <td data-label="Due from client" className="text-right md:text-left">{Number(r.money?.due) > 0 ? <Money value={r.money?.due} /> : <span className="text-muted">—</span>}</td>
                   {me.can_see_profit && <td data-label="Profit"><Money value={r.money?.profit} profit /></td>}
                 </tr>

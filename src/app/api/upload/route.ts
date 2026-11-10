@@ -66,22 +66,25 @@ export async function POST(req: Request) {
       let name = `${base}.${ext}`;
       for (let i = 2; names.has(name); i++) name = `${base}_${replaces ? "v" : ""}${i}.${ext}`;
       let visible = ["ticket", "voucher", "policy"].includes(kind);
+      const boss = me.role === "boss";
       if (replaces) {
         const { data: old } = await sb.from("files").select("id, kind, visible_to_client").eq("id", replaces).eq("case_id", caseId).maybeSingle();
         if (!old) return err("The file being replaced was not found.", 404);
-        kind = old.kind; visible = old.visible_to_client;
+        // a replacement from staff stays private and the approved file stays in place until the boss publishes it
+        kind = old.kind; visible = boss ? old.visible_to_client : false;
       }
       const path = `cases/${caseId}/${randomUUID()}.${ext}`;
       await put(path);
       const { data: row, error } = await sb.from("files").insert({
         case_id: caseId, booking_line_id: lineId, storage_path: path, file_name: name, original_name: file.name, mime, size: file.size, kind, visible_to_client: visible,
+        replaces_id: replaces || null,
       }).select("id, file_name").single();
       if (error) { await admin.storage.from("files").remove([path]); throw error; }
-      if (replaces) {
-        // superseding hides the old version from the client; done with the service role because only the boss may change visibility
+      if (replaces && boss) {
+        // the boss replacing a file publishes the new one at once; superseding hides the old version from the client
         await admin.from("files").update({ superseded_at: new Date().toISOString(), superseded_by: row.id, visible_to_client: false }).eq("id", replaces);
       }
-      return NextResponse.json(row);
+      return NextResponse.json(replaces && !boss ? { ...row, message: "Uploaded. The current file stays in place until the boss publishes this one." } : row);
     }
 
     // ------------------------------------------------ customer master documents (team)
