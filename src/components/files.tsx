@@ -12,7 +12,7 @@ const OK_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 const MAX = 10 * 1024 * 1024;
 
 export function DropZone({ fields, label = "Drop tickets here or click to upload", compact, accept = ".pdf,.jpg,.jpeg,.png", onDone }: {
-  fields: Record<string, string>; label?: string; compact?: boolean; accept?: string; onDone?: () => void;
+  fields: Record<string, string>; label?: string; compact?: boolean; accept?: string; onDone?: (uploaded: number) => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -22,6 +22,7 @@ export function DropZone({ fields, label = "Drop tickets here or click to upload
 
   async function upload(files: FileList | File[]) {
     const list = Array.from(files);
+    let ok = 0;
     for (const f of list) {
       if (!OK_TYPES.includes(f.type)) { toast(`${f.name}: only PDF, JPG or PNG`, "error"); continue; }
       if (f.size > MAX) { toast(`${f.name}: larger than 10 MB`, "error"); continue; }
@@ -34,13 +35,14 @@ export function DropZone({ fields, label = "Drop tickets here or click to upload
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || "Upload failed");
         toast(`Uploaded as ${j.file_name}`);
+        ok++;
       } catch (e) {
         toast(e instanceof Error ? e.message : "Upload failed", "error");
       } finally {
         setBusy((b) => b - 1);
       }
     }
-    onDone?.();
+    onDone?.(ok);
     router.refresh();
   }
 

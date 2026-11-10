@@ -9,9 +9,10 @@ import { NewButton } from "@/components/list-tools";
 import { ActivityList } from "@/components/activity";
 import { expiryLabel, fdate, prettyPhone, waLink } from "@/lib/format";
 import { CustomerForm } from "./form";
-import { CustomerActions, DocumentsTab, FamilyTab } from "./tabs";
+import { CustomerActions, DocumentsTab } from "./tabs";
+import { FamilyTab, type FamilyMember } from "./family";
 
-const COLS = "id, code, customer_type, family_id, company_id, title, first_name, middle_name, last_name, full_name, gender, dob, nationality, marital_status, anniversary, mobile, alt_mobile, whatsapp, email, address1, address2, city, state, pin, country, language, voter_id, dl_number, dl_expiry, passport_surname, passport_given_name, passport_issue, passport_expiry, passport_place, passport_country, passport_ecr, passport_file_no, visas, other_ids, loyalty, irctc_id, senior_citizen, berth_pref, bus_pref, seat_pref, meal_pref, special_assistance, preferred_airlines, hotel_star, room_pref, travel_notes, emergency_name, emergency_relation, emergency_mobile, company_name, gstin, billing_address, designation, employee_id, lead_source, referred_by, assigned_to, tags, notes, consent_docs, consent_date, whatsapp_optin, created_at";
+const COLS = "id, code, customer_type, family_id, relation, company_id, title, first_name, middle_name, last_name, full_name, gender, dob, nationality, marital_status, anniversary, mobile, alt_mobile, whatsapp, email, address1, address2, city, state, pin, country, language, voter_id, dl_number, dl_expiry, passport_surname, passport_given_name, passport_issue, passport_expiry, passport_place, passport_country, passport_ecr, passport_file_no, visas, other_ids, loyalty, irctc_id, senior_citizen, berth_pref, bus_pref, seat_pref, meal_pref, special_assistance, preferred_airlines, hotel_star, room_pref, travel_notes, emergency_name, emergency_relation, emergency_mobile, company_name, gstin, billing_address, designation, employee_id, lead_source, referred_by, assigned_to, tags, notes, consent_docs, consent_date, whatsapp_optin, created_at";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -76,7 +77,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
       ]} />
       {tab === "profile" && <div className="max-w-4xl"><CustomerForm customer={c} ids={(ids?.[0] ?? { aadhaar_masked: null, pan: null, passport: null })} /></div>}
       {tab === "documents" && <DocumentsLoader id={id} />}
-      {tab === "family" && <FamilyLoader id={id} familyId={c.family_id} companyId={c.company_id} type={c.customer_type} />}
+      {tab === "family" && <FamilyLoader head={{ id: c.id, first_name: c.first_name, last_name: c.last_name, mobile: c.mobile }} familyId={c.family_id} companyId={c.company_id} type={c.customer_type} />}
       {tab === "cases" && <CasesLoader id={id} />}
       {tab === "activity" && <ActivityLoader id={id} />}
     </>
@@ -95,15 +96,27 @@ async function DocumentsLoader({ id }: { id: string }) {
     docs={(docs ?? []).map((d) => ({ ...d, has_file: !!d.storage_path, number: n.get(d.id) ?? null, uploader: d.uploader as unknown as { full_name: string; role: string } | null }))} />;
 }
 
-async function FamilyLoader({ id, familyId, companyId, type }: { id: string; familyId: string | null; companyId: string | null; type: string }) {
+async function FamilyLoader({ head, familyId, companyId, type }: { head: { id: string; first_name: string; last_name: string | null; mobile: string }; familyId: string | null; companyId: string | null; type: string }) {
   const sb = await createClient();
-  const [{ data: fam }, { data: members }, { data: employees }, { data: company }] = await Promise.all([
+  const id = head.id;
+  const [{ data: fam }, { data: rows }, { data: employees }, { data: company }, { data: types }] = await Promise.all([
     familyId ? sb.from("families").select("id, name").eq("id", familyId).single() : Promise.resolve({ data: null }),
-    familyId ? sb.from("customers").select("id, code, full_name, dob, mobile, passport_expiry").eq("family_id", familyId).order("dob") : Promise.resolve({ data: [] }),
+    familyId
+      ? sb.from("customers").select("id, code, title, first_name, last_name, full_name, relation, gender, dob, mobile, passport_expiry, meal_pref, seat_pref, passport_hash, aadhaar_last4").eq("family_id", familyId).order("dob", { nullsFirst: false })
+      : Promise.resolve({ data: [] }),
     type === "corporate" ? sb.from("customers").select("id, code, full_name, designation, mobile").eq("company_id", id).order("full_name") : Promise.resolve({ data: [] }),
     companyId ? sb.from("customers").select("id, full_name").eq("id", companyId).single() : Promise.resolve({ data: null }),
+    sb.from("lookups").select("value").eq("kind", "document_type").eq("active", true).order("sort"),
   ]);
-  return <FamilyTab customerId={id} family={fam} members={members ?? []} employees={employees ?? []} company={company} isCorporate={type === "corporate"} />;
+  const list = (rows ?? []) as (Omit<FamilyMember, "has_passport_no" | "has_aadhaar" | "docs"> & { passport_hash: string | null; aadhaar_last4: string | null })[];
+  const { data: docs } = list.length ? await sb.from("customer_documents").select("customer_id, doc_type").in("customer_id", list.map((m) => m.id)) : { data: [] };
+  const docsBy = new Map<string, Set<string>>();
+  for (const d of docs ?? []) docsBy.set(d.customer_id, (docsBy.get(d.customer_id) ?? new Set()).add(d.doc_type));
+  // head of family first, then this customer, then the rest by age (oldest first); hashes never leave the server
+  const members: FamilyMember[] = list
+    .map(({ passport_hash, aadhaar_last4, ...m }) => ({ ...m, has_passport_no: !!passport_hash, has_aadhaar: !!aadhaar_last4, docs: [...(docsBy.get(m.id) ?? [])] }))
+    .sort((a, b) => Number(b.relation === "Head of family") - Number(a.relation === "Head of family") || Number(b.id === id) - Number(a.id === id));
+  return <FamilyTab head={head} family={fam} members={members} employees={employees ?? []} company={company} isCorporate={type === "corporate"} docTypes={(types ?? []).map((t) => t.value)} />;
 }
 
 async function CasesLoader({ id }: { id: string }) {

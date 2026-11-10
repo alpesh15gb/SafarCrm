@@ -6,7 +6,7 @@ import { More, useAction, useToast } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
 import { checkDuplicates, revealAadhaar, saveCustomer } from "@/actions/customers";
-import { LEAD_SOURCES } from "@/lib/constants";
+import { LEAD_SOURCES, RELATIONS } from "@/lib/constants";
 import { age } from "@/lib/format";
 
 type F = { key: string; label: string; type?: "text" | "date" | "select" | "bool" | "textarea" | "tel" | "email" | "tags"; options?: string[]; half?: boolean; hint?: string; upper?: boolean };
@@ -24,6 +24,7 @@ const SECTIONS: { title: string; fields?: F[]; repeat?: Rep; open?: boolean; ids
     { key: "nationality", label: "Nationality", half: true },
     { key: "marital_status", label: "Marital status", type: "select", options: ["Single", "Married", "Other"], half: true },
     { key: "anniversary", label: "Anniversary", type: "date", half: true },
+    { key: "relation", label: "Relation in family", type: "select", options: RELATIONS, half: true, hint: "e.g. Wife, Son. Shown on the Family tab." },
   ] },
   { title: "Contact", open: true, fields: [
     { key: "mobile", label: "Mobile", type: "tel", half: true },

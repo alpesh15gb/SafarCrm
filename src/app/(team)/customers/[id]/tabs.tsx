@@ -1,16 +1,13 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Download, FileText, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Badge, Button, Card, Empty, Field, Table } from "@/components/ui";
 import { Confirm, CopyButton, Dialog, Menu, useAction } from "@/components/client";
-import { CustomerPicker } from "@/components/pickers";
-import { CustomerInline } from "@/components/forms/customer-inline";
 import { DropZone } from "@/components/files";
-import { deleteCustomer, deleteDocument, inviteToPortal, linkCompany, revokePortal, saveDocumentMeta, setFamily } from "@/actions/customers";
+import { deleteCustomer, deleteDocument, inviteToPortal, revokePortal, saveDocumentMeta } from "@/actions/customers";
 import { STATUS_LABEL } from "@/lib/constants";
-import { age, expiryLabel, fdate, fdatetime, prettyPhone } from "@/lib/format";
+import { expiryLabel, fdatetime } from "@/lib/format";
 
 export function CustomerActions({ customer, isBoss, hasPortal }: { customer: { id: string; full_name: string }; isBoss: boolean; hasPortal: boolean }) {
   const router = useRouter();
@@ -128,89 +125,4 @@ function DocEdit({ doc, types, onClose }: { doc: Doc | null; types: string[]; on
       </div>
     </Dialog>
   );
-}
-
-type Member = { id: string; code: string; full_name: string; dob?: string | null; mobile: string; passport_expiry?: string | null; designation?: string | null };
-
-export function FamilyTab({ customerId, family, members, employees, company, isCorporate }: {
-  customerId: string; family: { id: string; name: string } | null; members: Member[]; employees: Member[]; company: { id: string; full_name: string } | null; isCorporate: boolean;
-}) {
-  const { run, pending } = useAction();
-  const [name, setName] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  if (isCorporate) {
-    return (
-      <Card title="Employees (travellers)" pad={false}>
-        {employees.length === 0 ? <p className="p-4 text-sm text-muted">No employees linked yet. Open an employee&apos;s profile and set their company under Family.</p> : (
-          <ul>{employees.map((e) => <li key={e.id} className="flex justify-between border-b border-line px-4 py-2.5 last:border-0"><Link className="link" href={`/customers/${e.id}`}>{e.full_name}</Link><span className="text-xs text-muted">{e.designation} · {prettyPhone(e.mobile)}</span></li>)}</ul>
-        )}
-      </Card>
-    );
-  }
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card title={family ? family.name : "Family"} pad={false}>
-        {!family ? (
-          <div className="space-y-3 p-4">
-            <p className="text-sm text-muted">Link family members so you can tick who is travelling on each booking.</p>
-            <div className="flex gap-2">
-              <input className="field" placeholder="Family name, e.g. Sharma family" value={name} onChange={(e) => setName(e.target.value)} />
-              <Button variant="primary" disabled={!name.trim() || pending} onClick={() => run(() => setFamily(customerId, null, name))}>Create family</Button>
-            </div>
-            <Field label="Or join an existing customer's family">
-              <CustomerPicker value={null} onChange={async (o) => {
-                if (!o) return;
-                const fid = (o.raw as { family_id: string | null }).family_id;
-                if (fid) run(() => setFamily(customerId, fid));
-                else run(async () => { const r = await setFamily(o.id, null, `${(o.label.split(" ").pop() ?? o.label)} family`); return r.ok ? setFamily(customerId, r.data!.family_id) : r; });
-              }} />
-            </Field>
-          </div>
-        ) : (
-          <>
-            <ul>
-              {members.map((m) => {
-                const exp = expiryLabel(m.passport_expiry);
-                return (
-                  <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5 last:border-0">
-                    <span>{m.id === customerId ? <b>{m.full_name}</b> : <Link className="link" href={`/customers/${m.id}`}>{m.full_name}</Link>}{m.dob && <span className="ml-1 text-xs text-muted">{age(m.dob)} yrs · {fdate(m.dob)}</span>}</span>
-                    <span className="flex items-center gap-2">
-                      {exp && exp.tone !== "grey" && <Badge tone={exp.tone}>Passport {exp.text.toLowerCase()}</Badge>}
-                      {m.id !== customerId && <button type="button" className="text-xs text-muted hover:text-red-600" onClick={() => run(() => setFamily(m.id, null))}>Unlink</button>}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="space-y-3 border-t border-line p-4">
-              <Field label="Link an existing customer">
-                <CustomerPicker value={null} onChange={(o) => o && run(() => setFamily(o.id, family.id))} />
-              </Field>
-              {adding ? (
-                <FamilyMemberAdd familyId={family.id} onDone={() => setAdding(false)} />
-              ) : (
-                <Button onClick={() => setAdding(true)}>Add a new family member</Button>
-              )}
-              <button type="button" className="block text-xs text-muted hover:text-red-600" onClick={() => run(() => setFamily(customerId, null))}>Remove this customer from the family</button>
-            </div>
-          </>
-        )}
-      </Card>
-      <Card title="Company">
-        {company ? <p>Employee of <Link className="link" href={`/customers/${company.id}`}>{company.full_name}</Link></p> : <p className="text-sm text-muted">Not linked to a company.</p>}
-        <div className="mt-3">
-          <Field label={company ? "Change company" : "Link to a corporate customer"}>
-            <CustomerPicker value={null} onChange={(o) => o && run(() => linkCompany(customerId, o.id))} />
-          </Field>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function FamilyMemberAdd({ familyId, onDone }: { familyId: string; onDone: () => void }) {
-  const { run } = useAction();
-  return <CustomerInline onCancel={onDone} onCreated={(c) => run(() => setFamily(c.id, familyId), { then: onDone })} />;
 }

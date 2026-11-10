@@ -202,3 +202,10 @@ export const SERVICE_FIELDS: Record<Service, { main: FieldDef[]; more: FieldDef[
 export const DETAIL_LABELS: Record<string, string> = Object.fromEntries(
   Object.values(SERVICE_FIELDS).flatMap((s) => [...s.main, ...s.more].map((f) => [f.key, f.label])),
 );
+
+/** How a family member is related to the family. The value implies a gender where obvious. */
+export const RELATIONS = ["Head of family", "Wife", "Husband", "Son", "Daughter", "Father", "Mother", "Brother", "Sister", "Grandfather", "Grandmother", "Grandson", "Granddaughter", "Daughter-in-law", "Son-in-law", "Other"];
+export const RELATION_GENDER: Record<string, "Male" | "Female"> = {
+  Wife: "Female", Husband: "Male", Son: "Male", Daughter: "Female", Father: "Male", Mother: "Female", Brother: "Male", Sister: "Female",
+  Grandfather: "Male", Grandmother: "Female", Grandson: "Male", Granddaughter: "Female", "Daughter-in-law": "Female", "Son-in-law": "Male",
+};
