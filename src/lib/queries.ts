@@ -86,7 +86,10 @@ export async function listCustomers(sp: SP, all = false) {
   const page = Math.max(1, Number(sp.page) || 1);
   const make = () => {
   let q = sb.from("customers").select("id, code, full_name, customer_type, mobile, email, city, tags, passport_expiry, dob, lead_source, created_at, family:families(name), staff:profiles!customers_assigned_to_fkey(full_name), cases:cases!cases_customer_id_fkey(count)", { count: "exact" });
-  if (sp.type) q = q.eq("customer_type", sp.type);
+  // "Family" means "belongs to a family" (set on the Family tab), whatever the old customer-type field says
+  if (sp.type === "family") q = q.not("family_id", "is", null);
+  else if (sp.type === "individual") q = q.eq("customer_type", "individual").is("family_id", null);
+  else if (sp.type) q = q.eq("customer_type", sp.type);
   if (sp.tag) q = q.contains("tags", [sp.tag]);
   if (sp.staff) q = q.eq("assigned_to", sp.staff);
   if (sp.passport === "expiring") q = q.lte("passport_expiry", todayIST(183));

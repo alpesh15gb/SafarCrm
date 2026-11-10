@@ -28,7 +28,8 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
     if (!amount(p.amount)) return { ok: false, error: "Enter an amount." };
     const alloc = p.allocations.filter((a) => amount(a.amount));
     const sum = alloc.reduce((s, a) => s + amount(a.amount), 0);
-    if (alloc.length && Math.abs(sum - amount(p.amount)) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, not ₹${p.amount}.` };
+    // the rest (if any) is an advance with the supplier
+    if (sum - amount(p.amount) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, more than the payment of ₹${p.amount}.` };
     const sb = await createClient();
     // payment + allocations in one database transaction (all or nothing)
     const { error } = await sb.rpc("record_supplier_payment", {

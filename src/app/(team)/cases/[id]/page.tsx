@@ -42,7 +42,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
 
   const { data: c } = await sb
     .from("cases")
-    .select("*, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email, family_id, code), staff:profiles!cases_assigned_to_fkey(id, full_name), creator:profiles!cases_created_by_fkey(full_name)")
+    .select("*, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email, family_id, code, customer_type), staff:profiles!cases_assigned_to_fkey(id, full_name), creator:profiles!cases_created_by_fkey(full_name)")
     .eq("id", id)
     .maybeSingle();
   if (!c) notFound();
@@ -55,7 +55,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
     sb.from("tasks").select("id", { count: "exact", head: true }).eq("case_id", id).neq("status", "done").then((r) => ({ data: r.count })),
   ]);
   const trav = (travellers ?? []).map((t) => t.customer as unknown as PaxRow);
-  const customer = c.customer as { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null; family_id: string | null; code: string };
+  const customer = c.customer as { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null; family_id: string | null; code: string; customer_type: string };
   const lm = new Map((lineMoney ?? []).map((m) => [m.line_id, m]));
   const linesWithMoney = (lines ?? []).map((l) => ({ ...l, money: lm.get(l.id) })) as Line[];
 
@@ -113,7 +113,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
       )}
       {tab === "bookings" && <BookingsLoader caseId={id} lines={linesWithMoney} travellers={trav} maxId={c.max_id} customer={customer} trip={{ start: c.travel_start, end: c.travel_end }} />}
       {tab === "payments" && <PaymentsLoader caseId={id} lines={linesWithMoney} money={money} status={c.status} />}
-      {tab === "files" && <FilesLoader caseId={id} maxId={c.max_id} customer={customer} travellerIds={trav.map((t) => t.id)} lines={linesWithMoney} />}
+      {tab === "files" && <FilesLoader caseId={id} maxId={c.max_id} customer={customer} travellers={trav.map((t) => ({ id: t.id, full_name: t.full_name }))} lines={linesWithMoney} />}
       {tab === "tasks" && <TasksLoader caseId={id} maxId={c.max_id} title={c.title} />}
       {tab === "activity" && <ActivityLoader caseId={id} />}
 
@@ -206,13 +206,13 @@ async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string
   );
 }
 
-async function FilesLoader(p: { caseId: string; maxId: string; customer: { full_name: string; mobile: string; whatsapp: string | null; email: string | null }; travellerIds: string[]; lines: Line[] }) {
+async function FilesLoader(p: { caseId: string; maxId: string; customer: { full_name: string; mobile: string; whatsapp: string | null; email: string | null }; travellers: { id: string; full_name: string }[]; lines: Line[] }) {
   const sb = await createClient();
   const [files, { data: docs }] = await Promise.all([
     filesFor(p.caseId),
-    sb.from("customer_documents").select("id, doc_type, file_name, expiry, customer:customers(full_name)").in("customer_id", p.travellerIds).not("storage_path", "is", null),
+    sb.from("customer_documents").select("id, customer_id, doc_type, file_name, expiry, customer:customers(full_name)").in("customer_id", p.travellers.map((t) => t.id)).not("storage_path", "is", null),
   ]);
-  return <FilesTab {...p} files={files} docs={(docs ?? []) as unknown as { id: string; doc_type: string; file_name: string; expiry: string | null; customer: { full_name: string } }[]} />;
+  return <FilesTab {...p} files={files} docs={(docs ?? []) as unknown as { id: string; customer_id: string; doc_type: string; file_name: string; expiry: string | null; customer: { full_name: string } }[]} />;
 }
 
 async function TasksLoader({ caseId, maxId, title }: { caseId: string; maxId: string; title: string }) {

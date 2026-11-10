@@ -14,7 +14,7 @@ type Rep = { key: string; label: string; cols: { key: string; label: string; typ
 
 const SECTIONS: { title: string; fields?: F[]; repeat?: Rep; open?: boolean; ids?: boolean }[] = [
   { title: "Basic", open: true, fields: [
-    { key: "customer_type", label: "Customer type", type: "select", options: ["individual", "family", "corporate"], half: true },
+    { key: "customer_type", label: "Customer type", type: "select", options: ["individual", "corporate"], half: true, hint: "Families are set on the Family tab" },
     { key: "title", label: "Title", type: "select", options: ["Mr", "Mrs", "Ms", "Mstr", "Miss", "Dr"], half: true },
     { key: "first_name", label: "First name (as on passport)", half: true },
     { key: "middle_name", label: "Middle name", half: true },

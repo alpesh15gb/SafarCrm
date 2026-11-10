@@ -43,6 +43,7 @@ export function TaskList({ tasks, showCase = true, showAssignee = true, newPrese
                 <div className={cx("text-sm font-medium", done && "font-normal text-muted line-through")}>{t.title}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
                   {showCase && t.case && <Link href={`/cases/${t.case_id}`} onClick={(e) => e.stopPropagation()} className="font-mono font-semibold text-ink hover:underline">{t.case.max_id}</Link>}
+                  {showCase && !t.case && t.customer && <Link href={`/customers/${t.customer_id}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-ink hover:underline">{t.customer.full_name}</Link>}
                   {t.due_at && <span className={cx(overdue && "font-medium text-red-600")}>{fdate(t.due_at) === fdate(new Date().toISOString()) ? `Today ${ftime(t.due_at)}` : fdatetime(t.due_at)}</span>}
                   {t.alert !== "none" && !done && <Bell className="h-3 w-3" />}
                 </div>

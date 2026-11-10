@@ -8,6 +8,7 @@ import { duplicateLine, updateVisa } from "@/actions/bookings";
 import { VISA_MODES, VISA_STATUS_TONE } from "@/lib/constants";
 import { fdate, todayIST } from "@/lib/format";
 import { IATA_TRAVEL_CENTRE } from "@/lib/iata";
+import { PersonDialog } from "./person-dialog";
 
 export type CheckItem = { item: string; done: boolean };
 export type VisaTraveller = { id: string; full_name: string; passport_expiry?: string | null };
@@ -30,11 +31,11 @@ const daysUntil = (iso: string) => Math.round((Date.parse(iso + "T00:00:00Z") - 
 
 /** Things a beginner might not know to check. Worked out from data we already have. */
 export function visaWarnings(d: Record<string, unknown>, travellers: VisaTraveller[], trip: { start: string | null; end: string | null }) {
-  const out: { tone: "red" | "amber"; text: string }[] = [];
+  const out: { tone: "red" | "amber"; text: string; fixId?: string }[] = [];
   const st = String(d.application_status || "Documents pending");
   const back = trip.end || trip.start;
   for (const t of travellers) {
-    if (!t.passport_expiry) out.push({ tone: "amber", text: `${t.full_name}'s passport expiry date is not saved. Add it on their profile so we can check it.` });
+    if (!t.passport_expiry) out.push({ tone: "amber", text: `${t.full_name}'s passport expiry date is not saved, so we can't check it.`, fixId: t.id });
     else if (back && t.passport_expiry < addMonths(back, 3)) {
       out.push({ tone: "red", text: `${t.full_name}'s passport expires on ${fdate(t.passport_expiry)}, less than 3 months after the trip. Almost every country refuses this. Renew the passport first.` });
     } else if (back && t.passport_expiry < addMonths(back, 6)) {
@@ -73,6 +74,7 @@ export function VisaPanel({ lineId, details, travellers, trip, readOnly }: {
   const [dlg, setDlg] = useState<null | "apply" | "approve" | "refuse">(null);
   const [newItem, setNewItem] = useState("");
   const warnings = visaWarnings(d, travellers, trip);
+  const [fix, setFix] = useState<string | null>(null);
   // saves go one after another, so quick clicks reach the server in order
   const upd = (patch: Record<string, unknown>, msg?: string) => {
     setInFlight((n) => n + 1);
@@ -151,9 +153,10 @@ export function VisaPanel({ lineId, details, travellers, trip, readOnly }: {
       {warnings.map((w, i) => (
         <div key={i} className={cx("flex items-start gap-2 rounded-xl px-3 py-2 text-[13px] ring-1 ring-inset",
           w.tone === "red" ? "bg-red-50 text-red-800 ring-red-100" : "bg-amber-50 text-amber-900 ring-amber-100")}>
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{w.text}
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{w.text}{w.fixId && <button type="button" className="ml-1.5 font-medium underline" onClick={() => setFix(w.fixId!)}>Add it now</button>}</span>
         </div>
       ))}
+      {fix && <PersonDialog personId={fix} focus="Add the passport expiry date (and anything else missing) so we can check it against the trip." onClose={() => setFix(null)} />}
 
       {/* what to do now */}
       <div className="rounded-xl border border-line bg-[#fafbfc] p-3">

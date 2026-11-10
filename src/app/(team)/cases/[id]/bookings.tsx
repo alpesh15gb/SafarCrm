@@ -273,7 +273,9 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     }
     setDet("sectors", next);
   }
-  const tickets = (d.tickets as { passenger: string; number: string }[]) ?? [];
+  // a ticket belongs to a person (customer_id); older tickets without one are matched by name
+  const tickets = (d.tickets as { passenger: string; number: string; customer_id?: string }[]) ?? [];
+  const isMine = (x: { passenger: string; customer_id?: string }, t: { id: string; full_name: string }) => (x.customer_id ? x.customer_id === t.id : x.passenger === t.full_name);
 
   function setTripType(t: string) {
     let s = sectors.length ? [...sectors] : [blankSector()];
@@ -389,6 +391,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </p>
         )}
         <Field label={isVisa ? "Who needs this visa?" : "Travellers on this booking"} hint={visaPerPerson ? `We'll make ${trav.length} visa files, one per person, because each is approved separately.` : undefined}>
+          {travellers.length === 0 && <p className="text-[13px] text-amber-800">This case has no travellers yet. Close this, add them under Travellers on the Overview tab, then come back.</p>}
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {travellers.map((t) => (
               <label key={t.id} className="flex items-center gap-1.5 text-sm">
@@ -443,17 +446,17 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
               <Field label="Ticket number per passenger">
                 <div className="space-y-2">
                   {travellers.filter((t) => trav.includes(t.id)).map((t) => {
-                    const cur = tickets.find((x) => x.passenger === t.full_name)?.number ?? "";
+                    const cur = tickets.find((x) => isMine(x, t))?.number ?? "";
                     return (
                       <div key={t.id} className="flex items-center gap-2">
                         <span className="w-40 shrink-0 truncate text-sm">{t.full_name}</span>
                         <div className="min-w-0 flex-1">
                           <input className={cx("field font-mono", checkTicket(cur) && "!border-red-300")} value={cur} placeholder="13 digits, e.g. 098-1234567890" onChange={(e) => {
-                            const rest = tickets.filter((x) => x.passenger !== t.full_name);
-                            setDet("tickets", e.target.value ? [...rest, { passenger: t.full_name, number: e.target.value }] : rest);
+                            const rest = tickets.filter((x) => !isMine(x, t));
+                            setDet("tickets", e.target.value ? [...rest, { customer_id: t.id, passenger: t.full_name, number: e.target.value }] : rest);
                           }} onBlur={(e) => {
-                            const rest = tickets.filter((x) => x.passenger !== t.full_name);
-                            if (e.target.value) setDet("tickets", [...rest, { passenger: t.full_name, number: normTicket(e.target.value) }]);
+                            const rest = tickets.filter((x) => !isMine(x, t));
+                            if (e.target.value) setDet("tickets", [...rest, { customer_id: t.id, passenger: t.full_name, number: normTicket(e.target.value) }]);
                           }} />
                           {checkTicket(cur) && <p className="mt-1 text-xs text-red-700">{checkTicket(cur)!.text}</p>}
                         </div>

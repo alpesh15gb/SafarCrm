@@ -18,7 +18,7 @@ import { resolveRange, type RangeSP as SP } from "@/lib/range";
 
 export const metadata = { title: "Dashboard" };
 
-const TASK_SEL = "id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title)";
+const TASK_SEL = "id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title), customer_id, customer:customers(full_name)";
 
 type Money = {
   sales: number; cost: number; profit: number; due_from_clients: number;
@@ -91,8 +91,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="text-[13px] font-medium text-slate-400">{dateLine}</div>
             <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.025em] md:text-[30px]">{greeting()}, {first}</h1>
             <div className="mt-3 flex flex-wrap gap-2 text-[13px]">
-              <HeroChip href="/tasks" icon={AlertCircle} hot={overdue > 0}>{overdue} overdue</HeroChip>
-              <HeroChip href="/tasks" icon={Clock}>{today} due today</HeroChip>
+              <HeroChip href="/tasks?due=overdue" icon={AlertCircle} hot={overdue > 0}>{overdue} overdue</HeroChip>
+              <HeroChip href="/tasks?due=today" icon={Clock}>{today} due today</HeroChip>
               <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departures this week</HeroChip>
               <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open cases</HeroChip>
             </div>

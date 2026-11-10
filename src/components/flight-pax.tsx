@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { AlertTriangle, ExternalLink, Info } from "lucide-react";
 import { Badge, cx } from "./ui";
 import { CopyButton } from "./client";
+import { PersonDialog } from "./person-dialog";
 import { IATA_TRAVEL_CENTRE, PAX_LABEL, iataName, missingForAirline, paxType, type Issue, type PaxSource } from "@/lib/iata";
 import { todayIST } from "@/lib/format";
 
@@ -10,6 +12,7 @@ export type Pax = PaxSource & { id: string };
 
 /** Each passenger written the way the airline needs it, with a copy button and anything still missing. */
 export function FlightPassengers({ pax, travelDate, international }: { pax: Pax[]; travelDate: string | null; international: boolean }) {
+  const [fix, setFix] = useState<{ id: string; text: string } | null>(null);
   if (!pax.length) return null;
   const on = travelDate || todayIST();
   return (
@@ -37,13 +40,15 @@ export function FlightPassengers({ pax, travelDate, international }: { pax: Pax[
               </div>
               {missing.length > 0 && (
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-800">
-                  <AlertTriangle className="h-3.5 w-3.5" />Add {missing.join(", ")} on {p.full_name}&apos;s profile{international ? ". Airlines check these before an international flight." : "."}
+                  <AlertTriangle className="h-3.5 w-3.5" />Missing {missing.join(", ")}{international ? ". Airlines check these before an international flight." : "."}
+                  <button type="button" className="ml-1 font-medium underline" onClick={() => setFix({ id: p.id, text: `Add ${missing.join(", ")} for ${p.full_name}.` })}>Fix now</button>
                 </div>
               )}
             </li>
           );
         })}
       </ul>
+      {fix && <PersonDialog personId={fix.id} focus={fix.text} onClose={() => setFix(null)} />}
     </div>
   );
 }

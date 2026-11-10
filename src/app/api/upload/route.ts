@@ -125,7 +125,14 @@ export async function POST(req: Request) {
       if (me.role !== "client" || !me.customer_id) return err("Not allowed.", 403);
       const { data: st } = await admin.from("settings").select("portal_allow_uploads").eq("id", 1).single();
       if (!st?.portal_allow_uploads) return err("Uploads are switched off. Please send documents to the office.", 403);
-      const { data: cu } = await admin.from("customers").select("id, code, full_name, assigned_to").eq("id", me.customer_id).single();
+      // a client may upload for themselves or for someone in their own family
+      const forId = String(fd.get("for_customer") || "") || me.customer_id;
+      if (forId !== me.customer_id) {
+        const { data: pair } = await admin.from("customers").select("id, family_id").in("id", [me.customer_id, forId]);
+        const mine = pair?.find((x) => x.id === me.customer_id), theirs = pair?.find((x) => x.id === forId);
+        if (!mine?.family_id || mine.family_id !== theirs?.family_id) return err("You can upload only for yourself or your family.", 403);
+      }
+      const { data: cu } = await admin.from("customers").select("id, code, full_name, assigned_to").eq("id", forId).single();
       const docType = String(fd.get("doc_type") || "Other");
       const path = `customers/${cu!.id}/${randomUUID()}.${ext}`;
       await put(path);

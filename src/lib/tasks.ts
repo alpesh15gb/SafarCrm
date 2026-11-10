@@ -3,6 +3,7 @@ import { fdate, todayIST } from "./format";
 export type TaskRow = {
   id: string; title: string; due_at: string | null; priority: string; status: string; alert: string; assigned_to: string | null; case_id: string | null;
   assignee?: { full_name: string } | null; case?: { max_id: string; title: string } | null;
+  customer_id?: string | null; customer?: { full_name: string } | null;
 };
 
 export function dueBucket(t: TaskRow): "overdue" | "today" | "week" | "later" {

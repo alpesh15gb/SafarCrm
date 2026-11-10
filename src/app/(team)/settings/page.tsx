@@ -23,7 +23,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "portal" && <PortalTab settings={s} />}
       {tab === "reminders" && <RemindersTab settings={s} />}
       {tab === "lookups" && <LookupsLoader kind={kind} />}
-      {tab === "data" && <DataTab />}
+      {tab === "data" && <DataLoader />}
     </>
   );
 }
@@ -41,4 +41,13 @@ async function LookupsLoader({ kind }: { kind: string }) {
   const sb = await createClient();
   const { data } = await sb.from("lookups").select("id, value, extra").eq("kind", kind).order("sort").order("value");
   return <LookupsTab kind={kind} items={data ?? []} />;
+}
+
+async function DataLoader() {
+  const sb = await createClient();
+  const { data } = await sb.from("backup_log").select("at, db_size, files_size").order("at", { ascending: false }).limit(5);
+  // more than 36 hours since the last nightly backup means it has probably stopped
+  const last = data?.[0]?.at;
+  const stale = !last || Date.parse(last) < new Date().getTime() - 36 * 3600e3;
+  return <DataTab backups={data ?? []} stale={stale} />;
 }

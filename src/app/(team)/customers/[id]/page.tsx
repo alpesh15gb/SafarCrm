@@ -54,7 +54,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-mono">{c.code}</span> · {prettyPhone(c.mobile)}<CopyButton text={c.mobile} />
             {c.email && <>· {c.email}</>}
-            {c.customer_type !== "individual" && <Badge tone="blue">{c.customer_type === "family" ? "Family" : "Corporate"}</Badge>}
+            {c.customer_type === "corporate" ? <Badge tone="blue">Corporate</Badge> : c.family_id && <Badge tone="blue">{c.relation ? `Family · ${c.relation}` : "Family"}</Badge>}
             {(c.tags as string[]).map((t) => <Badge key={t} tone={t === "VIP" ? "coral" : "grey"}>{t}</Badge>)}
             {exp && exp.tone !== "grey" && <Badge tone={exp.tone}>Passport: {exp.text.toLowerCase()}</Badge>}
             {portal && <Badge tone={portal.active ? "green" : "grey"}>{portal.active ? "Portal login" : "Portal off"}</Badge>}
@@ -71,7 +71,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
       <Tabs active={tab} base={`/customers/${id}`} tabs={[
         { key: "profile", label: "Profile" },
         { key: "documents", label: pending ? `Documents (${pending} to review)` : "Documents" },
-        { key: "family", label: "Family" },
+        { key: "family", label: c.customer_type === "corporate" ? "Employees" : "Family" },
         { key: "cases", label: "Cases" },
         { key: "activity", label: "Activity" },
       ]} />
@@ -96,27 +96,33 @@ async function DocumentsLoader({ id }: { id: string }) {
     docs={(docs ?? []).map((d) => ({ ...d, has_file: !!d.storage_path, number: n.get(d.id) ?? null, uploader: d.uploader as unknown as { full_name: string; role: string } | null }))} />;
 }
 
+const PEOPLE = "id, code, full_name, relation, designation, gender, dob, mobile, passport_expiry, meal_pref, passport_hash, aadhaar_last4";
+type PeopleRow = Omit<FamilyMember, "has_passport_no" | "has_aadhaar" | "docs"> & { passport_hash: string | null; aadhaar_last4: string | null };
+
+/** Family members or employees, with what is on file for each (hashes never leave the server). */
+async function people(sb: Awaited<ReturnType<typeof createClient>>, col: "family_id" | "company_id", val: string | null): Promise<FamilyMember[]> {
+  if (!val) return [];
+  const { data } = await sb.from("customers").select(PEOPLE).eq(col, val).order(col === "family_id" ? "dob" : "full_name", { nullsFirst: false });
+  const list = (data ?? []) as PeopleRow[];
+  const { data: docs } = list.length ? await sb.from("customer_documents").select("customer_id, doc_type").in("customer_id", list.map((m) => m.id)) : { data: [] };
+  const by = new Map<string, Set<string>>();
+  for (const d of docs ?? []) by.set(d.customer_id, (by.get(d.customer_id) ?? new Set()).add(d.doc_type));
+  return list.map(({ passport_hash, aadhaar_last4, ...m }) => ({ ...m, has_passport_no: !!passport_hash, has_aadhaar: !!aadhaar_last4, docs: [...(by.get(m.id) ?? [])] }));
+}
+
 async function FamilyLoader({ head, familyId, companyId, type }: { head: { id: string; first_name: string; last_name: string | null; mobile: string }; familyId: string | null; companyId: string | null; type: string }) {
   const sb = await createClient();
   const id = head.id;
-  const [{ data: fam }, { data: rows }, { data: employees }, { data: company }, { data: types }] = await Promise.all([
+  const corporate = type === "corporate";
+  const [{ data: fam }, members, employees, { data: company }] = await Promise.all([
     familyId ? sb.from("families").select("id, name").eq("id", familyId).single() : Promise.resolve({ data: null }),
-    familyId
-      ? sb.from("customers").select("id, code, title, first_name, last_name, full_name, relation, gender, dob, mobile, passport_expiry, meal_pref, seat_pref, passport_hash, aadhaar_last4").eq("family_id", familyId).order("dob", { nullsFirst: false })
-      : Promise.resolve({ data: [] }),
-    type === "corporate" ? sb.from("customers").select("id, code, full_name, designation, mobile").eq("company_id", id).order("full_name") : Promise.resolve({ data: [] }),
+    people(sb, "family_id", familyId),
+    people(sb, "company_id", corporate ? id : null),
     companyId ? sb.from("customers").select("id, full_name").eq("id", companyId).single() : Promise.resolve({ data: null }),
-    sb.from("lookups").select("value").eq("kind", "document_type").eq("active", true).order("sort"),
   ]);
-  const list = (rows ?? []) as (Omit<FamilyMember, "has_passport_no" | "has_aadhaar" | "docs"> & { passport_hash: string | null; aadhaar_last4: string | null })[];
-  const { data: docs } = list.length ? await sb.from("customer_documents").select("customer_id, doc_type").in("customer_id", list.map((m) => m.id)) : { data: [] };
-  const docsBy = new Map<string, Set<string>>();
-  for (const d of docs ?? []) docsBy.set(d.customer_id, (docsBy.get(d.customer_id) ?? new Set()).add(d.doc_type));
-  // head of family first, then this customer, then the rest by age (oldest first); hashes never leave the server
-  const members: FamilyMember[] = list
-    .map(({ passport_hash, aadhaar_last4, ...m }) => ({ ...m, has_passport_no: !!passport_hash, has_aadhaar: !!aadhaar_last4, docs: [...(docsBy.get(m.id) ?? [])] }))
-    .sort((a, b) => Number(b.relation === "Head of family") - Number(a.relation === "Head of family") || Number(b.id === id) - Number(a.id === id));
-  return <FamilyTab head={head} family={fam} members={members} employees={employees ?? []} company={company} isCorporate={type === "corporate"} docTypes={(types ?? []).map((t) => t.value)} />;
+  // head of family first, then this customer, then the rest by age (oldest first)
+  members.sort((a, b) => Number(b.relation === "Head of family") - Number(a.relation === "Head of family") || Number(b.id === id) - Number(a.id === id));
+  return <FamilyTab head={head} family={fam} members={members} employees={employees} company={company} isCorporate={corporate} />;
 }
 
 async function CasesLoader({ id }: { id: string }) {

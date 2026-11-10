@@ -155,3 +155,25 @@ export function phoneError(v: string | null | undefined): string | null {
   if (n.startsWith("+91")) return /^\+91[2-9]\d{9}$/.test(n) ? null : "Indian numbers have 10 digits, like 98765 43210.";
   return /^\+[1-9]\d{7,14}$/.test(n) ? null : "Enter a 10-digit number, or + and the country code for a foreign number (like +971 50 123 4567).";
 }
+
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+function below1000(n: number): string {
+  const h = Math.floor(n / 100), r = n % 100;
+  const rest = r < 20 ? ONES[r] : `${TENS[Math.floor(r / 10)]}${r % 10 ? " " + ONES[r % 10] : ""}`;
+  return [h ? `${ONES[h]} Hundred` : "", rest].filter(Boolean).join(" ");
+}
+/** ₹1,25,050.50 → "Rupees One Lakh Twenty Five Thousand Fifty and Fifty Paise Only" (Indian numbering). */
+export function rupeesInWords(amount: number): string {
+  const abs = Math.abs(Math.round(amount * 100) / 100);
+  let n = Math.floor(abs);
+  const paise = Math.round((abs - n) * 100);
+  const parts: string[] = [];
+  for (const [size, name] of [[1e7, "Crore"], [1e5, "Lakh"], [1e3, "Thousand"]] as const) {
+    const q = Math.floor(n / size);
+    if (q) { parts.push(`${q >= 1000 ? rupeesInWords(q).replace(/^Rupees | Only$/g, "") : below1000(q)} ${name}`); n %= size; }
+  }
+  if (n) parts.push(below1000(n));
+  const words = parts.join(" ") || "Zero";
+  return `Rupees ${words}${paise ? ` and ${below1000(paise)} Paise` : ""} Only`;
+}

@@ -41,7 +41,8 @@ export async function createCase(input: CaseInput): Promise<ActionResult<{ id: s
       .select("id, max_id")
       .single();
     if (error) throw error;
-    const extra = (input.traveller_ids ?? []).filter((t) => t !== input.customer_id);
+    // exactly the people ticked on the form (the paying customer is ticked by default, a company never is)
+    const extra = Array.from(new Set(input.traveller_ids ?? []));
     if (extra.length) {
       const { error: te } = await sb.from("case_travellers").insert(extra.map((customer_id) => ({ case_id: data.id, customer_id })));
       // the case already exists: report success (so nobody retries and makes a duplicate MAX ID) and say what to redo
@@ -128,12 +129,15 @@ export async function updateCase(id: string, patch: Partial<CaseInput> & { cance
 export async function setTravellers(caseId: string, ids: string[]): Promise<ActionResult> {
   try {
     const sb = await createClient();
-    const { data: c } = await sb.from("cases").select("customer_id").eq("id", caseId).single();
-    const all = Array.from(new Set([c?.customer_id, ...ids].filter(Boolean))) as string[];
-    const { error: de } = await sb.from("case_travellers").delete().eq("case_id", caseId).not("customer_id", "in", `(${all.join(",")})`);
+    const all = Array.from(new Set(ids.filter(Boolean)));
+    let del = sb.from("case_travellers").delete().eq("case_id", caseId);
+    if (all.length) del = del.not("customer_id", "in", `(${all.join(",")})`);
+    const { error: de } = await del;
     if (de) throw de;
-    const { error } = await sb.from("case_travellers").upsert(all.map((customer_id) => ({ case_id: caseId, customer_id })));
-    if (error) throw error;
+    if (all.length) {
+      const { error } = await sb.from("case_travellers").upsert(all.map((customer_id) => ({ case_id: caseId, customer_id })));
+      if (error) throw error;
+    }
     // anyone no longer on the trip comes off every booking too (and off its ticket list), so lists never disagree
     const { data: lines } = await sb.from("booking_lines").select("id, traveller_ids, details").eq("case_id", caseId);
     const { data: gone } = await sb.from("customers").select("id, full_name")
@@ -145,7 +149,7 @@ export async function setTravellers(caseId: string, ids: string[]): Promise<Acti
       const keep = (l.traveller_ids as string[]).filter((t) => !goneIds.has(t));
       if (keep.length === (l.traveller_ids as string[]).length) continue;
       const d = { ...(l.details ?? {}) } as Record<string, unknown>;
-      if (Array.isArray(d.tickets)) d.tickets = (d.tickets as { passenger: string }[]).filter((t) => !goneNames.has(t.passenger));
+      if (Array.isArray(d.tickets)) d.tickets = (d.tickets as { passenger: string; customer_id?: string }[]).filter((t) => (t.customer_id ? !goneIds.has(t.customer_id) : !goneNames.has(t.passenger)));
       const { error: ue } = await sb.from("booking_lines").update({ traveller_ids: keep, details: d }).eq("id", l.id);
       if (ue) throw ue;
       touched++;

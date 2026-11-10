@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Upload } from "lucide-react";
+import { PersonDialog } from "@/components/person-dialog";
 import { Button, Card, Empty, Field, ServiceIcon } from "@/components/ui";
 import { useAction } from "@/components/client";
 import { DropZone, FileItem, withHistory, type FileItemData } from "@/components/files";
@@ -11,11 +12,13 @@ import type { Line } from "./bookings";
 
 export type FileRow = FileItemData & { superseded_by: string | null };
 
-export function FilesTab({ caseId, maxId, customer, files, docs, lines }: {
+export function FilesTab({ caseId, maxId, customer, files, docs, lines, travellers }: {
   caseId: string; maxId: string; customer: { full_name: string; mobile: string; whatsapp: string | null; email: string | null };
-  files: FileRow[]; docs: { id: string; doc_type: string; file_name: string; expiry: string | null; customer: { full_name: string } }[]; lines: Line[];
+  files: FileRow[]; docs: { id: string; customer_id: string; doc_type: string; file_name: string; expiry: string | null; customer: { full_name: string } }[]; lines: Line[];
+  travellers: { id: string; full_name: string }[];
 }) {
   const { run, pending } = useAction();
+  const [upload, setUpload] = useState<string | null>(null);
   const [kind, setKind] = useState("document");
   const [doc, setDoc] = useState("");
   const grouped = withHistory(files);
@@ -47,8 +50,27 @@ export function FilesTab({ caseId, maxId, customer, files, docs, lines }: {
           </div>
         </Card>
       </div>
-      <Card title="Attach from customer documents">
-        {docs.length === 0 ? <p className="text-sm text-muted">Travellers on this case have no uploaded documents yet.</p> : (
+      <div className="min-w-0 space-y-4">
+      <Card title="Traveller documents" pad={false}>
+        {travellers.length === 0 ? <p className="p-4 text-sm text-muted">No travellers on this case yet. Add them on the Overview tab.</p> : (
+          <ul>
+            {travellers.map((t) => {
+              const mine = [...new Set(docs.filter((d) => d.customer_id === t.id).map((d) => d.doc_type))];
+              return (
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5 last:border-0">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{t.full_name}</div>
+                    <div className={mine.length ? "text-xs text-muted" : "text-xs text-amber-700"}>{mine.length ? mine.join(", ") : "No documents yet"}</div>
+                  </div>
+                  <Button size="sm" onClick={() => setUpload(t.id)}><Upload className="h-3.5 w-3.5" />Upload</Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+      <Card title="Attach to this case">
+        {docs.length === 0 ? <p className="text-sm text-muted">Once travellers have documents on file, you can attach copies to this case here.</p> : (
           <div className="space-y-3">
             <p className="text-[13px] text-muted">Reuse a passport, visa or ID already on file. Attached documents are hidden from the client unless you switch them on.</p>
             <select className="field" value={doc} onChange={(e) => setDoc(e.target.value)}>
@@ -62,6 +84,8 @@ export function FilesTab({ caseId, maxId, customer, files, docs, lines }: {
           </div>
         )}
       </Card>
+      </div>
+      {upload && <PersonDialog personId={upload} startOn="docs" onClose={() => setUpload(null)} />}
     </div>
   );
 }

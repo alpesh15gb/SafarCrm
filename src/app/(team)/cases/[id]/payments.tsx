@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Printer, Trash2 } from "lucide-react";
 import { Badge, Button, Card, Field, Money, ServiceIcon, Table, cx } from "@/components/ui";
-import { Dialog, useAction } from "@/components/client";
+import { Confirm, Dialog, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
 import { amount } from "@/lib/money";
@@ -11,7 +12,7 @@ import { PAY_MODES, PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
 import { fdate, todayIST, inr } from "@/lib/format";
 import type { Line } from "./bookings";
 
-type Pay = { id: string; pay_date: string; amount: number; mode: string; reference: string | null; notes: string | null; receiver: { full_name: string } | null };
+type Pay = { id: string; receipt_no: number | null; pay_date: string; amount: number; mode: string; reference: string | null; notes: string | null; receiver: { full_name: string } | null };
 type Exp = { id: string; name: string; amount: number; exp_date: string };
 type SupMoney = { supplier_id: string; supplier_name: string; payable: number; paid: number; due_date: string | null };
 type SupPay = { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string } | null } };
@@ -24,6 +25,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
   const [payOpen, setPayOpen] = useState(false);
   const [supPay, setSupPay] = useState<SupMoney | null>(null);
   const [exp, setExp] = useState({ name: "", amount: "" });
+  const [del, setDel] = useState<{ kind: "payment" | "expense"; id: string; text: string } | null>(null);
 
   const tot = lines.reduce(
     (a, l) => ({
@@ -78,7 +80,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
             {expenses.map((e) => (
               <div key={e.id} className="flex items-center justify-between border-b border-line py-1.5 text-sm last:border-0">
                 <span>{e.name} <span className="text-xs text-muted">· {fdate(e.exp_date)}</span></span>
-                <span className="flex items-center gap-2"><Money value={e.amount} />{me.role === "boss" && <button type="button" className="text-muted hover:text-red-600" aria-label="Delete expense" onClick={() => run(() => deleteExpense(e.id))}><Trash2 className="h-3.5 w-3.5" /></button>}</span>
+                <span className="flex items-center gap-2"><Money value={e.amount} />{me.role === "boss" && <button type="button" className="text-muted hover:text-red-600" aria-label="Delete expense" onClick={() => setDel({ kind: "expense", id: e.id, text: `${e.name} · ${inr(e.amount)}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span>
               </div>
             ))}
             <div className="mt-2 flex flex-wrap gap-2">
@@ -106,7 +108,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
                   <td data-label="Mode">{PAY_MODE_LABEL[p.mode]}</td>
                   <td data-label="Reference">{p.reference ?? "—"}</td>
                   <td data-label="Received by">{p.receiver?.full_name ?? "—"}</td>
-                  <td data-label="">{me.role === "boss" && <button type="button" aria-label="Delete payment" className="text-muted hover:text-red-600" onClick={() => run(() => deletePayment(p.id))}><Trash2 className="h-3.5 w-3.5" /></button>}</td>
+                  <td data-label=""><span className="flex items-center justify-end gap-2">{p.receipt_no && Number(p.amount) > 0 && <Link className="inline-flex items-center gap-1 text-xs link" href={`/cases/${caseId}/receipt/${p.id}`}><Printer className="h-3.5 w-3.5" />Receipt R-{p.receipt_no}</Link>}{me.role === "boss" && <button type="button" aria-label="Delete payment" className="text-muted hover:text-red-600" onClick={() => setDel({ kind: "payment", id: p.id, text: `${fdate(p.pay_date)} · ${inr(Math.abs(p.amount))} ${Number(p.amount) < 0 ? "refund" : "received"} by ${PAY_MODE_LABEL[p.mode]}${p.reference ? ` · ${p.reference}` : ""}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span></td>
                 </tr>
               ))}
             </Table>
@@ -161,6 +163,9 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
 
       <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} received={Number(money?.received ?? 0)} status={status} />
       <SupplierPaymentDialog sup={supPay} onClose={() => setSupPay(null)} caseId={caseId} />
+      <Confirm open={!!del} onClose={() => setDel(null)} title={del?.kind === "payment" ? "Delete this payment?" : "Delete this expense?"} pending={pending} confirmLabel="Delete"
+        text={`${del?.text ?? ""}. This changes what the client owes${del?.kind === "expense" ? " and the profit" : ""}. It can't be undone.`}
+        onConfirm={() => del && run(() => (del.kind === "payment" ? deletePayment(del.id) : deleteExpense(del.id)), { then: () => setDel(null) })} />
     </div>
   );
 }

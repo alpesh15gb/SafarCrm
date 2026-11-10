@@ -9,7 +9,7 @@ import { todayIST } from "@/lib/format";
 export const metadata = { title: "Tasks" };
 type SP = { staff?: string; status?: string; due?: string; open?: string };
 
-const SEL = "id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title)";
+const SEL = "id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title), customer_id, customer:customers(full_name)";
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<SP> }) {
   const me = await requireTeam();

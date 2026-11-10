@@ -17,6 +17,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
   const { run, pending } = useAction();
   const taskId = preset?.task_id as string | undefined;
   const [kase, setKase] = useState<Picked | null>(null);
+  const [cust, setCust] = useState<{ id: string; full_name: string } | null>(null);
   const [newCase, setNewCase] = useState(false);
   const [title, setTitle] = useState("");
   const [assigned, setAssigned] = useState(me.id);
@@ -37,6 +38,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
         if (!task) return;
         const c = task.case as { id: string; max_id: string; title: string } | null;
         setKase(c ? { id: c.id, label: c.max_id, sub: c.title } : null);
+        setCust(task.customer_id && !c ? { id: task.customer_id, full_name: (task.customer as { full_name: string } | null)?.full_name ?? "Customer" } : null);
         setTitle(task.title); setAssigned(task.assigned_to ?? me.id); setDue(isoToISTLocal(task.due_at));
         setPriority(task.priority); setAlert(task.alert); setNotes(task.notes ?? ""); setStatus(task.status);
         setMeta({
@@ -46,7 +48,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
         setComments(comments as unknown as Comment[]);
       });
     } else {
-      setKase((preset?.case as Picked) ?? null); setTitle(""); setAssigned(me.id); setDue(`${todayIST()}T18:00`);
+      setKase((preset?.case as Picked) ?? null); setCust(null); setTitle(""); setAssigned(me.id); setDue(`${todayIST()}T18:00`);
       setPriority("normal"); setAlert("due"); setNotes(""); setStatus("todo"); setMeta({}); setComments([]);
     }
   }, [open, taskId, preset, me.id]);
@@ -69,12 +71,13 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             <Button variant="danger" className="mr-auto" disabled={pending} onClick={() => run(() => deleteTask(taskId), { then: () => onClose() })}>Delete</Button>
           )}
           <Button onClick={onClose}>Close</Button>
-          <Button variant="primary" disabled={pending || !kase || !title.trim()} onClick={save}>{taskId ? "Save task" : "Create task"}</Button>
+          <Button variant="primary" disabled={pending || !title.trim()} onClick={save}>{taskId ? "Save task" : "Create task"}</Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="MAX ID" required>
+        {cust && <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm">About <a className="link" href={`/customers/${cust.id}`}>{cust.full_name}</a></p>}
+        <Field label="MAX ID" hint="Optional. Leave empty for an office task, e.g. “Pay electricity bill”.">
           {newCase ? (
             <div className="rounded-lg border border-dashed border-line p-3">
               <NewCaseForm compact onDone={(c) => { setKase({ id: c.id, label: c.max_id }); setNewCase(false); }} />

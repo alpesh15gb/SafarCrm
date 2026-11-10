@@ -78,6 +78,11 @@ export async function revealAadhaar(id: string): Promise<ActionResult<string>> {
 export async function deleteCustomer(id: string): Promise<ActionResult> {
   try {
     const sb = await createClient();
+    // someone who travelled on a trip stays in that trip's history: say which trips, instead of failing on a foreign key
+    const { data: trips } = await sb.from("case_travellers").select("case:cases(max_id, customer_id)").eq("customer_id", id);
+    const others = ((trips ?? []) as unknown as { case: { max_id: string; customer_id: string } | null }[])
+      .map((t) => t.case).filter((c) => c && c.customer_id !== id).map((c) => c!.max_id);
+    if (others.length) return { ok: false, error: `This person travelled on ${others.join(", ")}. Remove them from those trips first (Travellers → Change), or keep the customer.` };
     // remember their uploaded scans (passport, Aadhaar...) so they can be removed from storage too
     const [{ data: docs }, { data: cu }] = await Promise.all([
       sb.from("customer_documents").select("storage_path").eq("customer_id", id),
@@ -85,7 +90,7 @@ export async function deleteCustomer(id: string): Promise<ActionResult> {
     ]);
     const { data, error } = await sb.from("customers").delete().eq("id", id).select("id");
     if (error) {
-      if (error.message.includes("foreign key")) return { ok: false, error: "This customer has cases. Delete or move those first." };
+      if (error.message.includes("foreign key")) return { ok: false, error: "This customer has cases or is a traveller on one. Delete or change those first." };
       throw error;
     }
     if (!data?.length) return { ok: false, error: "Only the boss can delete customers." };
@@ -225,4 +230,27 @@ export async function linkCompany(customerId: string, companyId: string | null):
   } catch (e) {
     return fail(e);
   }
+}
+
+export type PersonData = {
+  id: string; code: string; title: string | null; first_name: string; last_name: string | null; full_name: string; relation: string | null;
+  gender: string | null; dob: string | null; mobile: string; passport_expiry: string | null; passport_surname: string | null; passport_given_name: string | null;
+  meal_pref: string | null; seat_pref: string | null; designation: string | null; employee_id: string | null; family_id: string | null; company_id: string | null;
+};
+
+/** Everything the quick person form needs: the person (when editing), their IDs, which documents are on file, and the document types. */
+export async function personForm(id?: string) {
+  const sb = await createClient();
+  const [{ data: person }, ids, { data: docs }, { data: types }] = await Promise.all([
+    id ? sb.from("customers").select("id, code, title, first_name, last_name, full_name, relation, gender, dob, mobile, passport_expiry, passport_surname, passport_given_name, meal_pref, seat_pref, designation, employee_id, family_id, company_id").eq("id", id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    id ? getCustomerIds(id) : Promise.resolve({ aadhaar_masked: null, pan: null, passport: null }),
+    id ? sb.from("customer_documents").select("doc_type").eq("customer_id", id) : Promise.resolve({ data: [] }),
+    sb.from("lookups").select("value").eq("kind", "document_type").eq("active", true).order("sort"),
+  ]);
+  return {
+    person: person as PersonData | null, ids,
+    docs: [...new Set((docs ?? []).map((d: { doc_type: string }) => d.doc_type))],
+    docTypes: (types ?? []).map((t) => t.value as string),
+  };
 }

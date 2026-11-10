@@ -6,7 +6,7 @@ import { Card, Money, PageHeader, ServiceIcon, Stat, StatusBadge, Table, Tabs } 
 import { ActivityList } from "@/components/activity";
 import { PAY_MODE_LABEL, SERVICE_LABEL, SUPPLIER_TYPE_LABEL, type Service } from "@/lib/constants";
 import { fdate, inr } from "@/lib/format";
-import { SupplierForm, SupplierPayButton, SupplierFiles } from "./client";
+import { DeleteSupplierPayment, SupplierForm, SupplierPayButton, SupplierFiles } from "./client";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,7 +44,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
           : <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />}
       </div>
       <Tabs active={tab} base={`/suppliers/${id}`} tabs={[{ key: "ledger", label: "Ledger" }, { key: "details", label: "Details" }, { key: "files", label: "Files and notes" }, { key: "activity", label: "Activity" }]} />
-      {tab === "ledger" && <Ledger id={id} isBoss={me.role === "boss" || me.can_see_all_cases} />}
+      {tab === "ledger" && <Ledger id={id} isBoss={me.role === "boss" || me.can_see_all_cases} canDelete={me.role === "boss"} />}
       {tab === "details" && <div className="max-w-3xl"><SupplierForm supplier={s} /></div>}
       {tab === "files" && <FilesLoader id={id} notes={s.notes} isBoss={me.role === "boss"} />}
       {tab === "activity" && <ActivityLoader id={id} />}
@@ -52,7 +52,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
   );
 }
 
-async function Ledger({ id, isBoss }: { id: string; isBoss: boolean }) {
+async function Ledger({ id, isBoss, canDelete }: { id: string; isBoss: boolean; canDelete: boolean }) {
   const sb = await createClient();
   const [{ data: lines }, { data: pays }] = await Promise.all([
     sb.from("booking_lines").select("id, service, summary, service_date, status, supplier_cost, refund_from_supplier, supplier_due_date, case:cases(id, max_id)").eq("supplier_id", id).order("created_at", { ascending: false }).limit(300),
@@ -84,8 +84,14 @@ async function Ledger({ id, isBoss }: { id: string; isBoss: boolean }) {
           <ul>
             {((pays ?? []) as unknown as P[]).map((p) => (
               <li key={p.id} className="border-b border-line px-4 py-2.5 text-sm last:border-0">
-                <div className="flex justify-between"><span>{fdate(p.pay_date)} · {PAY_MODE_LABEL[p.mode]}{p.reference && ` · ${p.reference}`}</span><Money value={p.amount} className="font-medium" /></div>
-                {p.allocations.length > 0 && <div className="text-xs text-muted">For {p.allocations.map((a) => `${a.case?.max_id ?? "another staff member's case"} (${inr(a.amount)})`).join(", ")}</div>}
+                <div className="flex items-center justify-between gap-2"><span>{fdate(p.pay_date)} · {PAY_MODE_LABEL[p.mode]}{p.reference && ` · ${p.reference}`}</span>
+                  <span className="flex items-center gap-2"><Money value={p.amount} className="font-medium" />{canDelete && <DeleteSupplierPayment id={p.id} text={`${fdate(p.pay_date)} · ${inr(p.amount)} · ${PAY_MODE_LABEL[p.mode]}${p.reference ? ` · ${p.reference}` : ""}`} />}</span></div>
+                {(() => {
+                  const used = p.allocations.reduce((s, a) => s + Number(a.amount), 0);
+                  const adv = Math.round((Number(p.amount) - used) * 100) / 100;
+                  const parts = [...p.allocations.map((a) => `${a.case?.max_id ?? "another staff member's case"} (${inr(a.amount)})`), ...(adv > 0 ? [`advance ${inr(adv)}`] : [])];
+                  return parts.length > 0 && <div className="text-xs text-muted">For {parts.join(", ")}</div>;
+                })()}
               </li>
             ))}
           </ul>

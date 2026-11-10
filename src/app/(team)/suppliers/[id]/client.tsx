@@ -7,7 +7,7 @@ import { Confirm, Dialog, More, useAction } from "@/components/client";
 import { DropZone } from "@/components/files";
 import { useApp } from "@/components/shell/shell";
 import { deleteSupplier, saveSupplier, saveSupplierNotes } from "@/actions/suppliers";
-import { addSupplierPayment } from "@/actions/money";
+import { addSupplierPayment, deletePayment } from "@/actions/money";
 import { amount } from "@/lib/money";
 import { deleteFile } from "@/actions/files";
 import { PAY_MODES, SERVICES, SERVICE_LABEL, SUPPLIER_TYPES } from "@/lib/constants";
@@ -80,10 +80,11 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
   const [show, setShow] = useState(false);
   const [v, setV] = useState({ pay_date: todayIST(), mode: "bank", reference: "", notes: "" });
   const [alloc, setAlloc] = useState<Record<string, string>>({});
-  const total = Object.values(alloc).reduce((s, a) => s + amount(a), 0);
+  const [advance, setAdvance] = useState("");
+  const total = Object.values(alloc).reduce((s, a) => s + amount(a), 0) + amount(advance);
   return (
     <>
-      <Button variant="primary" onClick={() => { setAlloc({}); setShow(true); }}>Record payment</Button>
+      <Button variant="primary" onClick={() => { setAlloc({}); setAdvance(""); setShow(true); }}>Record payment</Button>
       <Dialog open={show} onClose={() => setShow(false)} title={`Payment to ${supplier.name}`} wide
         footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !total}
           onClick={() => run(() => addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: amount(a) })) }), { then: () => setShow(false) })}>
@@ -99,7 +100,7 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
               <span>MAX IDs this payment covers</span>
               {open.length > 0 && <button type="button" className="text-xs link" onClick={() => setAlloc(Object.fromEntries(open.map((o) => [o.case_id, String(o.due)])))}>Pay all due</button>}
             </div>
-            {open.length === 0 && <p className="text-sm text-muted">Nothing is due to this supplier.</p>}
+            {open.length === 0 && <p className="text-sm text-muted">Nothing is due to this supplier on any MAX ID right now.</p>}
             <div className="space-y-1.5">
               {open.map((o) => (
                 <div key={o.case_id} className="flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
@@ -112,6 +113,9 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
               ))}
             </div>
           </div>
+          <Field label="Advance or wallet top-up (₹)" hint="Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier.">
+            <input className="field !w-40 tabular" inputMode="decimal" value={advance} onChange={(e) => setAdvance(e.target.value)} />
+          </Field>
         </div>
       </Dialog>
     </>
@@ -148,5 +152,18 @@ export function SupplierFiles({ supplierId, files, notes, isBoss }: { supplierId
       </Card>
       <Confirm open={!!del} onClose={() => setDel(null)} title="Delete this file?" confirmLabel="Delete" pending={pending} onConfirm={() => del && run(() => deleteFile(del), { then: () => setDel(null) })} />
     </div>
+  );
+}
+
+export function DeleteSupplierPayment({ id, text }: { id: string; text: string }) {
+  const { run, pending } = useAction();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" aria-label="Delete payment" className="text-muted hover:text-red-600" onClick={() => setOpen(true)}><Trash2 className="h-3.5 w-3.5" /></button>
+      <Confirm open={open} onClose={() => setOpen(false)} title="Delete this supplier payment?" confirmLabel="Delete" pending={pending}
+        text={`${text}. Use this to correct a wrong entry, then record it again. What we owe this supplier goes back up.`}
+        onConfirm={() => run(() => deletePayment(id), { then: () => setOpen(false) })} />
+    </>
   );
 }

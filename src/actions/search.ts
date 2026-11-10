@@ -44,12 +44,17 @@ export async function searchSuppliers(q: string, service?: string) {
   return data ?? [];
 }
 
+/** Who can travel on this customer's cases: the customer, their family, and (for a company) its employees. */
 export async function familyMembers(customerId: string) {
   const sb = await createClient();
-  const { data: c } = await sb.from("customers").select("id, family_id, last_name").eq("id", customerId).single();
-  if (!c?.family_id) return { last_name: c?.last_name ?? null, members: [] as { id: string; full_name: string; dob: string | null }[] };
-  const { data } = await sb.from("customers").select("id, full_name, dob").eq("family_id", c.family_id).neq("id", customerId).order("dob");
-  return { last_name: c.last_name as string | null, members: data ?? [] };
+  const { data: c } = await sb.from("customers").select("id, family_id, last_name, customer_type").eq("id", customerId).single();
+  const corporate = c?.customer_type === "corporate";
+  const [{ data: fam }, { data: emp }] = await Promise.all([
+    c?.family_id ? sb.from("customers").select("id, full_name, dob, relation").eq("family_id", c.family_id).neq("id", customerId).order("dob") : Promise.resolve({ data: [] }),
+    corporate ? sb.from("customers").select("id, full_name, dob, designation").eq("company_id", customerId).order("full_name") : Promise.resolve({ data: [] }),
+  ]);
+  type M = { id: string; full_name: string; dob: string | null; relation?: string | null; designation?: string | null };
+  return { last_name: (c?.last_name ?? null) as string | null, corporate, members: [...(fam ?? []), ...(emp ?? [])] as M[] };
 }
 
 export async function lookupValues(kind: string) {

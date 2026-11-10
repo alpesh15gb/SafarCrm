@@ -9,8 +9,9 @@ type P = Record<string, string | null> & { allow_uploads: boolean; documents: { 
 
 export default async function PortalProfile() {
   const sb = await createClient();
-  const { data } = await sb.rpc("portal_profile");
+  const [{ data }, { data: fam }] = await Promise.all([sb.rpc("portal_profile"), sb.rpc("portal_family")]);
   const p = data as P;
+  const family = (fam ?? []) as { id: string; full_name: string; relation: string | null; documents: { doc_type: string; expiry: string | null; status: string }[] }[];
   const exp = expiryLabel(p.passport_expiry);
   return (
     <div className="space-y-4">
@@ -37,8 +38,23 @@ export default async function PortalProfile() {
             })}
           </ul>
         )}
-        {p.allow_uploads && <div className="border-t border-line p-4"><div className="mb-2 text-sm font-medium">Upload a new document</div><PortalUpload /></div>}
+        {p.allow_uploads && <div className="border-t border-line p-4"><div className="mb-2 text-sm font-medium">Upload a new document</div><PortalUpload me={{ id: "", full_name: String(p.full_name) }} family={family} /></div>}
       </Card>
+      {family.length > 0 && (
+        <Card title="My family's documents" pad={false}>
+          <ul>
+            {family.map((f) => (
+              <li key={f.id} className="border-b border-line px-4 py-2.5 last:border-0">
+                <div className="text-sm font-medium">{f.full_name}{f.relation && <span className="font-normal text-muted"> · {f.relation}</span>}</div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {f.documents.length === 0 ? <span className="text-xs text-muted">No documents yet. Upload above and choose their name.</span>
+                    : f.documents.map((d, i) => { const e = expiryLabel(d.expiry); return <Badge key={i} tone={d.status === "pending_review" ? "amber" : e && e.tone !== "grey" ? e.tone : "green"}>{d.doc_type}{d.status === "pending_review" ? " · pending review" : e ? ` · ${e.text.toLowerCase()}` : ""}</Badge>; })}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }

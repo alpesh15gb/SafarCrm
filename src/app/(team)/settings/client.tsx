@@ -7,7 +7,7 @@ import { Confirm, CopyButton, Dialog, Toggle, useAction } from "@/components/cli
 import {
   addLookup, createStaff, deactivateStaff, reactivateStaff, removeLookup, resetStaffPassword, runRemindersNow, saveSettings, setMaxStart, updateStaff,
 } from "@/actions/settings";
-import { fdate } from "@/lib/format";
+import { fdatetime } from "@/lib/format";
 
 type S = Record<string, unknown> & { auto_reminders: Record<string, boolean>; portal_defaults: Record<string, boolean> };
 
@@ -149,13 +149,14 @@ export function RemindersTab({ settings }: { settings: S }) {
   );
 }
 
-const KINDS: [string, string][] = [["airline", "Airlines"], ["hotel_chain", "Hotel chains"], ["insurer", "Insurers"], ["city", "Cities"], ["airport", "Airports"], ["lead_source", "Lead sources"], ["document_type", "Document types"]];
+const KINDS: [string, string][] = [["airline", "Airlines"], ["hotel_chain", "Hotel chains"], ["insurer", "Insurers"], ["city", "Cities"], ["airport", "Airports"], ["country", "Countries (visa)"], ["lead_source", "Lead sources"], ["document_type", "Document types"]];
 
 export function LookupsTab({ kind, items }: { kind: string; items: { id: string; value: string; extra: Record<string, string> }[] }) {
   const { run, pending } = useAction();
   const [v, setV] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("IN");
+  const [del, setDel] = useState<{ id: string; value: string } | null>(null);
   return (
     <div className="max-w-3xl space-y-3">
       <div className="flex flex-wrap gap-1.5">
@@ -172,16 +173,19 @@ export function LookupsTab({ kind, items }: { kind: string; items: { id: string;
           {items.map((i) => (
             <span key={i.id} className="inline-flex items-center gap-1 rounded-full border border-line bg-white py-0.5 pl-2.5 pr-1 text-[13px]">
               {i.value}{i.extra?.city && <span className="text-muted">· {i.extra.city}{i.extra.country && i.extra.country !== "IN" ? `, ${i.extra.country}` : ""}</span>}
-              <button type="button" aria-label={`Remove ${i.value}`} className="rounded-full p-0.5 text-muted hover:bg-gray-100 hover:text-red-600" onClick={() => run(() => removeLookup(i.id))}><X className="h-3 w-3" /></button>
+              <button type="button" aria-label={`Remove ${i.value}`} className="rounded-full p-0.5 text-muted hover:bg-gray-100 hover:text-red-600" onClick={() => setDel(i)}><X className="h-3 w-3" /></button>
             </span>
           ))}
         </div>
       </Card>
+      <Confirm open={!!del} onClose={() => setDel(null)} title={`Remove “${del?.value}”?`} text="It disappears from the drop-down lists. Bookings that already use it keep it." confirmLabel="Remove" pending={pending}
+        onConfirm={() => del && run(() => removeLookup(del.id), { then: () => setDel(null) })} />
     </div>
   );
 }
 
-export function DataTab() {
+export function DataTab({ backups, stale }: { backups: { at: string; db_size: string | null; files_size: string | null }[]; stale: boolean }) {
+  const last = backups[0];
   return (
     <div className="grid max-w-4xl gap-4 lg:grid-cols-2">
       <Card title="Export all data">
@@ -189,7 +193,18 @@ export function DataTab() {
         <a className={btnClass("primary")} href="/api/export?export=all"><Download className="h-4 w-4" />Export all data to Excel</a>
       </Card>
       <Card title="Backups">
-        <p className="text-[13px] text-muted">The database is backed up automatically every day by Supabase (enable daily backups on your Supabase plan). Uploaded files live in private storage. Last checked {fdate(new Date().toISOString())}.</p>
+        {last ? (
+          <div className="space-y-2 text-[13px]">
+            <p className={stale ? "rounded-lg bg-red-50 px-3 py-2 font-medium text-red-700" : "rounded-lg bg-emerald-50 px-3 py-2 text-emerald-900"}>
+              Last backup on the server: <b>{fdatetime(last.at)}</b>{last.db_size && ` (database ${last.db_size}, files ${last.files_size ?? "?"})`}.
+              {stale && " That is more than a day ago: the nightly backup may have stopped. Ask whoever manages the server to check it."}
+            </p>
+            <ul className="text-xs text-muted">{backups.slice(1).map((b) => <li key={b.at}>{fdatetime(b.at)} · {b.db_size}</li>)}</ul>
+          </div>
+        ) : (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700">No backup has been recorded on this server yet. Ask whoever manages the server to set up the nightly backup (DEPLOY.md, step 7).</p>
+        )}
+        <p className="mt-3 text-xs text-muted">Backups stay on the server for 30 days. Copy them to another place every week, so a server failure can&apos;t take them too.</p>
       </Card>
     </div>
   );

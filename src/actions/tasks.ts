@@ -4,7 +4,7 @@ import { fail, getMe, type ActionResult } from "@/lib/auth";
 
 export type TaskInput = {
   id?: string;
-  case_id: string;
+  case_id: string | null;
   title: string;
   assigned_to: string;
   due_at: string | null;
@@ -16,14 +16,13 @@ export type TaskInput = {
 
 export async function saveTask(t: TaskInput): Promise<ActionResult<{ id: string }>> {
   try {
-    if (!t.case_id) return { ok: false, error: "Every task needs a MAX ID. Pick a case or create a new MAX ID." };
     if (!t.title.trim()) return { ok: false, error: "Give the task a title." };
     const me = await getMe();
     if (!me) return { ok: false, error: "Please log in again." };
     if (me.role !== "boss" && t.assigned_to !== me.id) return { ok: false, error: "Staff can only assign tasks to themselves." };
     const sb = await createClient();
     const row = {
-      case_id: t.case_id, title: t.title.trim(), assigned_to: t.assigned_to || me.id, due_at: t.due_at, priority: t.priority,
+      case_id: t.case_id || null, title: t.title.trim(), assigned_to: t.assigned_to || me.id, due_at: t.due_at, priority: t.priority,
       alert: t.due_at ? t.alert : "none", notes: t.notes?.trim() || null, ...(t.status ? { status: t.status } : {}),
     };
     if (t.id) {
@@ -67,7 +66,7 @@ export async function addTaskComment(task_id: string, body: string): Promise<Act
 export async function getTaskDetail(id: string) {
   const sb = await createClient();
   const [{ data: task }, { data: comments }] = await Promise.all([
-    sb.from("tasks").select("*, case:cases(id, max_id, title), assignee:profiles!tasks_assigned_to_fkey(full_name), completer:profiles!tasks_completed_by_fkey(full_name), creator:profiles!tasks_created_by_fkey(full_name)").eq("id", id).maybeSingle(),
+    sb.from("tasks").select("*, case:cases(id, max_id, title), customer:customers(full_name), assignee:profiles!tasks_assigned_to_fkey(full_name), completer:profiles!tasks_completed_by_fkey(full_name), creator:profiles!tasks_created_by_fkey(full_name)").eq("id", id).maybeSingle(),
     sb.from("task_comments").select("id, body, created_at, author:profiles(full_name)").eq("task_id", id).order("created_at"),
   ]);
   return { task, comments: comments ?? [] };
