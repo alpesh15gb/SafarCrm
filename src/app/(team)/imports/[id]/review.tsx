@@ -333,6 +333,8 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   const [dupReason, setDupReason] = useState("");
   const [noTicketAck, setNoTicketAck] = useState(false);
   const [newPayer, setNewPayer] = useState<string | null>(null);
+  // set by the comparison once the booking is loaded: false when a reissue brings no new ticket number
+  const [reissueHasNewTicket, setReissueHasNewTicket] = useState<boolean | null>(null);
 
   useEffect(() => { setMatches((m) => draft.passengers.map((_, i) => m[i] ?? null)); }, [draft.passengers.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (payer) suggestCases(payer.id).then(setSuggest); else setSuggest([]); }, [payer]);
@@ -353,6 +355,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
     caseMode === "new" && !stage && "the stage for the new MAX ID",
     bMode !== "new" && !lineId && "the booking to update",
     bMode !== "new" && lineId && !compared && "tick that you compared the booking",
+    bMode === "reissue" && lineId && reissueHasNewTicket === false && "a new ticket number for the reissue (or choose Update)",
     !bookedBy && "who booked it",
     !lineStatus && "the booking status",
     matches.some((m) => !m || (m.kind === "new" && (!m.first_name.trim() || !m.mobile.trim()))) && "match every passenger",
@@ -459,7 +462,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
             </select>
           )}
         </Field>
-        {bMode !== "new" && lineId && <Comparison lineId={lineId} draft={draft} compared={compared} setCompared={setCompared} reissue={bMode === "reissue"} />}
+        {bMode !== "new" && lineId && <Comparison lineId={lineId} draft={draft} compared={compared} setCompared={setCompared} reissue={bMode === "reissue"} onReissueCheck={setReissueHasNewTicket} />}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Who booked it?" required>
@@ -502,10 +505,10 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
         </div>
 
         {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-800">{error}</p>}
-        {missing.length > 0 && <p className="text-[13px] text-muted">Still needed: {missing.join(", ")}.</p>}
+        {!isBoss && <p className="text-right text-xs text-muted">The ticket file stays private; the boss decides when the client sees it.</p>}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {!isBoss && <span className="text-xs text-muted">The ticket file stays private; the boss decides when the client sees it.</span>}
-          <Button variant="primary" disabled={pending || missing.length > 0} onClick={confirm}><Check className="h-4 w-4" />Confirm and open booking</Button>
+          {missing.length > 0 && <span id="confirm-needs" className="text-[13px] text-amber-800">Still needed: {missing.join(", ")}.</span>}
+          <Button variant="primary" disabled={pending || missing.length > 0} aria-describedby={missing.length ? "confirm-needs" : undefined} onClick={confirm}><Check className="h-4 w-4" />Confirm and open booking</Button>
         </div>
       </div>
     </Card>
@@ -562,9 +565,16 @@ function PassengerMatch({ name, match, onChange, payerMobile, taken }: { name: s
 }
 
 /** Field-by-field: what the booking has now vs what the reviewed ticket says. Required before changing a booking that has data. */
-function Comparison({ lineId, draft, compared, setCompared, reissue }: { lineId: string; draft: Draft; compared: boolean; setCompared: (v: boolean) => void; reissue: boolean }) {
+const ticketKey = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+function Comparison({ lineId, draft, compared, setCompared, reissue, onReissueCheck }: { lineId: string; draft: Draft; compared: boolean; setCompared: (v: boolean) => void; reissue: boolean; onReissueCheck: (hasNew: boolean | null) => void }) {
   const [line, setLine] = useState<Awaited<ReturnType<typeof bookingForCompare>> | undefined>(undefined);
   useEffect(() => { setLine(undefined); bookingForCompare(lineId).then(setLine).catch(() => setLine(null)); }, [lineId]);
+  const oldKeys = new Set((((line?.details.tickets as Record<string, string>[] | undefined) ?? [])).map((t) => ticketKey(t.number ?? "")));
+  const freshTickets = draft.passengers.flatMap((p) => p.tickets.map((t) => t.number.value)).filter((n) => n.trim() && !oldKeys.has(ticketKey(n)));
+  const hasNew = line ? freshTickets.length > 0 : null;
+  useEffect(() => { onReissueCheck(hasNew); }, [hasNew]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onReissueCheck(null), []); // eslint-disable-line react-hooks/exhaustive-deps
   if (line === undefined) return <p className="text-xs text-muted">Loading the booking…</p>;
   if (line === null) return <p role="alert" className="text-xs text-red-700">That booking could not be loaded.</p>;
   const old = (line.details.sectors as Record<string, string>[] | undefined) ?? [];
@@ -591,14 +601,9 @@ function Comparison({ lineId, draft, compared, setCompared, reissue }: { lineId:
             <td className="font-mono text-xs">{newTickets.map((t) => <div key={t}>{t}</div>)}</td></tr>
         </tbody>
       </table>
-      {reissue && (() => {
-        const key = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
-        const old = new Set(oldT.map((t) => key(t.number ?? "")));
-        const fresh = draft.passengers.flatMap((p) => p.tickets.map((t) => t.number.value)).filter((n) => n.trim() && !old.has(key(n)));
-        return fresh.length ? null : (
-          <p role="alert" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-800">No new ticket number on this document, so it isn&apos;t evidence of a reissue. Choose Update if the tickets are unchanged.</p>
-        );
-      })()}
+      {reissue && !hasNew && (
+        <p role="alert" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-800">No new ticket number on this document, so it isn&apos;t evidence of a reissue. Choose Update if the tickets are unchanged.</p>
+      )}
       <p className="text-xs text-muted">{reissue ? "The old tickets and flights are kept in the booking's history. No new sale is created; prices stay as they are." : "Changed flights are kept in history. Prices stay as they are."}</p>
       <label className="flex items-center gap-2"><input type="checkbox" checked={compared} onChange={(e) => setCompared(e.target.checked)} />I compared every highlighted difference with the original</label>
     </div>
