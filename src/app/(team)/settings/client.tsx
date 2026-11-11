@@ -129,6 +129,10 @@ const REMINDERS: [string, string, string][] = [
   ["hotel_cancel", "Hotel free cancellation ending", "1 day before the deadline"],
   ["no_insurance", "International trip without insurance", "When the flight is saved"],
   ["birthday", "Customer birthday or anniversary", "On the day"],
+  ["stage_tasks", "Tasks for each stage (send quote, follow up, collect advance, send documents)", "When a case enters the stage"],
+  ["auto_stage", "Move the stage forward automatically", "Confirmed on the first client payment; Booked when every booking is confirmed"],
+  ["ticket_name", "Ticket name differs from the passport", "Flights in the next 21 days, checked every 15 minutes"],
+  ["missing_docs", "Passport details missing for an international trip", "Trips in the next 30 days, checked every 15 minutes"],
 ];
 
 export function RemindersTab({ settings }: { settings: S }) {
@@ -136,7 +140,7 @@ export function RemindersTab({ settings }: { settings: S }) {
   const a = settings.auto_reminders;
   return (
     <Card title="Automatic reminders" className="max-w-3xl" action={<Button size="sm" disabled={pending} onClick={() => run(() => runRemindersNow())}>Check now</Button>}>
-      <p className="mb-3 text-[13px] text-muted">These create tasks for the case&apos;s assigned staff every morning at 6:00 IST. Each reminder is created once.</p>
+      <p className="mb-3 text-[13px] text-muted">These create tasks for the case&apos;s assigned staff, most of them every morning at 6:00 IST. Each reminder is created once, and closes by itself when its reason is gone (for example, the payment arrives).</p>
       <ul className="divide-y divide-line">
         {REMINDERS.map(([k, l, w]) => (
           <li key={k} className="flex items-center justify-between gap-3 py-2.5">

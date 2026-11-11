@@ -11,9 +11,9 @@ import { istLocalToISO } from "@/lib/format";
 import { CASE_STATUSES, STATUS_LABEL } from "@/lib/constants";
 import type { Readiness } from "@/lib/readiness";
 
-const WORK = [
-  { v: "new", l: "Work: new" }, { v: "in_progress", l: "Work: in progress" },
-  { v: "waiting_customer", l: "Waiting on customer" }, { v: "waiting_supplier", l: "Waiting on supplier" },
+// "waiting" is the only work status set by hand; everything else is worked out from the case's tasks
+const WAITING = [
+  { v: "none", l: "Not waiting" }, { v: "waiting_customer", l: "Waiting on customer" }, { v: "waiting_supplier", l: "Waiting on supplier" },
 ];
 
 export function CaseHeaderControls({ kase }: { kase: {
@@ -55,14 +55,14 @@ export function CaseHeaderControls({ kase }: { kase: {
       >
         {CASE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
       </select>
-      <select aria-label="Work status" className="field !w-auto" value={kase.work_state ?? "new"} disabled={pending}
-        title={kase.waiting_reason ? `Waiting: ${kase.waiting_reason}` : "What the team is doing on this job (separate from the booking stage)"}
+      <select aria-label="Waiting" className="field !w-auto" value={kase.work_state?.startsWith("waiting") ? kase.work_state : "none"} disabled={pending}
+        title={kase.waiting_reason ? `Waiting: ${kase.waiting_reason}` : "Set when you are waiting for the customer or a supplier. A follow-up task is created for you."}
         onChange={(e) => {
           const v = e.target.value;
           if (v.startsWith("waiting")) { setWaitWhy(""); setWaitUntil(""); setWaitFor(v); return; }
-          run(() => setWorkState(kase.id, v));
+          run(() => setWorkState(kase.id, "in_progress"), { success: "No longer waiting" });
         }}>
-        {WORK.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
+        {WAITING.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
       </select>
       <div className="w-44">
         <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Reassigned" })} />
@@ -137,7 +137,7 @@ export function CaseHeaderControls({ kase }: { kase: {
           </>
         }
       >
-        <p className="mb-3 text-[13px] text-muted">A follow-up task is created at the time you set. Departure dates and cancellation deadlines keep running while you wait.</p>
+        <p className="mb-3 text-[13px] text-muted">A follow-up task is created for the time you set; finishing it ends the waiting. Departure dates and cancellation deadlines keep running while you wait.</p>
         <div className="space-y-3">
           <Field label="Waiting for what?" required><input className="field" autoFocus value={waitWhy} onChange={(e) => setWaitWhy(e.target.value)} placeholder="Passport copy for the son" /></Field>
           <Field label="Follow up on (IST)" required><input className="field" type="datetime-local" value={waitUntil} onChange={(e) => setWaitUntil(e.target.value)} /></Field>

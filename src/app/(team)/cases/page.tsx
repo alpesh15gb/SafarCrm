@@ -52,6 +52,10 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       <div className="mb-4 space-y-2.5">
         <SearchBox placeholder="Filter by MAX ID, title or destination" />
         {!board && <Chips param="status" current={sp.status} base={sp} items={[{ value: "open", label: "Open" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
+        <Chips param="work" current={sp.work} base={sp} allLabel="Any next step" items={[
+          { value: "no_next", label: "No next step" }, { value: "overdue", label: "Next step overdue" },
+          { value: "this_week", label: "Next step this week" }, { value: "waiting", label: "Waiting" },
+        ]} />
         <Chips param="service" current={sp.service} base={sp} allLabel="All services" items={SERVICES.map((s) => ({ value: s, label: SERVICE_LABEL[s] }))} />
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           <Chips param="date" current={sp.date} base={sp} allLabel="Any date" items={[
@@ -100,7 +104,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                   </td>
                   <td data-label="Staff" className="whitespace-nowrap"><Person name={r.staff?.full_name} size="xs" /></td>
                   <td data-label="Status"><StatusBadge status={r.status} /></td>
-                  <td data-label="Work"><WorkCell w={work.get(r.id)} /></td>
+                  <td data-label="Work"><WorkCell w={work.get(r.id)} kase={{ id: r.id, max_id: r.max_id, title: r.title }} /></td>
                   <td data-label="Due from client" className="text-right md:text-left">{Number(r.money?.due) > 0 ? <Money value={r.money?.due} /> : <span className="text-muted">—</span>}</td>
                   {me.can_see_profit && <td data-label="Profit"><Money value={r.money?.profit} profit /></td>}
                 </tr>

@@ -51,8 +51,16 @@ export async function listCases(sp: SP, all = false) {
   const sel = `id, max_id, title, status, travel_start, travel_end, destination, created_at, assigned_to,
     customer:customers!cases_customer_id_fkey(id, full_name, mobile), staff:profiles!cases_assigned_to_fkey(full_name),
     lines:booking_lines${sp.service ? "!inner" : ""}(service, status)`;
+  // "what the case needs next" filter: the ids come from the database (open cases only), then the usual filters apply
+  let workIds: string[] | null = null;
+  if (sp.work) {
+    const { data } = await sb.rpc("cases_by_work", { p_kind: sp.work });
+    workIds = ((data ?? []) as unknown as string[]).map(String);
+    if (!workIds.length) workIds = ["00000000-0000-0000-0000-000000000000"];
+  }
   const make = () => {
   let q = sb.from("cases").select(sel, { count: "exact" });
+  if (workIds) q = q.in("id", workIds);
   if (sp.status === "open") q = q.not("status", "in", "(completed,cancelled)");
   else if (sp.status) q = q.eq("status", sp.status);
   if (sp.service) q = q.eq("booking_lines.service", sp.service);

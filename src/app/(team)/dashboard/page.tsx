@@ -74,6 +74,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const otherDates = (other ?? []) as { case_id: string; max_id: string; customer: string; line_id: string; service: string; kind: string; on_date: string; label: string | null }[];
   const pendingImports = (imports.data ?? []) as { id: string; status: string; file_name: string; created_at: string; channel: string }[];
   const pendingImportCount = imports.count ?? pendingImports.length;
+  // open cases nobody has a task on (the list stops at 150)
+  const { data: noNextData } = await sb.rpc("cases_by_work", { p_kind: "no_next" });
+  const noNext = ((noNextData ?? []) as unknown[]).length;
   const pipeline = (pipe ?? []) as { status: string; cases: number; sale: number; due: number }[];
   const openCases = pipeline.filter((p) => !["completed", "cancelled"].includes(p.status)).reduce((a, p) => a + Number(p.cases), 0);
   const overdue = t.filter((x) => dueBucket(x) === "overdue").length;
@@ -102,6 +105,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               <HeroChip href="/tasks?due=today" icon={Clock}>{today} due today</HeroChip>
               <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departure{trips.length === 1 ? "" : "s"} this week</HeroChip>
               <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open cases</HeroChip>
+              {noNext > 0 && <HeroChip href="/cases?work=no_next" icon={AlertCircle} hot>{noNext >= 150 ? "150+" : noNext} case{noNext === 1 ? "" : "s"} with no next step</HeroChip>}
               {pendingImportCount > 0 && <HeroChip href="/imports" icon={Ticket} hot>{pendingImportCount} ticket{pendingImportCount === 1 ? "" : "s"} to review</HeroChip>}
             </div>
           </div>

@@ -20,7 +20,12 @@ import { SupplierQuickDialog } from "@/components/forms/supplier-quick";
 
 export type StaffLite = { id: string; full_name: string; role: string };
 export type NavCounts = { cases: number; tasks: number; overdue: number };
-type Ctx = { me: Me; staff: StaffLite[]; openNew: (k: NewKind, preset?: Record<string, unknown>) => void };
+export type NextCase = { id: string; max_id: string; title: string };
+type Ctx = {
+  me: Me; staff: StaffLite[]; openNew: (k: NewKind, preset?: Record<string, unknown>) => void;
+  /** a case was just left with no open task: ask what happens next */
+  askNext: (c: NextCase | null) => void;
+};
 type NewKind = "case" | "task" | "customer" | "supplier";
 const AppCtx = createContext<Ctx | null>(null);
 export const useApp = () => useContext(AppCtx)!;
@@ -76,7 +81,8 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
   }
 
   const nav = NAV.filter((n) => !n.boss || me.role === "boss");
-  const ctx: Ctx = { me, staff, openNew: (kind, preset) => setDlg({ kind, preset }) };
+  const [nextFor, setNextFor] = useState<NextCase | null>(null);
+  const ctx: Ctx = { me, staff, openNew: (kind, preset) => setDlg({ kind, preset }), askNext: setNextFor };
   const mini = collapsed && !mobileOpen;
 
   const sidebar = (
@@ -197,6 +203,13 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNew={(kind) => { setPaletteOpen(false); setDlg({ kind }); }} nav={nav} />
       <NewCaseDialog open={dlg?.kind === "case"} onClose={() => setDlg(null)} preset={dlg?.preset} />
       <TaskDialog open={dlg?.kind === "task"} onClose={() => setDlg(null)} preset={dlg?.preset} />
+      {nextFor && (
+        <div role="status" className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-xl flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 shadow-lg print:hidden">
+          <span className="min-w-0 flex-1"><span className="font-mono font-semibold">{nextFor.max_id}</span> has no next step now. What happens next?</span>
+          <Button size="sm" variant="primary" onClick={() => { setDlg({ kind: "task", preset: { case: { id: nextFor.id, label: nextFor.max_id, sub: nextFor.title } } }); setNextFor(null); }}>Add next step</Button>
+          <Button size="sm" onClick={() => setNextFor(null)}>Nothing more</Button>
+        </div>
+      )}
       <CustomerQuickDialog open={dlg?.kind === "customer"} onClose={() => setDlg(null)} />
       <SupplierQuickDialog open={dlg?.kind === "supplier"} onClose={() => setDlg(null)} />
     </AppCtx.Provider>

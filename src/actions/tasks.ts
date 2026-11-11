@@ -1,6 +1,7 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
+import { fdate, todayIST } from "@/lib/format";
 
 export type TaskInput = {
   id?: string;
@@ -51,13 +52,43 @@ export async function saveTask(t: TaskInput): Promise<ActionResult<{ id: string 
   }
 }
 
-export async function setTaskStatus(id: string, status: string): Promise<ActionResult> {
+/** What a finished task leaves behind: when it was the last open task on an open case, the screen asks for the next step. */
+export type AfterDone = { needs_next: { id: string; max_id: string; title: string } | null };
+
+export async function setTaskStatus(id: string, status: string): Promise<ActionResult<AfterDone>> {
   try {
     const sb = await createClient();
-    const { data, error } = await sb.from("tasks").update({ status }).eq("id", id).select("id");
+    const { data, error } = await sb.from("tasks").update({ status }).eq("id", id).select("id, case_id");
     if (error) throw error;
     if (!data?.length) return { ok: false, error: "You can't change this task." };
-    return { ok: true, message: status === "done" ? "Task done" : "Task updated" };
+    let needs_next: AfterDone["needs_next"] = null;
+    const caseId = data[0].case_id as string | null;
+    if (status === "done" && caseId) {
+      const [{ count }, { data: c }] = await Promise.all([
+        sb.from("tasks").select("id", { count: "exact", head: true }).eq("case_id", caseId).neq("status", "done"),
+        sb.from("cases").select("id, max_id, title, status").eq("id", caseId).maybeSingle(),
+      ]);
+      if (c && !["completed", "cancelled"].includes(c.status) && (count ?? 0) === 0) needs_next = { id: c.id, max_id: c.max_id, title: c.title };
+    }
+    return { ok: true, data: { needs_next }, message: status === "done" ? "Task done" : "Task updated" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+const SNOOZE_DAYS: Record<string, number> = { tomorrow: 1, three_days: 3, next_week: 7 };
+
+/** Move a task's due time to 10:00 (India time) tomorrow, in 3 days or in a week. The alert follows the new time. */
+export async function snoozeTask(id: string, preset: string): Promise<ActionResult> {
+  try {
+    const days = SNOOZE_DAYS[preset];
+    if (!days) return { ok: false, error: "Pick when to move it to." };
+    const sb = await createClient();
+    const due = new Date(`${todayIST(days)}T10:00:00+05:30`).toISOString();
+    const { data, error } = await sb.from("tasks").update({ due_at: due }).eq("id", id).neq("status", "done").select("id");
+    if (error) throw error;
+    if (!data?.length) return { ok: false, error: "You can't change this task." };
+    return { ok: true, message: `Moved to ${fdate(due)} 10:00` };
   } catch (e) {
     return fail(e);
   }

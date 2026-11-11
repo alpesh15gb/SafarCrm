@@ -11,6 +11,8 @@ type PaxRow = PaxSource & { id: string; full_name: string; dob: string | null; p
 import { MaxId } from "@/components/client";
 import { fdate, prettyPhone, inr } from "@/lib/format";
 import { CaseHeaderControls } from "./header-controls";
+import { NextStepBar } from "./next-step";
+import type { WorkSummary } from "../board";
 import { OverviewTab } from "./overview";
 import { BookingsTab, type Line } from "./bookings";
 import { PaymentsTab } from "./payments";
@@ -47,12 +49,13 @@ export default async function CasePage({ params, searchParams }: { params: Promi
     .maybeSingle();
   if (!c) notFound();
 
-  const [{ data: money }, { data: travellers }, { data: lines }, { data: lineMoney }, { data: openTasks }] = await Promise.all([
+  const [{ data: money }, { data: travellers }, { data: lines }, { data: lineMoney }, { data: openTasks }, { data: workData }] = await Promise.all([
     sb.from("v_case_money").select("*").eq("case_id", id).single(),
     sb.from("case_travellers").select("customer:customers(id, full_name, title, first_name, middle_name, last_name, passport_surname, passport_given_name, gender, dob, passport_expiry, mobile)").eq("case_id", id),
     sb.from("booking_lines").select("*, supplier:suppliers(id, name)").eq("case_id", id).order("sort").order("service_date", { nullsFirst: false }).order("created_at"),
     sb.from("v_line_money").select("line_id, billed, sale, cost, profit, margin").eq("case_id", id),
     sb.from("tasks").select("id", { count: "exact", head: true }).eq("case_id", id).neq("status", "done").then((r) => ({ data: r.count })),
+    sb.rpc("case_work_summary", { p_cases: [id] }),
   ]);
   const trav = (travellers ?? []).map((t) => t.customer as unknown as PaxRow);
   const customer = c.customer as { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null; family_id: string | null; code: string; customer_type: string };
@@ -82,6 +85,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
       />
 
       <StatusSteps status={c.status} />
+      <NextStepBar w={((workData ?? []) as WorkSummary[])[0] ?? null} kase={{ id: c.id, max_id: c.max_id, title: c.title }} />
       {(() => {
         // the case dates drive reminders (e.g. the check-in task): flag them when the bookings say otherwise
         const live = (lines ?? []).filter((l) => l.status !== "cancelled" && l.service_date).map((l) => l.service_date as string).sort();
@@ -233,7 +237,8 @@ async function TasksLoader({ caseId, maxId, title }: { caseId: string; maxId: st
     .from("tasks")
     .select("id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title)")
     .eq("case_id", caseId)
-    .order("status")
+    // open tasks first (soonest due on top), finished ones after
+    .order("completed_at", { ascending: false, nullsFirst: true })
     .order("due_at", { nullsFirst: false });
   return (
     <Card pad={false}>

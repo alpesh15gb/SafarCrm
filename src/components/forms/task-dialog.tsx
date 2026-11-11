@@ -6,7 +6,7 @@ import { CasePicker, CustomerPicker, StaffSelect } from "@/components/pickers";
 import { NewCaseForm } from "./new-case";
 import { TaskCasePanel } from "./task-case";
 import { useApp } from "@/components/shell/shell";
-import { addTaskComment, deleteTask, getTaskDetail, saveTask, suggestCases } from "@/actions/tasks";
+import { addTaskComment, deleteTask, getTaskDetail, saveTask, setTaskStatus, suggestCases } from "@/actions/tasks";
 import { ALERTS, PRIORITIES } from "@/lib/constants";
 import { fdatetime, istLocalToISO, isoToISTLocal, todayIST } from "@/lib/format";
 
@@ -14,8 +14,14 @@ type Picked = { id: string; label: string; sub?: string };
 type Comment = { id: string; body: string; created_at: string; author: { full_name: string } | null };
 type Cust = { id: string; full_name: string; corporate?: boolean };
 
+// a new task is due at 18:00 today; late in the day that would already be overdue, so it becomes 10:00 tomorrow
+function defaultDue() {
+  const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  return hour >= 17 ? `${todayIST(1)}T10:00` : `${todayIST()}T18:00`;
+}
+
 export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: () => void; preset?: Record<string, unknown> }) {
-  const { me, staff } = useApp();
+  const { me, staff, askNext } = useApp();
   const { run, pending } = useAction();
   const taskId = preset?.task_id as string | undefined;
   const [kase, setKase] = useState<Picked | null>(null);
@@ -63,7 +69,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
       setKase((preset?.case as Picked) ?? null);
       const pc = preset?.customer as Picked | undefined;
       setCust(pc ? { id: pc.id, full_name: pc.label } : null);
-      setTitle(""); setAssigned(me.id); setDue(`${todayIST()}T18:00`);
+      setTitle(""); setAssigned(me.id); setDue(defaultDue());
       setPriority("normal"); setAlert("due"); setNotes(""); setStatus("todo"); setBlocking(false); setMeta({}); setComments([]);
       setLoadError(false);
     }
@@ -94,6 +100,9 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             <Button variant="danger" className="mr-auto" disabled={pending} onClick={() => run(() => deleteTask(taskId), { then: () => onClose() })}>Delete</Button>
           )}
           <Button onClick={onClose}>Close</Button>
+          {taskId && status !== "done" && !loading && !loadError && (
+            <Button disabled={pending} onClick={() => run(() => setTaskStatus(taskId, "done"), { then: (r) => { askNext(r.data?.needs_next ?? null); onClose(); } })}>Mark done</Button>
+          )}
           <Button variant="primary" disabled={pending || !title.trim() || loading || loadError} onClick={save}>{taskId ? "Save task" : "Create task"}</Button>
         </>
       }

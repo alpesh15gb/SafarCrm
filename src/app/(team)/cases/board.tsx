@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CalendarDays, MapPin } from "lucide-react";
 import { Avatar, LossDot, ServiceIcon, StatusBadge, cx } from "@/components/ui";
 import { useAction } from "@/components/client";
+import { useApp } from "@/components/shell/shell";
 import { updateCase } from "@/actions/cases";
 import { STATUS_LABEL } from "@/lib/constants";
 import { fdate, fdatetime, inr, inrShort } from "@/lib/format";
@@ -12,7 +13,7 @@ import { fdate, fdatetime, inr, inrShort } from "@/lib/format";
 export type WorkSummary = {
   case_id: string; state: string; stored_state: string; waiting_reason: string | null; waiting_follow_up_at: string | null; owner: string | null;
   open_tasks: number; overdue_tasks: number; blocking_tasks: number; pending_imports: number;
-  next_action: { title: string; due_at: string | null } | null; blocker: string | null;
+  next_action: { id?: string; title: string; due_at: string | null; assignee?: string | null } | null; blocker: string | null;
 };
 
 export type BoardCase = {
@@ -21,24 +22,30 @@ export type BoardCase = {
   work?: WorkSummary | null;
 };
 
-/** Work summary (independent of the booking stage): state, next action and its due time, overdue count, pending imports, main blocker. */
-export function WorkCell({ w, compact }: { w: WorkSummary | null | undefined; compact?: boolean }) {
-  if (!w) return <span className="text-muted">—</span>;
+/** What a case needs next: its state, the next task and when it is due, and a one-click way to add a step when there is none. */
+export function WorkCell({ w, compact, kase }: { w: WorkSummary | null | undefined; compact?: boolean; kase?: { id: string; max_id: string; title: string } }) {
+  const { openNew } = useApp();
+  if (!w || w.state === "closed") return <span className="text-muted">—</span>;
   const overdueNext = w.next_action?.due_at && new Date(w.next_action.due_at) < new Date();
   return (
     <div className={cx("min-w-0 space-y-0.5", compact ? "text-[11.5px]" : "text-xs")}>
       <div className="flex flex-wrap items-center gap-1">
         <StatusBadge status={w.state} />
-        {w.overdue_tasks > 0 && <span className="rounded-full bg-red-50 px-1.5 text-[10.5px] font-semibold text-red-700">{w.overdue_tasks} overdue</span>}
+        {w.overdue_tasks > 1 && <span className="rounded-full bg-red-50 px-1.5 text-[10.5px] font-semibold text-red-700">{w.overdue_tasks} overdue</span>}
         {w.pending_imports > 0 && <span className="rounded-full bg-amber-50 px-1.5 text-[10.5px] font-semibold text-amber-800">{w.pending_imports} import{w.pending_imports === 1 ? "" : "s"}</span>}
+        {w.state === "no_next_step" && kase && (
+          <button type="button" className="relative z-10 rounded-full border border-line bg-white px-2 py-0.5 text-[11px] font-medium text-ink hover:bg-gray-50"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); openNew("task", { case: { id: kase.id, label: kase.max_id, sub: kase.title } }); }}>
+            + Next step
+          </button>
+        )}
       </div>
       {w.next_action && (
         <div className="truncate text-muted" title={w.next_action.title}>
           Next: {w.next_action.title}{w.next_action.due_at && <span className={cx(overdueNext && "font-medium text-red-600")}> · {fdatetime(w.next_action.due_at)}</span>}
         </div>
       )}
-      {w.state.startsWith("waiting") && w.waiting_follow_up_at && <div className="truncate text-muted">Follow up {fdatetime(w.waiting_follow_up_at)}</div>}
-      {w.blocker && !w.state.startsWith("waiting") && <div className="truncate text-amber-800" title={w.blocker}>{w.blocker}</div>}
+      {w.blocker && <div className="truncate text-amber-800" title={w.blocker}>{w.blocker}</div>}
     </div>
   );
 }
@@ -108,7 +115,7 @@ export function CaseBoard({ cases: initial }: { cases: BoardCase[] }) {
                       {c.travel_start && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{fdate(c.travel_start)}</span>}
                       {c.destination && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{c.destination}</span>}
                     </div>
-                    {c.work && <div className="mt-2"><WorkCell w={c.work} compact /></div>}
+                    {c.work && <div className="mt-2"><WorkCell w={c.work} compact kase={c} /></div>}
                     <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-dashed border-line pt-2.5">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Avatar name={c.customer} size="xs" />

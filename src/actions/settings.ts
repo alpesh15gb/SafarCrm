@@ -142,6 +142,9 @@ export async function runRemindersNow(): Promise<ActionResult> {
     if (error) throw error;
     const { error: ve } = await admin.rpc("run_visa_reminders");
     if (ve) throw ve;
+    // also the 15-minute checks, which close reminders whose reason is gone
+    const { error: we } = await admin.rpc("run_workflow_checks");
+    if (we) throw we;
     return { ok: true, message: "Automatic reminders checked" };
   } catch (e) {
     return fail(e);
