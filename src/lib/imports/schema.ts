@@ -255,8 +255,9 @@ export function reviewIssues(d: Draft): ReviewIssue[] {
       const n = t.number.value.trim();
       if (!n) return;
       const digits = n.replace(/\D/g, "");
-      // ticket numbers are digits (3-digit airline code + 10); letters mean the PNR or a reference was read as a ticket
-      if (/[A-Za-z]/.test(n)) add(`${p}.tickets.${j}`, "red", `${at}: “${n}” is not a ticket number (ticket numbers are digits; this looks like the PNR or a reference). Remove it if the ticket shows no ticket number.`);
+      // IATA e-tickets are 13 digits; some low-cost carriers (e.g. IndiGo agency tickets) print the PNR plus a digit
+      // as the ticket number. Both are kept as printed; anything that isn't 13 digits is flagged for a check, not blocked.
+      if (/[A-Za-z]/.test(n)) add(`${p}.tickets.${j}`, "amber", `${at}: ticket number “${n}” is not a 13-digit e-ticket number. Fine if that is what the ticket prints (some low-cost airlines use the PNR plus a digit); remove it if it was read from somewhere else.`, false);
       else if (digits.length !== 13) add(`${p}.tickets.${j}`, "amber", `${at}: ticket number ${n} is not 13 digits.`, false);
       if (seen.has(digits)) add(`${p}.tickets.${j}`, "red", `${at}: ticket number ${n} is also on ${seen.get(digits)}. One ticket belongs to one passenger.`);
       else seen.set(digits, at.toLowerCase());

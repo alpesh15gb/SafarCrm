@@ -98,9 +98,12 @@ test("a hyphenated flight number like 6E-1234 is normal", () => {
   assert.ok(!reviewIssues(d).some((i) => i.path === "segments.0.flight_no"));
 });
 
-test("a PNR read as a ticket number blocks confirmation", () => {
+test("a low-cost-carrier ticket number (PNR plus a digit) is flagged for a check but not blocked", () => {
   const p: ProviderOutput = { ...returnTrip, passengers: [{ ...returnTrip.passengers[0], tickets: [{ number: "TST1230", segment_refs: [], page: 1 }] }] };
-  assert.ok(blockingIssues(toDraft(p)).some((i) => /not a ticket number/.test(i.text)));
+  const d = toDraft(p);
+  assert.equal(d.passengers[0].tickets[0].number.value, "TST1230");
+  assert.ok(reviewIssues(d).some((i) => /not a 13-digit/.test(i.text) && !i.blocking));
+  assert.ok(!blockingIssues(d).some((i) => /13-digit/.test(i.text)));
 });
 
 test("a leading title is not taken as the first name", () => {
