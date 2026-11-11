@@ -21,6 +21,8 @@ services:
     # the app talks to Supabase through the public address; resolve it to this server's nginx
     extra_hosts:
       - "${CRM_DOMAIN}:host-gateway"
+      # lets the app reach services on the server itself, e.g. OmniRoute at http://host.docker.internal:8088/v1
+      - "host.docker.internal:host-gateway"
 
   # Keeps ticket-import extraction moving: calls the app's worker endpoint every 30 s. Jobs, leases and retries
   # live in the database, so restarting this loses nothing. Does nothing unless IMPORT_WORKER_SECRET is set.
