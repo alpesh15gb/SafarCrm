@@ -67,7 +67,7 @@ class AnthropicProvider implements ExtractionProvider {
 
   private async call(content: unknown[], mode: "text" | "document"): Promise<ProviderResult> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 240_000);   // gateway models can take ~2 minutes on a ticket
+    const timer = setTimeout(() => ctl.abort(), 90_000);
     let res: Response;
     try {
       res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -123,7 +123,7 @@ class AnthropicProvider implements ExtractionProvider {
  *  Whatever comes back is checked by validateProviderOutput, so a model that ignores the schema fails cleanly. */
 class OpenAICompatibleProvider implements ExtractionProvider {
   configured = true;
-  constructor(public name: string, private baseUrl: string, private key: string, private model: string) {}
+  constructor(public name: string, private baseUrl: string, private key: string, private model: string, private effort: string) {}
 
   async extract(input: ProviderInput): Promise<ProviderResult> {
     if (input.text) {
@@ -139,7 +139,7 @@ class OpenAICompatibleProvider implements ExtractionProvider {
 
   private async call(content: unknown[], mode: "text" | "document", jsonMode: "schema" | "object" = "schema"): Promise<ProviderResult> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 240_000);   // gateway models can take ~2 minutes on a ticket
+    const timer = setTimeout(() => ctl.abort(), 90_000);
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -150,6 +150,8 @@ class OpenAICompatibleProvider implements ExtractionProvider {
           model: this.model,
           max_tokens: 16000,
           stream: false,
+          // low thinking: ~6–10 s per ticket on the agency gateway instead of 30–125 s, with the same result on tests
+          ...(this.effort ? { reasoning_effort: this.effort } : {}),
           response_format: jsonMode === "schema"
             ? { type: "json_schema", json_schema: { name: "ticket_extract", strict: true, schema: PROVIDER_SCHEMA } }
             : { type: "json_object" },
@@ -201,7 +203,8 @@ export function getProvider(): ExtractionProvider {
       p.setupHint = `EXTRACTION_PROVIDER is ${name} but ${!base ? "EXTRACTION_BASE_URL" : "EXTRACTION_MODEL"} is not set on the server. Enter the details by hand until it is.`;
       return p;
     }
-    return new OpenAICompatibleProvider(name, base, process.env.EXTRACTION_API_KEY?.trim() ?? "", model);
+    const effort = (process.env.EXTRACTION_REASONING_EFFORT ?? "low").trim().toLowerCase();
+    return new OpenAICompatibleProvider(name, base, process.env.EXTRACTION_API_KEY?.trim() ?? "", model, effort === "default" ? "" : effort);
   }
   if (name === "anthropic") {
     const key = process.env.ANTHROPIC_API_KEY?.trim();

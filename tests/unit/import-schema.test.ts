@@ -84,3 +84,8 @@ test("a flight number printed apart from its airline code is joined (seen on the
   const q: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "BOM", "DXB", "2026-12-20", "2026-12-21", "101"), airline: "Test Air" }] };
   assert.equal(toDraft(q).segments[0].flight_no.value, "101");
 });
+
+test("passenger types written as words become codes", () => {
+  const p: ProviderOutput = { ...returnTrip, passengers: [{ ...returnTrip.passengers[0], pax_type: "adult" }, { ...returnTrip.passengers[1], pax_type: "Child" }] };
+  assert.deepEqual(toDraft(p).passengers.map((x) => x.pax_type.value), ["ADT", "CHD"]);
+});

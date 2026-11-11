@@ -133,6 +133,10 @@ export const normTicketNo = (s: string) => {
   return d.length === 13 ? `${d.slice(0, 3)}-${d.slice(3)}` : clip(s, 40);
 };
 
+/** "adult" / "Child" / "infant" → ADT / CHD / INF; codes and anything else are kept as written (upper-cased). */
+const PAX: Record<string, string> = { ADULT: "ADT", ADT: "ADT", CHILD: "CHD", CHD: "CHD", CNN: "CHD", INFANT: "INF", INF: "INF" };
+const paxCode = (s: string) => { const t = clip(s, 10).toUpperCase(); return PAX[t] ?? t; };
+
 export function toDraft(p: ProviderOutput): Draft {
   const segKey = new Map<number, string>();
   const segments: DraftSegment[] = p.segments.map((s, i) => {
@@ -152,7 +156,7 @@ export function toDraft(p: ProviderOutput): Draft {
   const passengers: DraftPassenger[] = p.passengers.map((x, i) => ({
     key: `p${i + 1}`,
     name_as_issued: f(x.name_as_issued, x.page, x.evidence),
-    pax_type: f(clip(x.pax_type, 10).toUpperCase(), x.page),
+    pax_type: f(paxCode(x.pax_type), x.page),
     tickets: x.tickets.map((t) => ({
       number: f(normTicketNo(t.number), t.page),
       // a ticket with no segment references covers every segment on the document

@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { runImportWorker } from "@/lib/imports/worker";
 
-export const maxDuration = 600;   // one job can take several minutes through the gateway
+export const maxDuration = 300;
 
 /** Runs queued extraction jobs. Called by scripts/import-worker.mjs (or any scheduler) with the shared secret.
  *  Disabled (404) unless IMPORT_WORKER_SECRET is set on the server. */
