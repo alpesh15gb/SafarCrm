@@ -92,6 +92,9 @@ function friendly(msg: string) {
   if (msg.includes("task_already_linked")) return "This task is already linked to a MAX ID. Open it, or move the task to another case.";
   if (msg.includes("case_title_required")) return "Give the case a title.";
   if (msg.includes("case_customer_required")) return "Pick who the trip is for (the paying customer).";
+  if (msg.includes("duplicate_unresolved")) return "This ticket matches a booking already in the CRM. Use that booking, or give a reason why it is a separate trip.";
+  if (msg.includes("reissue_needs_new_ticket")) return "A reissue needs at least one new ticket number. If the tickets are the same, choose Update instead.";
+  if (msg.includes("no_ticket_number_ack")) return "The document shows no ticket number. Tick that the ticket is issued anyway, or set the status to Pending.";
   if (msg.includes("comparison_required")) return "This booking already has tickets. Review the field-by-field comparison and tick that you checked it.";
   return msg;
 }

@@ -82,6 +82,18 @@ export default async function CasePage({ params, searchParams }: { params: Promi
       />
 
       <StatusSteps status={c.status} />
+      {(() => {
+        // the case dates drive reminders (e.g. the check-in task): flag them when the bookings say otherwise
+        const live = (lines ?? []).filter((l) => l.status !== "cancelled" && l.service_date).map((l) => l.service_date as string).sort();
+        const first = live[0];
+        if (!c.travel_start || !first || first === c.travel_start || c.status === "cancelled") return null;
+        return (
+          <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-900">
+            The case says travel starts <b>{fdate(c.travel_start)}</b>, but the first booking is on <b>{fdate(first)}</b>.
+            Update the case dates (Overview → Edit) so reminders and check-in tasks use the right day, and check any open tasks.
+          </div>
+        );
+      })()}
 
       <div className={cx("mb-5 grid gap-3", me.can_see_profit ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
         <Strip label="Sale" icon={IndianRupee} tone="blue" value={<Money value={money?.sale} />} />

@@ -12,6 +12,8 @@ export type ConfirmPayload = {
   line_status: "pending" | "confirmed";
   passengers: ({ customer_id: string } | { create: { first_name: string; last_name?: string; mobile: string; gender?: string; dob?: string; passport_surname?: string; passport_given_name?: string } })[];
   agency_charge?: { amount: string; confirmed: boolean } | null;
+  duplicate_override_reason?: string | null;
+  no_ticket_number_ack?: boolean;
 };
 
 async function team() {

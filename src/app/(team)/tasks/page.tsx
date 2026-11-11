@@ -28,7 +28,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   if (status === "open") q = q.neq("status", "done");
   else if (status !== "all") q = q.eq("status", status);
   if (sp.due === "overdue") q = q.lt("due_at", now);
-  if (sp.due === "today") q = q.gte("due_at", todayIST() + "T00:00:00+05:30").lte("due_at", todayIST() + "T23:59:59+05:30");
+  // same meaning as the dashboard: still due later today (anything already past its time is under Overdue)
+  if (sp.due === "today") q = q.gte("due_at", now).lte("due_at", todayIST() + "T23:59:59+05:30");
   if (sp.due === "week") q = q.lte("due_at", todayIST(7) + "T23:59:59+05:30");
   if (sp.link === "case") q = q.not("case_id", "is", null);
   if (sp.link === "customer") q = q.is("case_id", null).not("customer_id", "is", null);

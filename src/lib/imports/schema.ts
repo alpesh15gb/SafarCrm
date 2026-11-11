@@ -133,6 +133,22 @@ export const normTicketNo = (s: string) => {
   return d.length === 13 ? `${d.slice(0, 3)}-${d.slice(3)}` : clip(s, 40);
 };
 
+/** An airport code must be the one printed. When the quoted ticket text shows airport codes in brackets, e.g.
+ *  "Mumbai (BOM)", and the extracted code isn't among the codes in that text (a city code like MUM, say), the field is
+ *  marked as a conflict, which blocks confirmation until someone fixes it. Nothing is replaced automatically. */
+export function airportField(code: string, page: number, evidence: string, first: boolean): Field {
+  const v = clip(code, 3).toUpperCase();
+  const fld = f(v, page, first ? evidence : undefined);
+  const ev = String(evidence ?? "").toUpperCase();
+  const inText = new Set(ev.match(/\b[A-Z]{3}\b/g) ?? []);
+  const bracketed = [...ev.matchAll(/\(([A-Z]{3})\)/g)].map((m) => m[1]);
+  if (v && bracketed.length && !inText.has(v)) {
+    fld.flag = "conflict";
+    fld.note = `the ticket text shows ${Array.from(new Set(bracketed)).join(" / ")}`;
+  }
+  return fld;
+}
+
 /** "adult" / "Child" / "infant" → ADT / CHD / INF; codes and anything else are kept as written (upper-cased). */
 const PAX: Record<string, string> = { ADULT: "ADT", ADT: "ADT", CHILD: "CHD", CHD: "CHD", CNN: "CHD", INFANT: "INF", INF: "INF" };
 /** "6E-1234", "6e1234", "6E 1234" → "6E 1234"; "TA" + "101" printed apart → "TA 101". Anything else is kept as written. */
@@ -153,7 +169,7 @@ export function toDraft(p: ProviderOutput): Draft {
     segKey.set(s.ref, key);
     return {
       key,
-      from: f(clip(s.from, 3).toUpperCase(), s.page, s.evidence), to: f(clip(s.to, 3).toUpperCase(), s.page),
+      from: airportField(s.from, s.page, s.evidence, true), to: airportField(s.to, s.page, s.evidence, false),
       dep_date: dateField(s.dep_date, s.page), dep_time: timeField(s.dep_time, s.page),
       arr_date: dateField(s.arr_date, s.page), arr_time: timeField(s.arr_time, s.page),
       // "TA" + "101" printed apart is one flight number; nothing else is joined or guessed
@@ -240,6 +256,9 @@ export function reviewIssues(d: Draft): ReviewIssue[] {
     if (prev && isDate(prev.dep_date.value) && isDate(s.dep_date.value)) {
       const gap = dayOffset(prev.arr_date.value || prev.dep_date.value, s.dep_date.value);
       if (gap !== null && gap < 0) add(`${p}.dep_date`, "red", `${at} departs before flight ${i} arrives. Check the order and dates.`);
+    }
+    for (const k of ["from", "to"] as const) {
+      if (s[k].flag === "conflict") add(`${p}.${k}`, "red", `${at}: ${k === "from" ? "departure" : "arrival"} airport ${s[k].value} doesn't match the ticket text (${s[k].note}). Use the code printed on the ticket.`);
     }
     for (const k of ["from", "to", "dep_date", "dep_time", "arr_date", "arr_time", "flight_no"] as const) {
       if (s[k].flag === "uncertain") add(`${p}.${k}`, "amber", `${at}: ${k.replace("_", " ")} is uncertain${s[k].note ? ` (${s[k].note})` : ""}.`, false);

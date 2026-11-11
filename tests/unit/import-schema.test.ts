@@ -109,3 +109,12 @@ test("a low-cost-carrier ticket number (PNR plus a digit) is flagged for a check
 test("a leading title is not taken as the first name", () => {
   assert.deepEqual(splitIssuedName("Mr ASHA TESTER"), { first: "Asha", last: "Tester", title: "Mr" });
 });
+
+test("a city code that contradicts the printed airport code blocks confirmation", () => {
+  const p: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "MUM", "DXB", "2026-12-20", "2026-12-20", "AI 983"), evidence: "Mumbai (BOM) to Dubai (DXB) AI 983" }] };
+  const d = toDraft(p);
+  assert.equal(d.segments[0].from.value, "MUM");          // kept as read, never silently replaced
+  assert.equal(d.segments[0].from.flag, "conflict");
+  assert.ok(blockingIssues(d).some((i) => i.path === "segments.0.from" && /BOM/.test(i.text)));
+  assert.equal(d.segments[0].to.flag, undefined);         // DXB is in the text
+});

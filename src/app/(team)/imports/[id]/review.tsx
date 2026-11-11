@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowRight, Check, Info, Plus, RotateCw, Save, Trash2, X
 import { Badge, Button, Card, Field, cx } from "@/components/ui";
 import { Dialog, useAction } from "@/components/client";
 import { CasePicker, CustomerPicker } from "@/components/pickers";
+import { CustomerInline } from "@/components/forms/customer-inline";
 import { TicketUploadDialog } from "@/components/ticket-upload";
 import {
   bookingForCompare, confirmImport, flightLinesOnCase, personCandidates, probableDuplicates, rejectImport, retryImport, saveImportDraft,
@@ -329,6 +330,9 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   const [matches, setMatches] = useState<Match[]>(() => draft.passengers.map(() => null));
   const [dups, setDups] = useState<Awaited<ReturnType<typeof probableDuplicates>>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [dupReason, setDupReason] = useState("");
+  const [noTicketAck, setNoTicketAck] = useState(false);
+  const [newPayer, setNewPayer] = useState<string | null>(null);
 
   useEffect(() => { setMatches((m) => draft.passengers.map((_, i) => m[i] ?? null)); }, [draft.passengers.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (payer) suggestCases(payer.id).then(setSuggest); else setSuggest([]); }, [payer]);
@@ -337,8 +341,13 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   useEffect(() => { setCompared(false); }, [lineId, bMode]);
 
   const blocking = reviewIssues(draft).filter((i) => i.blocking);
+  // a matching booking must be resolved: update it, or say why this is a separate trip (the database checks this too)
+  const openDups = dups.filter((x) => x.status !== "cancelled" && !(bMode !== "new" && x.line_id === lineId));
+  const hasTicketNo = draft.passengers.some((p) => p.tickets.some((t) => t.number.value.trim()));
   const missing = [
     blocking.length && "fix the highlighted fields",
+    openDups.length > 0 && !dupReason.trim() && "resolve the possible duplicate (use that booking, or give a reason)",
+    lineStatus === "confirmed" && !hasTicketNo && !noTicketAck && "tick that the ticket is issued without a ticket number",
     caseMode === "new" && !payer && "who pays",
     caseMode === "existing" && !kase && "the MAX ID",
     caseMode === "new" && !stage && "the stage for the new MAX ID",
@@ -360,6 +369,8 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
       line_status: lineStatus as "pending" | "confirmed",
       passengers: matches.map((m) => (m!.kind === "existing" ? { customer_id: m!.id } : { create: { first_name: m!.first_name, last_name: m!.last_name, mobile: m!.mobile } })),
       agency_charge: bookedBy === "customer" && charge.confirmed ? charge : null,
+      duplicate_override_reason: openDups.length ? dupReason.trim() : null,
+      no_ticket_number_ack: lineStatus === "confirmed" && !hasTicketNo ? noTicketAck : false,
     };
     await run(async () => {
       const v = dirty ? await saveFirst() : version;
@@ -370,19 +381,33 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   return (
     <Card title="Match and confirm" sub="Nothing is saved to a case until you confirm. Payer and travellers are matched separately.">
       <div className="space-y-5">
-        {dups.length > 0 && (
-          <div role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-            <b>Possibly already in the CRM:</b>
-            <ul className="mt-1 list-disc pl-5">{dups.map((x) => (
+        {openDups.length > 0 && (
+          <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+            <b>This ticket matches a booking already in the CRM. Resolve it before confirming:</b>
+            <ul className="list-disc pl-5">{openDups.map((x) => (
               <li key={x.line_id}><Link className="link" href={`/cases/${x.case_id}?tab=bookings`}>{x.max_id}</Link> {x.summary} {fdate(x.service_date)} ({x.reason}) {" "}
-                <button type="button" className="underline" onClick={() => { setCaseMode("existing"); setKase({ id: x.case_id, label: x.max_id }); setBMode("update"); setLineId(x.line_id); }}>use this booking</button></li>
+                <Button size="sm" variant="primary" onClick={() => { setCaseMode("existing"); setKase({ id: x.case_id, label: x.max_id }); setBMode("update"); setLineId(x.line_id); setDupReason(""); }}>Use this booking</Button></li>
             ))}</ul>
+            <p className="text-xs">File: <span className="font-mono">{row.file_name}</span> · Ticket says: {draft.segments.map((s) => `${s.from.value}→${s.to.value} ${fdate(s.dep_date.value) || "?"}`).join(", ")} · PNR {draft.airline_pnrs.map((r) => r.value).join(", ") || "—"}</p>
+            <Field label="Or, if it really is a separate trip, say why">
+              <input className="field" value={dupReason} onChange={(e) => setDupReason(e.target.value)} placeholder="Same PNR reused by the airline for a different journey" />
+            </Field>
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Who pays (the customer on the MAX ID)" hint="Matched on its own: the payer doesn't have to travel.">
-            <CustomerPicker value={payer} onChange={(o) => { setPayer(o ? { id: o.id, label: o.label } : null); setPayerMobile(o?.raw.mobile ?? ""); }} />
+            {newPayer !== null ? (
+              <CustomerInline initialName={newPayer} onCancel={() => setNewPayer(null)}
+                onCreated={(c) => { setPayer({ id: c.id, label: c.full_name }); setPayerMobile(c.mobile); setNewPayer(null); }} />
+            ) : (
+              <CustomerPicker value={payer} onChange={(o) => { setPayer(o ? { id: o.id, label: o.label } : null); setPayerMobile(o?.raw.mobile ?? ""); }}
+                footer={(q, close) => (
+                  <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm link" onClick={() => { setNewPayer(q); close(); }}>
+                    + New customer{q ? ` “${q}”` : ""}
+                  </button>
+                )} />
+            )}
           </Field>
           <Field label="MAX ID">
             <div className="flex gap-3 text-sm">
@@ -448,6 +473,12 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
               <label className="flex items-center gap-1.5"><input type="radio" checked={lineStatus === "confirmed"} onChange={() => setLineStatus("confirmed")} />Confirmed (ticket issued)</label>
               <label className="flex items-center gap-1.5"><input type="radio" checked={lineStatus === "pending"} onChange={() => setLineStatus("pending")} />Pending (itinerary only, not ticketed)</label>
             </div>
+            {lineStatus === "confirmed" && !hasTicketNo && (
+              <label className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[13px] text-amber-900">
+                <input type="checkbox" className="mt-0.5" checked={noTicketAck} onChange={(e) => setNoTicketAck(e.target.checked)} />
+                The document shows no ticket number, but the ticket is issued (the airline uses the booking reference)
+              </label>
+            )}
           </Field>
         </div>
         {bookedBy === "customer" && (
@@ -560,6 +591,14 @@ function Comparison({ lineId, draft, compared, setCompared, reissue }: { lineId:
             <td className="font-mono text-xs">{newTickets.map((t) => <div key={t}>{t}</div>)}</td></tr>
         </tbody>
       </table>
+      {reissue && (() => {
+        const key = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const old = new Set(oldT.map((t) => key(t.number ?? "")));
+        const fresh = draft.passengers.flatMap((p) => p.tickets.map((t) => t.number.value)).filter((n) => n.trim() && !old.has(key(n)));
+        return fresh.length ? null : (
+          <p role="alert" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-800">No new ticket number on this document, so it isn&apos;t evidence of a reissue. Choose Update if the tickets are unchanged.</p>
+        );
+      })()}
       <p className="text-xs text-muted">{reissue ? "The old tickets and flights are kept in the booking's history. No new sale is created; prices stay as they are." : "Changed flights are kept in history. Prices stay as they are."}</p>
       <label className="flex items-center gap-2"><input type="checkbox" checked={compared} onChange={(e) => setCompared(e.target.checked)} />I compared every highlighted difference with the original</label>
     </div>

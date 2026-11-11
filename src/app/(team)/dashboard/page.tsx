@@ -125,7 +125,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </div>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi label="Sales" value={inr(m.sales)} icon={IndianRupee} tone="blue" delta={mp ? pct(m.sales, mp.sales) : null} sub="vs previous" spark={tr.map((x) => x.sales)} />
-            <Kpi label="Profit" value={<span className={m.profit < 0 ? "text-red-600" : ""}>{inr(m.profit)}</span>} icon={TrendingUp} tone="green"
+            <Kpi label="Profit (incl. commission)" value={<span className={m.profit < 0 ? "text-red-600" : ""}>{inr(m.profit)}</span>} icon={TrendingUp} tone="green"
               delta={mp ? pct(m.profit, mp.profit) : null} sub={m.sales ? `${Math.round((m.profit / m.sales) * 1000) / 10}% margin` : "vs previous"} spark={tr.map((x) => x.profit)} />
             <Kpi label="Due from clients" value={inr(m.due_from_clients)} icon={Wallet} tone="amber" sub="All open balances" />
             <Kpi label="Supplier cost" value={inr(m.cost)} icon={Layers} tone="violet" delta={mp ? pct(m.cost, mp.cost) : null} deltaGood="down" sub="vs previous" />
