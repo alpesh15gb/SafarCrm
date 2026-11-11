@@ -5,7 +5,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(51);
+select plan(52);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -107,6 +107,18 @@ insert into r select 'b_sees_cases', count(*)::text from public.cases where id i
 reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 select is((select v from r where k = 'b_link'), '42501', 'staff cannot link a task to a case they may not open');
 select is((select v from r where k = 'b_sees_cases'), '0', 'and cannot see those cases at all');
+
+-- staff upload: insert an import and read it back in the same statement (what /api/imports does)
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+do $$ declare nid uuid; begin
+  insert into public.ticket_imports (channel, storage_path, file_name, mime, size, sha256, uploaded_by)
+  values ('staff', 'imports/test-upload.pdf', 'upload.pdf', 'application/pdf', 10, repeat('b', 64), '00000000-0000-0000-0000-0000000000a1')
+  returning id into nid;
+  insert into r values ('staff_upload', case when nid is null then 'no id' else 'ok' end);
+exception when others then insert into r values ('staff_upload', sqlerrm); end $$;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
+select is((select v from r where k = 'staff_upload'), 'ok', 'staff can create an import and read it back (insert ... returning)');
 
 -- ================================================================== E: ticket import confirm (multi-passenger return)
 insert into public.ticket_imports (id, status, channel, storage_path, file_name, mime, size, sha256, customer_id, uploaded_by, draft, draft_version) values
