@@ -49,7 +49,7 @@ insert into r select 'hist_parent', public.customer_case_history('00000000-0000-
 update public.cases set customer_id = '00000000-0000-0000-0000-00000000c005' where id = '00000000-0000-0000-0000-0000000ca5e2';
 insert into r select 'trav_after_payer', string_agg(customer_id::text, ',') from public.case_travellers where case_id = '00000000-0000-0000-0000-0000000ca5e2';
 update public.cases set customer_id = '00000000-0000-0000-0000-00000000c003' where id = '00000000-0000-0000-0000-0000000ca5e2';
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 
 select is((select v from r where k = 'hist_company'), 'payer', 'a non-travelling company payer sees the case as payer');
 select is((select v from r where k = 'hist_employee'), 'traveller', 'the travelling employee sees it as traveller');
@@ -79,7 +79,7 @@ do $$ begin
   insert into r values ('relink_direct', 'ok');
 exception when others then insert into r values ('relink_direct', sqlerrm); end $$;
 insert into r select 'relink_reason', public.link_task_to_case('00000000-0000-0000-0000-00000000f002', '00000000-0000-0000-0000-0000000ca5e2', 'wrong trip') ->> 'max_id';
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 
 select is((select v from r where k = 'conv2'), (select v from r where k = 'conv1'), 'repeating a conversion returns the same case');
 select is((select v from r where k = 'conv2_existing'), 'true', 'and says it already existed');
@@ -104,7 +104,7 @@ do $$ begin
   insert into r values ('b_link', 'ok');
 exception when others then insert into r values ('b_link', sqlstate); end $$;
 insert into r select 'b_sees_cases', count(*)::text from public.cases where id in ('00000000-0000-0000-0000-0000000ca5e1', '00000000-0000-0000-0000-0000000ca5e2');
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 select is((select v from r where k = 'b_link'), '42501', 'staff cannot link a task to a case they may not open');
 select is((select v from r where k = 'b_sees_cases'), '0', 'and cannot see those cases at all');
 
@@ -156,7 +156,7 @@ do $$ begin
   insert into public.share_links (file_id) select id from public.files where import_id = '00000000-0000-0000-0000-0000000001a1';
   insert into r values ('staff_share', 'ok');
 exception when others then insert into r values ('staff_share', sqlerrm); end $$;
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 
 select ok((select v from r where k = 'partial') like '%import_incomplete%', 'a failing confirmation reports what is missing');
 select is((select count(*)::text from public.cases), ((select v::int from r where k = 'cases_before_import') + 1)::text, 'the failed attempt left no case behind (only the good one exists)');
@@ -198,7 +198,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000d5","r
 insert into r select 'other_trip', coalesce(public.portal_trip((select ((v::jsonb) ->> 'case_id')::uuid from r where k = 'confirm1'))::text, 'null');
 insert into r select 'other_source', count(*)::text from public.import_source_access('00000000-0000-0000-0000-0000000001a1');
 insert into r select 'other_customers', count(*)::text from public.customers;
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 select is((select v from r where k = 'own_trip_files'), '0', 'the traveller''s trip view does not show the unpublished ticket file');
 select is((select v from r where k = 'own_file_access'), '0', 'and the traveller cannot download it before it is published');
 select is((select v from r where k = 'own_imports_table'), '0', 'portal users cannot read import records directly');
@@ -222,7 +222,7 @@ do $$ begin
 exception when others then insert into r values ('complete_direct', sqlerrm); end $$;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
 insert into r select 'complete_boss', public.complete_case('00000000-0000-0000-0000-0000000ca5e2', 'Client confirmed by phone') ->> 'overridden';
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 select is((select v from r where k = 'complete_noreason'), 'false', 'a blocking task stops completion and lists what is open');
 select ok((select v from r where k = 'complete_staff_override') like '%override_not_permitted%', 'staff cannot override required work');
 select ok((select v from r where k = 'complete_direct') like '%case_completion_direct%', 'a direct status update cannot skip the checks');
@@ -256,7 +256,7 @@ do $$ begin
           '{"trip_type":"one-way","sectors":[{"from":"DEL","to":"BOM","date":"2026-12-05","dep":"07:00","arr":"09:10"}],"tickets":[{"customer_id":"00000000-0000-0000-0000-00000000c002","passenger":"Emp Loyee","number":"098-1111111111"}]}');
   insert into r values ('manual_line', 'ok');
 exception when others then insert into r values ('manual_line', sqlerrm); end $$;
-reset role;
+reset role; reset request.jwt.claims;   -- back to the owner, with no user identity left over
 select is((select v from r where k = 'manual_line'), 'ok', 'staff can still add a manual flight booking (legacy sector without arrival date)');
 select is((select details -> 'tickets' -> 0 ->> 'name_as_issued' from public.booking_lines where details ->> 'trip_type' = 'one-way' and case_id = '00000000-0000-0000-0000-0000000ca5e1'),
   'Emp Loyee', 'a manually entered ticket records the issued name');
