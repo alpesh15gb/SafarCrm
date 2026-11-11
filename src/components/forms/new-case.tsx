@@ -24,6 +24,7 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [lead, setLead] = useState("");
+  const [want, setWant] = useState("");
   const [assigned, setAssigned] = useState(me.id);
   const [family, setFamily] = useState<{ last_name: string | null; corporate: boolean; members: { id: string; full_name: string; relation?: string | null; designation?: string | null }[] }>({ last_name: null, corporate: false, members: [] });
   const [travellers, setTravellers] = useState<string[]>([]);
@@ -45,7 +46,7 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   }, [customer, dest, from, family, titleTouched]);
 
   const submit = () =>
-    run(() => createCase({ customer_id: customer?.id ?? "", title, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers }, requestKey), {
+    run(() => createCase({ customer_id: customer?.id ?? "", title, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want }, requestKey), {
       then: (r) => onDone(r.data as { id: string; max_id: string }),
     });
 
@@ -86,6 +87,9 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
       )}
       <Field label="Title" required hint="Suggested from the customer and destination; change it if you like.">
         <input className="field" value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} />
+      </Field>
+      <Field label="What does the client want?" hint="Dates, number of people, budget, hotel type: whatever they said. Saved in the case notes.">
+        <textarea className="field min-h-16" value={want} onChange={(e) => setWant(e.target.value)} placeholder="4 adults, Goa 20 to 24 Dec, beach hotel, budget about 80,000" />
       </Field>
       <More title="More details (dates, destination, staff)" defaultOpen={!compact}>
         <div className="grid gap-3 sm:grid-cols-2">

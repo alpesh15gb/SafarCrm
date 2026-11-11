@@ -8,8 +8,10 @@ import { phoneError } from "@/lib/format";
 /** Minimal "name + mobile" customer creation with duplicate warning. */
 export function CustomerInline({ initialName = "", onCreated, onCancel }: { initialName?: string; onCreated: (c: { id: string; full_name: string; mobile: string }) => void; onCancel?: () => void }) {
   const toast = useToast();
-  const [name, setName] = useState(initialName);
-  const [mobile, setMobile] = useState("");
+  // a search that was a phone number becomes the mobile, not the name
+  const typedPhone = /^[+\d\s()-]{6,}$/.test(initialName.trim());
+  const [name, setName] = useState(typedPhone ? "" : initialName);
+  const [mobile, setMobile] = useState(typedPhone ? initialName.trim() : "");
   const [dups, setDups] = useState<{ id: string; full_name: string; code: string; matched: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [checkPhone, setCheckPhone] = useState(false);

@@ -461,7 +461,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             </div>
           )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="Client payment due date"><input className="field" type="date" value={m.payment_due_date} onChange={(e) => setM({ ...m, payment_due_date: e.target.value })} /></Field>
+            <Field label="Client payment due date" hint="Left empty, it is set to a week before the service (or today) so the payment reminder runs."><input className="field" type="date" value={m.payment_due_date} onChange={(e) => setM({ ...m, payment_due_date: e.target.value })} /></Field>
             {line && <Field label="Supplier payment due" hint="Set from the supplier's credit days"><input className="field" type="date" value={m.supplier_due_date} onChange={(e) => setM({ ...m, supplier_due_date: e.target.value })} /></Field>}
           </div>
         </div>

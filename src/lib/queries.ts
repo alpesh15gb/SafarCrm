@@ -58,6 +58,15 @@ export async function listCases(sp: SP, all = false) {
     workIds = ((data ?? []) as unknown as string[]).map(String);
     if (!workIds.length) workIds = ["00000000-0000-0000-0000-000000000000"];
   }
+  // the search also finds cases by the customer's name or mobile (looked up first; the case query then matches their ids)
+  const term = (sp.q ?? "").replace(/[,()%]/g, "").trim();
+  let custIds: string[] = [];
+  if (term.length >= 2) {
+    const phone = term.replace(/\D/g, "");
+    const { data } = await sb.from("customers").select("id")
+      .or(phone.length >= 4 ? `full_name.ilike.%${term}%,mobile.ilike.%${phone}%` : `full_name.ilike.%${term}%`).limit(40);
+    custIds = (data ?? []).map((c) => c.id as string);
+  }
   const make = () => {
   let q = sb.from("cases").select(sel, { count: "exact" });
   if (workIds) q = q.in("id", workIds);
@@ -73,9 +82,11 @@ export async function listCases(sp: SP, all = false) {
     q = q.gte("created_at", r.from + "T00:00:00+05:30").lte("created_at", r.to + "T23:59:59+05:30");
   }
   if (sp.q) {
-    const t = sp.q.replace(/[,()%]/g, "").trim();
-    const digits = t.replace(/\D/g, "");
-    q = q.or(`title.ilike.%${t}%,max_id.ilike.%${digits || t}%,destination.ilike.%${t}%`);
+    const t = term;
+    // "1012" or "MAX-1012" is a MAX ID; anything else is matched as typed
+    const idLike = /^(max)?[\s-]?\d+$/i.test(t) ? t.replace(/\D/g, "") : t;
+    q = q.or([`title.ilike.%${t}%`, `max_id.ilike.%${idLike}%`, `destination.ilike.%${t}%`,
+      ...(custIds.length ? [`customer_id.in.(${custIds.join(",")})`] : [])].join(","));
   }
   q = sp.date === "upcoming" ? q.order("travel_start", { ascending: true }) : q.order("created_at", { ascending: false });
   return q.order("id");

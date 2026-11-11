@@ -4,6 +4,17 @@ import { fail, type ActionResult } from "@/lib/auth";
 import { lineProblem } from "@/lib/validate";
 import { moneyProblem, parseMoney, strictAmount } from "@/lib/money";
 import type { Service } from "@/lib/constants";
+import { todayIST } from "@/lib/format";
+
+/** When no client payment date is given: a week before the service, never earlier than today (3 days from now if the service has no date).
+ *  Without a due date the "collect payment" reminder would never run. */
+function defaultClientDue(serviceDate: string | null): string {
+  if (!serviceDate) return todayIST(3);
+  const d = new Date(`${serviceDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 7);
+  const weekBefore = d.toISOString().slice(0, 10);
+  return weekBefore < todayIST() ? todayIST() : weekBefore;
+}
 
 type Amount = number | string | null | undefined;
 
@@ -65,14 +76,24 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
     if (input.supplier_due_date !== undefined) row.supplier_due_date = input.supplier_due_date || null;
     if (input.visible_to_client !== undefined && !input.id) row.visible_to_client = input.visible_to_client;
     if (row.status === undefined) delete row.status;
+    // a priced booking with no client due date gets one, so the collection reminder can run
+    const needsDue = !input.payment_due_date && input.status !== "cancelled" && Number(row.selling_price ?? 0) > 0;
+    const fillDue = async (id: string, serviceDate: string | null) => {
+      if (!needsDue) return "";
+      const due = defaultClientDue(serviceDate);
+      const { error } = await sb.from("booking_lines").update({ payment_due_date: due }).eq("id", id);
+      return error ? "" : `. Client payment due set to ${due.split("-").reverse().join("-")}`;
+    };
     if (input.id) {
-      const { error } = await sb.from("booking_lines").update(row).eq("id", input.id);
+      const { data, error } = await sb.from("booking_lines").update(row).eq("id", input.id).select("id, service_date").maybeSingle();
       if (error) throw error;
-      return { ok: true, data: { id: input.id }, message: "Booking saved" };
+      const note = data ? await fillDue(input.id, data.service_date as string | null) : "";
+      return { ok: true, data: { id: input.id }, message: `Booking saved${note}` };
     }
-    const { data, error } = await sb.from("booking_lines").insert(row).select("id").single();
+    const { data, error } = await sb.from("booking_lines").insert(row).select("id, service_date").single();
     if (error) throw error;
-    return { ok: true, data, message: "Booking added" };
+    const note = await fillDue(data.id, data.service_date as string | null);
+    return { ok: true, data: { id: data.id }, message: `Booking added${note}` };
   } catch (e) {
     return fail(e);
   }

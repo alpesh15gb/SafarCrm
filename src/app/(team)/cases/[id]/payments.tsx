@@ -162,7 +162,8 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
       </div>
 
       <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} received={Number(money?.received ?? 0)} status={status} />
-      <SupplierPaymentDialog sup={supPay} onClose={() => setSupPay(null)} caseId={caseId} />
+      {/* keyed on the supplier, so the amount and reference typed for one supplier are never offered for the next */}
+      <SupplierPaymentDialog key={supPay?.supplier_id ?? "none"} sup={supPay} onClose={() => setSupPay(null)} caseId={caseId} />
       <Confirm open={!!del} onClose={() => setDel(null)} title={del?.kind === "payment" ? "Delete this payment?" : "Delete this expense?"} pending={pending} confirmLabel="Delete"
         text={`${del?.text ?? ""}. This changes what the client owes${del?.kind === "expense" ? " and the profit" : ""}. It can't be undone.`}
         onConfirm={() => del && run(() => (del.kind === "payment" ? deletePayment(del.id) : deleteExpense(del.id)), { then: () => setDel(null) })} />
@@ -188,6 +189,9 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Amount (₹)" required hint={due > 0 ? `Balance due ${inr(due)}` : undefined}>
           <input className="field tabular" autoFocus inputMode="decimal" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} />
+          {due > 0 && !isRefund && amt !== due && (
+            <button type="button" className="mt-1 text-xs link" onClick={() => setV({ ...v, amount: String(due) })}>Full balance {inr(due)}</button>
+          )}
         </Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
         <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
@@ -196,7 +200,7 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
         <Field label="Notes"><input className="field" value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
         {["enquiry", "quoted"].includes(status) && !isRefund && (
           <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900 sm:col-span-2">
-            This case is still {status === "enquiry" ? "an Enquiry" : "Quoted"}. If the client is paying, they have agreed: change the case status to <b>Confirmed</b> at the top of the page.
+            This case is still {status === "enquiry" ? "an Enquiry" : "Quoted"}. Saving this payment moves it to <b>Confirmed</b> (unless that is switched off in Settings → Reminders).
           </p>
         )}
         <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={isRefund} disabled={amt < 0} onChange={(e) => setV({ ...v, refund: e.target.checked })} />This is a refund paid back to the client</label>
@@ -224,7 +228,7 @@ function SupplierPaymentDialog({ sup, onClose, caseId }: { sup: SupMoney | null;
   return (
     <Dialog open={!!sup} onClose={onClose} title={`Pay ${sup.supplier_name}`}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending}
-        onClick={() => { run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: amt }] }), { then: onClose }); }}>Save payment</Button></>}>
+        onClick={() => { run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: amt }] }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } }); }}>Save payment</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Amount (₹)" hint={`Due on this case ${inr(due)}`}><input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>

@@ -17,8 +17,10 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const sb = await createClient();
   const board = sp.view === "board";
+  // the list opens on open cases; "All" shows everything, and a search looks through every case
+  const listSp: SP = { ...sp, status: sp.status === "all" ? undefined : sp.status ?? (sp.q ? undefined : "open") };
   const [{ rows, count, page }, { data: staff }] = await Promise.all([
-    board ? boardCases(sp) : listCases(sp),
+    board ? boardCases(sp) : listCases(listSp),
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
   ]);
   // work summary per case: owner, next action, overdue tasks, pending imports and the main blocker (separate from the booking stage)
@@ -50,8 +52,8 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         }
       />
       <div className="mb-4 space-y-2.5">
-        <SearchBox placeholder="Filter by MAX ID, title or destination" />
-        {!board && <Chips param="status" current={sp.status} base={sp} items={[{ value: "open", label: "Open" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
+        <SearchBox placeholder="Search MAX ID, title, destination, customer name or mobile" />
+        {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
         <Chips param="work" current={sp.work} base={sp} allLabel="Any next step" items={[
           { value: "no_next", label: "No next step" }, { value: "overdue", label: "Next step overdue" },
           { value: "this_week", label: "Next step this week" }, { value: "waiting", label: "Waiting" },
@@ -63,7 +65,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
             { value: "this_month", label: "Created this month" }, { value: "last_month", label: "Created last month" },
           ]} />
           {(me.role === "boss" || me.can_see_all_cases) && (
-            <Chips param="staff" current={sp.staff} base={sp} allLabel="All staff" items={(staff ?? []).map((s) => ({ value: s.id, label: s.full_name }))} />
+            <Chips param="staff" current={sp.staff} base={sp} allLabel="All staff" items={[{ value: me.id, label: "Mine" }, ...(staff ?? []).filter((s) => s.id !== me.id).map((s) => ({ value: s.id, label: s.full_name }))]} />
           )}
         </div>
       </div>
