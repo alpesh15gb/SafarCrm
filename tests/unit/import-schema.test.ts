@@ -89,3 +89,20 @@ test("passenger types written as words become codes", () => {
   const p: ProviderOutput = { ...returnTrip, passengers: [{ ...returnTrip.passengers[0], pax_type: "adult" }, { ...returnTrip.passengers[1], pax_type: "Child" }] };
   assert.deepEqual(toDraft(p).passengers.map((x) => x.pax_type.value), ["ADT", "CHD"]);
 });
+
+// Patterns seen on a low-cost domestic ticket (synthetic values): hyphenated flight number, PNR read as a ticket, leading title.
+test("a hyphenated flight number like 6E-1234 is normal", () => {
+  const p: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "DEL", "HYD", "2026-11-10", "2026-11-10", "6E-1234"), airline: "IndiGo" }] };
+  const d = toDraft(p);
+  assert.equal(d.segments[0].flight_no.value, "6E 1234");
+  assert.ok(!reviewIssues(d).some((i) => i.path === "segments.0.flight_no"));
+});
+
+test("a PNR read as a ticket number blocks confirmation", () => {
+  const p: ProviderOutput = { ...returnTrip, passengers: [{ ...returnTrip.passengers[0], tickets: [{ number: "TST1230", segment_refs: [], page: 1 }] }] };
+  assert.ok(blockingIssues(toDraft(p)).some((i) => /not a ticket number/.test(i.text)));
+});
+
+test("a leading title is not taken as the first name", () => {
+  assert.deepEqual(splitIssuedName("Mr ASHA TESTER"), { first: "Asha", last: "Tester", title: "Mr" });
+});

@@ -135,6 +135,15 @@ export const normTicketNo = (s: string) => {
 
 /** "adult" / "Child" / "infant" → ADT / CHD / INF; codes and anything else are kept as written (upper-cased). */
 const PAX: Record<string, string> = { ADULT: "ADT", ADT: "ADT", CHILD: "CHD", CHD: "CHD", CNN: "CHD", INFANT: "INF", INF: "INF" };
+/** "6E-1234", "6e1234", "6E 1234" → "6E 1234"; "TA" + "101" printed apart → "TA 101". Anything else is kept as written. */
+export function normFlightNo(no: string, airline = ""): string {
+  const n = clip(no, 12).toUpperCase().replace(/[\s-]+/g, " ").trim();
+  const joined = /^([A-Z0-9]{2})\s?(\d{1,4}[A-Z]?)$/.exec(n);
+  if (joined) return `${joined[1]} ${joined[2]}`;
+  if (/^\d{1,4}[A-Z]?$/.test(n) && /^[A-Z0-9]{2}$/i.test(clip(airline, 3))) return `${clip(airline, 2).toUpperCase()} ${n}`;
+  return n;
+}
+
 const paxCode = (s: string) => { const t = clip(s, 10).toUpperCase(); return PAX[t] ?? t; };
 
 export function toDraft(p: ProviderOutput): Draft {
@@ -149,7 +158,7 @@ export function toDraft(p: ProviderOutput): Draft {
       arr_date: dateField(s.arr_date, s.page), arr_time: timeField(s.arr_time, s.page),
       // "TA" + "101" printed apart is one flight number; nothing else is joined or guessed
       airline: f(s.airline, s.page),
-      flight_no: f(/^\d{1,4}[A-Z]?$/i.test(clip(s.flight_no, 10)) && /^[A-Z0-9]{2}$/i.test(clip(s.airline, 3)) ? `${clip(s.airline, 2).toUpperCase()} ${clip(s.flight_no, 10).toUpperCase()}` : clip(s.flight_no, 10).toUpperCase(), s.page),
+      flight_no: f(normFlightNo(s.flight_no, s.airline), s.page),
       cabin: f(s.cabin, s.page), baggage: f(s.baggage, s.page), fare_basis: f(s.fare_basis, s.page),
     };
   });
@@ -203,7 +212,7 @@ export function emptyDraft(): Draft {
 export type ReviewIssue = { path: string; tone: "red" | "amber"; text: string; blocking: boolean };
 
 const IATA = /^[A-Z]{3}$/;
-const FLIGHT = /^([A-Z0-9]{2})\s?(\d{1,4}[A-Z]?)$/;
+const FLIGHT = /^([A-Z0-9]{2})[\s-]?(\d{1,4}[A-Z]?)$/;
 
 /** Everything a reviewer should look at. `blocking` items stop confirmation; the rest are warnings to check. */
 export function reviewIssues(d: Draft): ReviewIssue[] {
@@ -246,7 +255,9 @@ export function reviewIssues(d: Draft): ReviewIssue[] {
       const n = t.number.value.trim();
       if (!n) return;
       const digits = n.replace(/\D/g, "");
-      if (digits.length !== 13) add(`${p}.tickets.${j}`, "amber", `${at}: ticket number ${n} is not 13 digits.`, false);
+      // ticket numbers are digits (3-digit airline code + 10); letters mean the PNR or a reference was read as a ticket
+      if (/[A-Za-z]/.test(n)) add(`${p}.tickets.${j}`, "red", `${at}: “${n}” is not a ticket number (ticket numbers are digits; this looks like the PNR or a reference). Remove it if the ticket shows no ticket number.`);
+      else if (digits.length !== 13) add(`${p}.tickets.${j}`, "amber", `${at}: ticket number ${n} is not 13 digits.`, false);
       if (seen.has(digits)) add(`${p}.tickets.${j}`, "red", `${at}: ticket number ${n} is also on ${seen.get(digits)}. One ticket belongs to one passenger.`);
       else seen.set(digits, at.toLowerCase());
       for (const sk of t.segments) if (!keys.has(sk)) add(`${p}.tickets.${j}`, "amber", `${at}: ticket ${n} points at a flight that isn't listed.`, false);
@@ -276,9 +287,11 @@ export function tripType(d: Draft): "one-way" | "return" | "multi-city" {
 export function splitIssuedName(name: string): { first: string; last: string; title: string } {
   const cap = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
   const t = name.trim().replace(/\s+/g, " ");
-  const titles = /\s(MR|MRS|MS|MISS|MSTR|DR|CHD|INF)$/i;
-  const title = titles.exec(t)?.[1] ?? "";
-  const core = t.replace(titles, "");
+  // titles come last on airline-style names (SHARMA/RAHUL MR) and first on others (Mr Rahul Sharma)
+  const titles = /\s(MR|MRS|MS|MISS|MSTR|DR|CHD|INF)\.?$/i;
+  const lead = /^(MR|MRS|MS|MISS|MSTR|MASTER|DR)\.?\s+/i;
+  const title = titles.exec(t)?.[1] ?? lead.exec(t)?.[1] ?? "";
+  const core = t.replace(titles, "").replace(lead, "");
   if (core.includes("/")) {
     const [last, first] = core.split("/");
     return { last: cap(last.trim()), first: cap((first ?? "").trim()), title: cap(title) };

@@ -86,7 +86,7 @@ export async function personCandidates(issuedName: string) {
   await team();
   const sb = await createClient();
   const letters = (s: string) => s.toUpperCase().replace(/[^A-Z/ ]/g, " ").replace(/\s+/g, " ").trim();
-  const n = letters(issuedName).replace(/\s(MR|MRS|MS|MISS|MSTR|DR|CHD|INF)$/, "");
+  const n = letters(issuedName).replace(/\s(MR|MRS|MS|MISS|MSTR|DR|CHD|INF)$/, "").replace(/^(MR|MRS|MS|MISS|MSTR|MASTER|DR) /, "");
   const [last, first] = n.includes("/") ? n.split("/").map((x) => x.trim()) : [n.split(" ").at(-1) ?? "", n.split(" ")[0] ?? ""];
   const term = (last || first).replace(/[,()%]/g, "");
   if (term.length < 2) return [];
