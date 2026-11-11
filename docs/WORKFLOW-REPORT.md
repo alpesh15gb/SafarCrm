@@ -51,11 +51,11 @@ The code was reviewed by reading it. Expect some type and SQL errors on the firs
 - The dashboard shows departures by flight leg and the tickets waiting for review.
 
 ## Extraction provider setup
-1. Set on the server: `EXTRACTION_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=...`, optionally `EXTRACTION_MODEL` (default `claude-opus-5-5`).
+1. OmniRoute (the agency gateway): `EXTRACTION_PROVIDER=omniroute`, `EXTRACTION_BASE_URL=http://82.112.236.81:8088/v1` (or `http://127.0.0.1:8088/v1` if the CRM runs on the same machine), `EXTRACTION_API_KEY=...` (the gateway answers 401 without one), and `EXTRACTION_MODEL=<a vision-capable model id on the gateway>`. Direct Anthropic stays available: `EXTRACTION_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`.
 2. Set `IMPORT_WORKER_SECRET` (16+ characters) and run `npm run import-worker` next to the app (needs a service in `deploy/docker-compose.yml`; not added).
 3. Without a key, every import shows the setup message and goes to manual entry. Nothing is faked.
 4. The adapter calls the Messages API with `fetch`, not `@anthropic-ai/sdk`, because the lockfile couldn't be regenerated here.
-5. Tickets contain personal data and are sent to Anthropic for extraction. Check this against your data policy before enabling it.
+5. Tickets contain personal data and are sent to the gateway and from there to whichever model it routes to. `http://` over the internet is unencrypted, so tickets and the key can be read in transit; use the local address or HTTPS. Check the routed provider against your data policy.
 
 ## Tests written (not run)
 - `npm run test:unit` (Node 22.6+): money parsing and rounding, the four arrival-date scenarios, and the extraction structure for return and multi-city trips with flags.
