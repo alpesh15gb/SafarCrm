@@ -76,3 +76,11 @@ test("issued names split only for pre-filling a new person", () => {
   assert.deepEqual(splitIssuedName("TESTER/ASHA MRS"), { last: "Tester", first: "Asha", title: "Mrs" });
   assert.deepEqual(splitIssuedName("Ravi Tester"), { first: "Ravi", last: "Tester", title: "" });
 });
+
+test("a flight number printed apart from its airline code is joined (seen on the gateway test)", () => {
+  const p: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "BOM", "DXB", "2026-12-20", "2026-12-21", "101"), airline: "TA" }] };
+  assert.equal(toDraft(p).segments[0].flight_no.value, "TA 101");
+  // a full airline name is left alone
+  const q: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "BOM", "DXB", "2026-12-20", "2026-12-21", "101"), airline: "Test Air" }] };
+  assert.equal(toDraft(q).segments[0].flight_no.value, "101");
+});

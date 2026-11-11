@@ -143,7 +143,9 @@ export function toDraft(p: ProviderOutput): Draft {
       from: f(clip(s.from, 3).toUpperCase(), s.page, s.evidence), to: f(clip(s.to, 3).toUpperCase(), s.page),
       dep_date: dateField(s.dep_date, s.page), dep_time: timeField(s.dep_time, s.page),
       arr_date: dateField(s.arr_date, s.page), arr_time: timeField(s.arr_time, s.page),
-      airline: f(s.airline, s.page), flight_no: f(clip(s.flight_no, 10).toUpperCase(), s.page),
+      // "TA" + "101" printed apart is one flight number; nothing else is joined or guessed
+      airline: f(s.airline, s.page),
+      flight_no: f(/^\d{1,4}[A-Z]?$/i.test(clip(s.flight_no, 10)) && /^[A-Z0-9]{2}$/i.test(clip(s.airline, 3)) ? `${clip(s.airline, 2).toUpperCase()} ${clip(s.flight_no, 10).toUpperCase()}` : clip(s.flight_no, 10).toUpperCase(), s.page),
       cabin: f(s.cabin, s.page), baggage: f(s.baggage, s.page), fare_basis: f(s.fare_basis, s.page),
     };
   });

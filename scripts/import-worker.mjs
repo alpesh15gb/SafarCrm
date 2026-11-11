@@ -12,7 +12,7 @@ const every = Number(process.env.IMPORT_WORKER_INTERVAL_MS || 30000);
 
 async function tick() {
   try {
-    const r = await fetch(url, { method: "POST", headers: { "x-worker-secret": secret }, signal: AbortSignal.timeout(290_000) });
+    const r = await fetch(url, { method: "POST", headers: { "x-worker-secret": secret }, signal: AbortSignal.timeout(600_000) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) console.error(new Date().toISOString(), "worker", r.status);
     else if (j.claimed) console.log(new Date().toISOString(), `claimed ${j.claimed}: ${j.reviewed} to review, ${j.retried} retrying, ${j.failed} failed`);

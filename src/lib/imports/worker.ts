@@ -15,7 +15,7 @@ export async function runImportWorker(opts: { limit?: number } = {}): Promise<Wo
   const worker = `web-${process.pid}-${randomUUID().slice(0, 8)}`;
   const provider = getProvider();
   const out: WorkerRun = { claimed: 0, reviewed: 0, retried: 0, failed: 0 };
-  const { data: jobs, error } = await admin.rpc("claim_ticket_imports", { p_worker: worker, p_limit: opts.limit ?? 2, p_lease_seconds: 240 });
+  const { data: jobs, error } = await admin.rpc("claim_ticket_imports", { p_worker: worker, p_limit: opts.limit ?? 2, p_lease_seconds: 600 });   // a job may make two provider calls of up to 4 minutes each
   if (error) throw new Error(`claim failed: ${error.code ?? ""}`);
   for (const job of (jobs ?? []) as { id: string; storage_path: string; mime: string }[]) {
     out.claimed++;

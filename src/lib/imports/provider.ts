@@ -28,6 +28,7 @@ const SYSTEM = [
   "Copy values exactly as printed. Passenger names: keep the issued form (e.g. SHARMA/RAHUL MR). Ticket numbers, PNRs and references: copy as text, keeping leading zeros.",
   "Dates: write YYYY-MM-DD only when the year is certain from the document; otherwise leave the field empty and add an entry to `uncertain`. Times: HH:MM, local to the airport, as printed.",
   "Arrival date: copy it when the document shows it (including +1/+2 day markers resolved to a date). Never work it out from the times.",
+  "flight_no includes the airline designator as printed, e.g. AI 983 or 6E 2041 (not just the digits).",
   "Airline PNR (airline booking reference) goes in airline_pnrs; GDS, agency, supplier or order references go in supplier_refs with their label as kind.",
   "One segment per flight leg, in travel order, numbered by `ref` from 1. A ticket's segment_refs lists the legs it covers (empty when the document does not say).",
   "Amounts: copy each printed amount with its label, currency and whether it is for the whole document or one passenger. Do not add up, split or convert anything.",
@@ -66,7 +67,7 @@ class AnthropicProvider implements ExtractionProvider {
 
   private async call(content: unknown[], mode: "text" | "document"): Promise<ProviderResult> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 150_000);
+    const timer = setTimeout(() => ctl.abort(), 240_000);   // gateway models can take ~2 minutes on a ticket
     let res: Response;
     try {
       res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -138,7 +139,7 @@ class OpenAICompatibleProvider implements ExtractionProvider {
 
   private async call(content: unknown[], mode: "text" | "document", jsonMode: "schema" | "object" = "schema"): Promise<ProviderResult> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 150_000);
+    const timer = setTimeout(() => ctl.abort(), 240_000);   // gateway models can take ~2 minutes on a ticket
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/chat/completions`, {
