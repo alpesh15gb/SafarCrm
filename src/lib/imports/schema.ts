@@ -158,9 +158,10 @@ const PAX: Record<string, string> = { ADULT: "ADT", ADT: "ADT", CHILD: "CHD", CH
 /** "6E-1234", "6e1234", "6E 1234" → "6E 1234"; "TA" + "101" printed apart → "TA 101". Anything else is kept as written. */
 export function normFlightNo(no: string, airline = ""): string {
   const n = clip(no, 12).toUpperCase().replace(/[\s-]+/g, " ").trim();
-  const joined = /^([A-Z0-9]{2})\s?(\d{1,4}[A-Z]?)$/.exec(n);
+  // an airline designator always has a letter (AI, 6E, G8), so "101" is a bare number, not "10 1"
+  const joined = /^([A-Z][A-Z0-9]|\d[A-Z])\s?(\d{1,4}[A-Z]?)$/.exec(n);
   if (joined) return `${joined[1]} ${joined[2]}`;
-  if (/^\d{1,4}[A-Z]?$/.test(n) && /^[A-Z0-9]{2}$/i.test(clip(airline, 3))) return `${clip(airline, 2).toUpperCase()} ${n}`;
+  if (/^\d{1,4}[A-Z]?$/.test(n) && /^([A-Z][A-Z0-9]|\d[A-Z])$/i.test(clip(airline, 3))) return `${clip(airline, 2).toUpperCase()} ${n}`;
   return n;
 }
 
@@ -233,7 +234,7 @@ export function emptyDraft(): Draft {
 export type ReviewIssue = { path: string; tone: "red" | "amber"; text: string; blocking: boolean };
 
 const IATA = /^[A-Z]{3}$/;
-const FLIGHT = /^([A-Z0-9]{2})[\s-]?(\d{1,4}[A-Z]?)$/;
+const FLIGHT = /^([A-Z][A-Z0-9]|\d[A-Z])[\s-]?(\d{1,4}[A-Z]?)$/;
 
 /** Everything a reviewer should look at. `blocking` items stop confirmation; the rest are warnings to check. */
 export function reviewIssues(d: Draft): ReviewIssue[] {
