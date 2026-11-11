@@ -1,5 +1,6 @@
 -- Tasks → cases pipeline: stage tasks, automatic stage moves, one waiting follow-up, "no next step", task visibility.
--- Synthetic data only. One transaction, rolled back.
+-- Synthetic data only. One transaction, rolled back. The case summary is read as a signed-in user: it shows nothing to
+-- someone who cannot open the case.
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
@@ -26,7 +27,11 @@ select is((select assigned_to::text from public.tasks where case_id = '00000000-
   '00000000-0000-0000-0000-0000000001a1', 'the stage task belongs to the case owner');
 select ok((select bool_and(due_at > now()) from public.tasks where case_id = '00000000-0000-0000-0000-0000001ca5e1'),
   'an automatic task is never created overdue');
-select is((public.case_work_summary(array['00000000-0000-0000-0000-0000001ca5e1'::uuid]) -> 0 ->> 'state'), 'up_to_date',
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a1","role":"authenticated"}';
+insert into r select 'state_open', public.case_work_summary(array['00000000-0000-0000-0000-0000001ca5e1'::uuid]) -> 0 ->> 'state';
+reset role; reset request.jwt.claims;
+select is((select v from r where k = 'state_open'), 'up_to_date',
   'a case with an open task that is not late is on track');
 
 -- ---------------------------------------------------------------- moving on closes quote work and adds the next step
@@ -51,7 +56,11 @@ select is((select count(*)::int from public.tasks where case_id = '00000000-0000
 
 -- ---------------------------------------------------------------- no open task = no next step
 update public.tasks set status = 'done' where case_id = '00000000-0000-0000-0000-0000001ca5e1' and status <> 'done';
-select is((public.case_work_summary(array['00000000-0000-0000-0000-0000001ca5e1'::uuid]) -> 0 ->> 'state'), 'no_next_step',
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a1","role":"authenticated"}';
+insert into r select 'state_none', public.case_work_summary(array['00000000-0000-0000-0000-0000001ca5e1'::uuid]) -> 0 ->> 'state';
+reset role; reset request.jwt.claims;
+select is((select v from r where k = 'state_none'), 'no_next_step',
   'an open case with no open task has no next step');
 select ok('00000000-0000-0000-0000-0000001ca5e1'::uuid in (select public.cases_by_work('no_next')),
   'the case is listed under "no next step"');
