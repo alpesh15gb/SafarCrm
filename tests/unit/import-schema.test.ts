@@ -118,3 +118,19 @@ test("a city code that contradicts the printed airport code blocks confirmation"
   assert.ok(blockingIssues(d).some((i) => i.path === "segments.0.from" && /BOM/.test(i.text)));
   assert.equal(d.segments[0].to.flag, undefined);         // DXB is in the text
 });
+
+test("evidence quoting only the departure line never blocks the arrival airport", () => {
+  // a layout where the quoted line is just "DELHI (DEL) 16:20" (seen on a live retest)
+  const p: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "DEL", "HYD", "2026-11-10", "2026-11-10", "6E 1234"), evidence: "DELHI (DEL) 16:20 10-Nov-2026" }] };
+  const d = toDraft(p);
+  assert.equal(d.segments[0].from.flag, undefined);
+  assert.equal(d.segments[0].to.flag, undefined);
+  assert.equal(blockingIssues(d).length, 0);
+});
+
+test("one quoted code that matches neither airport is a warning, not a block", () => {
+  const p: ProviderOutput = { ...returnTrip, segments: [{ ...seg(1, "MUM", "DXB", "2026-12-20", "2026-12-20", "AI 983"), evidence: "Mumbai (BOM) 09:05" }] };
+  const d = toDraft(p);
+  assert.equal(d.segments[0].from.flag, "uncertain");
+  assert.ok(!blockingIssues(d).some((i) => i.path.startsWith("segments.0.from")));
+});

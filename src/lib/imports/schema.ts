@@ -133,20 +133,24 @@ export const normTicketNo = (s: string) => {
   return d.length === 13 ? `${d.slice(0, 3)}-${d.slice(3)}` : clip(s, 40);
 };
 
-/** An airport code must be the one printed. When the quoted ticket text shows airport codes in brackets, e.g.
- *  "Mumbai (BOM)", and the extracted code isn't among the codes in that text (a city code like MUM, say), the field is
- *  marked as a conflict, which blocks confirmation until someone fixes it. Nothing is replaced automatically. */
-export function airportField(code: string, page: number, evidence: string, first: boolean): Field {
-  const v = clip(code, 3).toUpperCase();
-  const fld = f(v, page, first ? evidence : undefined);
+/** Airport codes must be the ones printed; nothing is replaced automatically.
+ *  The quoted ticket text may cover the whole leg ("Mumbai (BOM) to Dubai (DXB)") or only one line ("DELHI (DEL)").
+ *  - Two or more bracketed codes: the first is the departure and the last the arrival. A code that matches neither its
+ *    position nor any code in the text is a conflict (blocks confirmation), e.g. a city code MUM where BOM is printed.
+ *  - One bracketed code: we can't tell which end it belongs to, so only when it matches neither airport do we mark the
+ *    departure as uncertain (a warning, never a block). */
+export function checkAirports(from: Field, to: Field, evidence: string) {
   const ev = String(evidence ?? "").toUpperCase();
   const inText = new Set(ev.match(/\b[A-Z]{3}\b/g) ?? []);
-  const bracketed = [...ev.matchAll(/\(([A-Z]{3})\)/g)].map((m) => m[1]);
-  if (v && bracketed.length && !inText.has(v)) {
-    fld.flag = "conflict";
-    fld.note = `the ticket text shows ${Array.from(new Set(bracketed)).join(" / ")}`;
+  const b = [...ev.matchAll(/\(([A-Z]{3})\)/g)].map((m) => m[1]);
+  if (b.length >= 2) {
+    const dep = b[0], arr = b[b.length - 1];
+    if (from.value && from.value !== dep && !inText.has(from.value)) { from.flag = "conflict"; from.note = `the ticket text shows ${dep}`; }
+    if (to.value && to.value !== arr && !inText.has(to.value)) { to.flag = "conflict"; to.note = `the ticket text shows ${arr}`; }
+  } else if (b.length === 1 && from.value && to.value && b[0] !== from.value && b[0] !== to.value) {
+    from.flag = from.flag ?? "uncertain";
+    from.note = `the ticket text shows ${b[0]}; check both airports`;
   }
-  return fld;
 }
 
 /** "adult" / "Child" / "infant" → ADT / CHD / INF; codes and anything else are kept as written (upper-cased). */
@@ -169,7 +173,7 @@ export function toDraft(p: ProviderOutput): Draft {
     segKey.set(s.ref, key);
     return {
       key,
-      from: airportField(s.from, s.page, s.evidence, true), to: airportField(s.to, s.page, s.evidence, false),
+      from: f(clip(s.from, 3).toUpperCase(), s.page, s.evidence), to: f(clip(s.to, 3).toUpperCase(), s.page),
       dep_date: dateField(s.dep_date, s.page), dep_time: timeField(s.dep_time, s.page),
       arr_date: dateField(s.arr_date, s.page), arr_time: timeField(s.arr_time, s.page),
       // "TA" + "101" printed apart is one flight number; nothing else is joined or guessed
@@ -178,6 +182,7 @@ export function toDraft(p: ProviderOutput): Draft {
       cabin: f(s.cabin, s.page), baggage: f(s.baggage, s.page), fare_basis: f(s.fare_basis, s.page),
     };
   });
+  p.segments.forEach((s, i) => checkAirports(segments[i].from, segments[i].to, s.evidence));
   const passengers: DraftPassenger[] = p.passengers.map((x, i) => ({
     key: `p${i + 1}`,
     name_as_issued: f(x.name_as_issued, x.page, x.evidence),
