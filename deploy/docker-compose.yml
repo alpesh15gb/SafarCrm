@@ -21,3 +21,17 @@ services:
     # the app talks to Supabase through the public address; resolve it to this server's nginx
     extra_hosts:
       - "${CRM_DOMAIN}:host-gateway"
+
+  # Keeps ticket-import extraction moving: calls the app's worker endpoint every 30 s. Jobs, leases and retries
+  # live in the database, so restarting this loses nothing. Does nothing unless IMPORT_WORKER_SECRET is set.
+  safar-import-worker:
+    image: node:22-alpine
+    container_name: safar-import-worker
+    restart: unless-stopped
+    depends_on: [safar-crm]
+    environment:
+      APP_URL: http://safar-crm:3000
+      IMPORT_WORKER_SECRET: ${IMPORT_WORKER_SECRET:-}
+    volumes:
+      - ../scripts/import-worker.mjs:/worker/import-worker.mjs:ro
+    command: ["sh", "-c", "if [ -z \"$$IMPORT_WORKER_SECRET\" ]; then echo 'IMPORT_WORKER_SECRET not set: ticket imports wait for manual entry'; sleep infinity; fi; exec node /worker/import-worker.mjs"]
