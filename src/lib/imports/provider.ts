@@ -43,7 +43,7 @@ const INSTRUCTION = "Extract the booking from this document into the required JS
 class NoneProvider implements ExtractionProvider {
   name = "none";
   configured = false;
-  setupHint = "No extraction provider is set up. Set EXTRACTION_PROVIDER=anthropic and ANTHROPIC_API_KEY on the server to read tickets automatically. Until then, enter the details by hand.";
+  setupHint = "Automatic ticket reading is not set up on this server. Add the EXTRACTION_PROVIDER, EXTRACTION_BASE_URL, EXTRACTION_API_KEY and EXTRACTION_MODEL settings (for OmniRoute) to deploy/.env.production and redeploy. Until then, enter the details by hand.";
   async extract(): Promise<ProviderResult> {
     return { ok: false, code: "no_provider", message: this.setupHint, retryable: false };
   }
