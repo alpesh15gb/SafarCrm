@@ -11,6 +11,7 @@ if [ "${1:-}" != "--after-pull" ]; then
   exec bash deploy/deploy.sh --after-pull "${1:-}"
 fi
 DOMAIN="${2:-}"
+. deploy/instance.sh
 
 # 2. first install: Supabase + database. Updates: backup, then apply new database changes
 if [ ! -f deploy/.secrets ]; then
@@ -25,13 +26,13 @@ fi
 echo "• Building and starting the CRM app"
 # a CRM container left over from an older version of this script (wrong project name) is removed first;
 # containers of other apps are never touched
-owner=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' safar-crm 2>/dev/null || true)
-if [ -n "$owner" ] && [ "$owner" != "safar-crm" ]; then docker rm -f safar-crm >/dev/null; fi
+owner=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$APP_CONTAINER" 2>/dev/null || true)
+if [ -n "$owner" ] && [ "$owner" != "$APP_PROJECT" ]; then docker rm -f "$APP_CONTAINER" >/dev/null; fi
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env.production up -d --build
 for i in $(seq 1 30); do
-  s=$(docker inspect --format '{{.State.Health.Status}}' safar-crm 2>/dev/null || echo starting)
+  s=$(docker inspect --format '{{.State.Health.Status}}' "$APP_CONTAINER" 2>/dev/null || echo starting)
   [ "$s" = healthy ] && break; sleep 4
 done
 docker image prune -f >/dev/null
-[ "$s" = healthy ] || { echo "The app did not become healthy. See: docker logs --tail 50 safar-crm"; exit 1; }
-echo "✓ Safar CRM is running ($(git log -1 --format='%h %s' 2>/dev/null || echo 'local copy'))."
+[ "$s" = healthy ] || { echo "The app did not become healthy. See: docker logs --tail 50 $APP_CONTAINER"; exit 1; }
+echo "✓ Safar CRM${INSTANCE:+ ($INSTANCE)} is running ($(git log -1 --format='%h %s' 2>/dev/null || echo 'local copy'))."

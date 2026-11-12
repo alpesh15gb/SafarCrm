@@ -43,5 +43,6 @@ next-env.d.ts
 backups/
 deploy/.env.production
 deploy/.secrets
+deploy/instance.env
 deploy/supabase-docker/
 dist/

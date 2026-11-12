@@ -14,6 +14,7 @@
 # DRY_RUN=1 runs the database part and rolls it back, and deletes nothing (to check it would work).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. deploy/instance.sh
 START=1001; NEW_EMAIL=""; NEW_NAME=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -26,8 +27,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [[ "$START" =~ ^[0-9]+$ ]] || { echo "The first MAX number must be a number, e.g. 1001"; exit 1; }
-DB="${DB_CONTAINER:-supabase-db}"
-API="${API_URL:-http://127.0.0.1:8100}"
+DB="$DB_CONTAINER"
+API="$API_URL"
 DRY="${DRY_RUN:-0}"
 if [ -z "${SERVICE_ROLE_KEY:-}" ]; then set -a; . deploy/.secrets; set +a; fi
 
@@ -70,7 +71,7 @@ read -r -p "Type WIPE to continue: " ok
 if [ "$DRY" != 1 ]; then
   echo "• Taking a backup first"
   bash deploy/backup.sh
-  docker stop safar-crm >/dev/null 2>&1 || true   # nobody can type into the CRM while it is being cleared
+  docker stop "$APP_CONTAINER" >/dev/null 2>&1 || true   # nobody can type into the CRM while it is being cleared
 fi
 
 # collected before the wipe: uploaded files (100 per request) and client portal logins
@@ -125,7 +126,7 @@ if [ -n "$NEW_EMAIL" ]; then
   if [ -n "$same" ]; then
     curl -fsS -X PUT "$API/auth/v1/admin/users/$same" -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
          -H "Content-Type: application/json" -d "{\"email\":\"replaced-$same@removed.invalid\",\"email_confirm\":true}" >/dev/null \
-      || { docker start safar-crm >/dev/null 2>&1 || true; echo "✗ Could not free the email $NEW_EMAIL; old logins kept (the data is already cleared)."; exit 1; }
+      || { docker start "$APP_CONTAINER" >/dev/null 2>&1 || true; echo "✗ Could not free the email $NEW_EMAIL; old logins kept (the data is already cleared)."; exit 1; }
   fi
   j() { local v=${1//\\/\\\\}; printf '%s' "${v//\"/\\\"}"; }   # JSON-escape
   # sent on stdin (printf is a shell builtin), so the password never appears in the process list
@@ -135,7 +136,7 @@ if [ -n "$NEW_EMAIL" ]; then
               -H "Content-Type: application/json" --data-binary @-) || resp=""
   NEW_ID=$(printf '%s' "$resp" | grep -o '"id":"[0-9a-f-]\{36\}"' | head -1 | cut -d'"' -f4)
   if [ -z "$NEW_ID" ] || [ "$(qc "select role from public.profiles where id = '$NEW_ID' and active")" != "boss" ]; then
-    docker start safar-crm >/dev/null 2>&1 || true
+    docker start "$APP_CONTAINER" >/dev/null 2>&1 || true
     echo "✗ Could not create the new owner login, so the OLD logins were kept (the data is already cleared)."
     echo "  Server said: $(printf '%s' "$resp" | head -c 300)"
     echo "  Fix the problem and create it with: bash deploy/create-owner.sh $NEW_EMAIL \"$NEW_NAME\" 'password'"
@@ -148,7 +149,7 @@ else
   for id in $CLIENTS; do del_user "$id" || echo "  Could not remove client login $id"; done
 fi
 
-docker start safar-crm >/dev/null 2>&1 || true
+docker start "$APP_CONTAINER" >/dev/null 2>&1 || true
 echo "✓ Done. $(qc 'select count(*) from public.cases') cases, $(qc 'select count(*) from public.customers') customers left; the next case will be MAX-$START."
 [ -z "$NEW_EMAIL" ] || echo "  Log in as $NEW_EMAIL with the password you just set. Logins now: $(qc "select string_agg(email, ', ') from auth.users")"
-echo "  The backup taken just before is in ${BACKUP_DIR:-/var/backups/safar-crm} (restore with deploy/restore.sh if needed)."
+echo "  The backup taken just before is in $BACKUP_DIR (restore with deploy/restore.sh if needed)."

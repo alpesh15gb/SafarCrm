@@ -140,3 +140,35 @@ Remove the old CRM for good. Keep the files in `/root/retired-old-crm`.
 ```bash
 cd /opt/max-travel-crm && docker compose down        # add -v only if you are sure you never need its data again
 ```
+
+---
+
+## A second, separate copy on the same server (e.g. safar.apextime.in)
+
+Same code, but its **own** database, logins, files, ports and backups. The first copy in `/opt/safar-crm` is not
+touched: it keeps its names (`supabase-db`, `safar-crm`) and ports (3100, 8100). The second copy lives in its own
+folder and every name gets its prefix (`apex-supabase-db`, `safar-apex`, …). It needs about 2.5 GB more memory.
+
+```bash
+free -h                                                    # "available" should be 3 GB or more
+# 1. DNS: an A record safar.apextime.in → this server's IP (check: getent hosts safar.apextime.in)
+# 2. a copy of the code, from the first copy (no GitHub login needed), following the same branch
+git clone -b "$(git -C /opt/safar-crm branch --show-current)" /opt/safar-crm /opt/safar-apex
+cd /opt/safar-apex && git remote set-url origin "$(git -C /opt/safar-crm remote get-url origin)"
+# 3. names and ports for this copy (picks the first free ports, normally app 3200 / Supabase 8200)
+bash deploy/new-instance.sh apex safar.apextime.in
+# 4. HTTPS certificate and nginx site
+bash deploy/nginx-site.sh safar.apextime.in
+# 5. Supabase, database and app (the first start downloads images: several minutes)
+bash deploy/deploy.sh safar.apextime.in
+# 6. ticket reading: the same extraction service as the first copy, then restart the app
+grep '^EXTRACTION_' /opt/safar-crm/deploy/.env.production >> deploy/.env.production && bash deploy/deploy.sh
+# 7. the owner login for this copy
+bash deploy/create-owner.sh owner@example.com "Owner Name" 'a-strong-password'
+# 8. nightly backup (its own folder: /var/backups/safar-apex)
+(crontab -l 2>/dev/null; echo "45 1 * * * bash /opt/safar-apex/deploy/backup.sh >> /var/log/safar-apex-backup.log 2>&1") | crontab -
+```
+
+Updates: `cd /opt/safar-apex && bash deploy/deploy.sh` (each copy is updated on its own).
+Database commands for this copy use its container: `docker exec -i apex-supabase-db psql -U postgres -d postgres …`
+Its secrets are in `/opt/safar-apex/deploy/.secrets`; keep a copy somewhere safe, like the first copy's.

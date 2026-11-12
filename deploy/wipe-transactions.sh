@@ -13,10 +13,11 @@
 # A full backup is taken first; if the backup fails, nothing is deleted.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. deploy/instance.sh
 START="${1:-1001}"
 [[ "$START" =~ ^[0-9]+$ ]] || { echo "Use: bash deploy/wipe-transactions.sh 1001   (the first new MAX number)"; exit 1; }
-DB="${DB_CONTAINER:-supabase-db}"
-API="${API_URL:-http://127.0.0.1:8100}"
+DB="$DB_CONTAINER"
+API="$API_URL"
 DRY="${DRY_RUN:-0}"
 if [ -z "${SERVICE_ROLE_KEY:-}" ]; then set -a; . deploy/.secrets; set +a; fi
 
@@ -42,7 +43,7 @@ read -r -p "Type DELETE to continue: " ok
 if [ "$DRY" != 1 ]; then
   echo "• Taking a backup first"
   bash deploy/backup.sh
-  docker stop safar-crm >/dev/null 2>&1 || true   # nobody can type into the CRM while it is being cleared
+  docker stop "$APP_CONTAINER" >/dev/null 2>&1 || true   # nobody can type into the CRM while it is being cleared
 fi
 
 # uploaded case files whose scan is not also a customer document or a supplier file (those are kept), 100 per request
@@ -85,7 +86,7 @@ while IFS= read -r batch; do
 done <<< "$FILE_BATCHES"
 [ $fail = 0 ] || echo "  Some files could not be removed (the transactions are cleared; leftover files only take disk space)."
 
-docker start safar-crm >/dev/null 2>&1 || true
+docker start "$APP_CONTAINER" >/dev/null 2>&1 || true
 echo "✓ Done. $(qc 'select count(*) from public.cases') cases and $(qc 'select count(*) from public.payments') payments left;"
 echo "  $(qc 'select count(*) from public.customers') customers and $(qc 'select count(*) from public.suppliers') suppliers kept. The next case will be MAX-$START."
-echo "  The backup taken just before is in ${BACKUP_DIR:-/var/backups/safar-crm} (restore with deploy/restore.sh if needed)."
+echo "  The backup taken just before is in $BACKUP_DIR (restore with deploy/restore.sh if needed)."

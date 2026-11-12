@@ -3,7 +3,8 @@
 #   bash deploy/migrate.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-q() { docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1 -qtA "$@"; }
+. deploy/instance.sh
+q() { docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -qtA "$@"; }
 q -c "create schema if not exists deploy_meta; create table if not exists deploy_meta.migrations (name text primary key, applied_at timestamptz default now());" >/dev/null
 for f in supabase/migrations/*.sql; do
   name=$(basename "$f")

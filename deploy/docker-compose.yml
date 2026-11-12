@@ -1,7 +1,8 @@
 # The CRM web app. Supabase runs separately (deploy/supabase-docker, the official setup).
-# A fixed, unique project name: without it Docker uses the folder name ("deploy"), which can collide
+# A fixed, unique project name (deploy/instance.sh; a second copy on the same server gets its own): without it
+# Docker uses the folder name ("deploy"), which can collide
 # with another app's project on a shared server and replace its containers.
-name: safar-crm
+name: ${APP_PROJECT:-safar-crm}
 services:
   safar-crm:
     build:
@@ -11,8 +12,8 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-    image: safar-crm:latest
-    container_name: safar-crm
+    image: ${APP_IMAGE:-safar-crm:latest}
+    container_name: ${APP_CONTAINER:-safar-crm}
     restart: unless-stopped
     env_file: .env.production
     # only nginx on this server can reach it
@@ -28,7 +29,7 @@ services:
   # live in the database, so restarting this loses nothing. Does nothing unless IMPORT_WORKER_SECRET is set.
   safar-import-worker:
     image: node:22-alpine
-    container_name: safar-import-worker
+    container_name: ${WORKER_CONTAINER:-safar-import-worker}
     restart: unless-stopped
     depends_on: [safar-crm]
     environment:
