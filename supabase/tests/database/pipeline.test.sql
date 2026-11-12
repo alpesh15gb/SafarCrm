@@ -115,7 +115,7 @@ insert into r select 'twc_case', public.create_task_with_case('{"title":"Call ab
 insert into r select 'twc_again', public.create_task_with_case('{"title":"Call about Goa"}', '{"customer_id":"00000000-0000-0000-0000-00000001c001"}', '{}', 'pipe-key-0001') ->> 'id';
 reset role; reset request.jwt.claims;
 select is((select v from r where k = 'twc_again'), (select v from r where k = 'twc_case'), 'a repeated request returns the same case');
-select like((select title from public.cases where id = (select v::uuid from r where k = 'twc_case')), 'Trip for %', 'the new case is named after the customer');
+select ok((select title like 'Trip for %' from public.cases where id = (select v::uuid from r where k = 'twc_case')), 'the new case is named after the customer');
 select is((select string_agg(title, ',') from public.tasks where case_id = (select v::uuid from r where k = 'twc_case')), 'Call about Goa',
   'the task is the case''s only first step: no second "Send the quote", and no duplicate on repeat');
 select is((select assigned_to::text from public.cases where id = (select v::uuid from r where k = 'twc_case')), '00000000-0000-0000-0000-0000000001a1', 'the case belongs to whoever has the task');
