@@ -267,6 +267,14 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     return Math.round((Date.parse(String(d.check_out)) - Date.parse(String(d.check_in))) / 86400000);
   }, [service, d.check_in, d.check_out]);
 
+  // A booking reference only exists once something is booked: typing one switches a new booking to Confirmed,
+  // unless someone has picked the status by hand. (A booked ticket saved as Pending kept the case open.)
+  const [statusTouched, setStatusTouched] = useState(false);
+  useEffect(() => { if (open) setStatusTouched(false); }, [open, line?.id]);
+  const booked = [d.pnr, d.confirmation_no, d.policy_no, d.ticket_no, reference].some((x) => String(x ?? "").trim())
+    || (Array.isArray(d.tickets) && (d.tickets as { number?: string }[]).some((t) => String(t.number ?? "").trim()));
+  useEffect(() => { if (!line && !statusTouched && booked && status === "pending") setStatus("confirmed"); }, [booked]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const setDet = (k: string, v: unknown) => setD((x) => {
     // picking a visa country fills in the usual checklist and how it is applied (until someone ticks a box)
     if (service === "visa" && k === "country" && !(x.checklist as { done: boolean }[] | undefined)?.some((c) => c.done)) {
@@ -369,7 +377,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             )}
           </Field>
           {!isVisa && <Field label="Status" hint={status === "pending" ? "Keeps the case open until set to Confirmed. Choose Confirmed if it is already booked." : undefined}>
-            <select className="field" value={status} disabled={status === "cancelled"} onChange={(e) => setStatus(e.target.value)}>
+            <select className="field" value={status} disabled={status === "cancelled"} onChange={(e) => { setStatus(e.target.value); setStatusTouched(true); }}>
               <option value="confirmed">Confirmed: booked, ticket or voucher issued</option><option value="pending">Pending: quoted or on hold, not booked yet</option>
               {status === "cancelled" && <option value="cancelled">Cancelled</option>}
             </select>

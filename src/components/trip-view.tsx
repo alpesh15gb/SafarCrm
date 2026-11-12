@@ -20,6 +20,13 @@ const fmt = (k: string, v: unknown): string => {
   return String(v);
 };
 
+/** "Air India 983", or just "6E 2134" when the flight number already carries the airline code. */
+export function flightLabel(airline: string | undefined, flightNo: string | undefined) {
+  const a = (airline ?? "").trim(), f = (flightNo ?? "").trim();
+  if (a && f.toUpperCase().replace(/[\s-]/g, "").startsWith(a.toUpperCase().replace(/[\s-]/g, ""))) return f;
+  return [a, f].filter(Boolean).join(" ");
+}
+
 export function BookingDetails({ service, details }: { service: string; details: Record<string, unknown> }) {
   const d = details ?? {};
   if (service === "flight") {
@@ -33,7 +40,7 @@ export function BookingDetails({ service, details }: { service: string; details:
               <div key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-lg bg-gray-50 px-3 py-2">
                 <span className="font-semibold">{s.from} → {s.to}</span>
                 <span>{fdate(s.date)}</span>
-                <span className="text-muted">{[s.airline, s.flight_no].filter(Boolean).join(" ")}</span>
+                <span className="text-muted">{flightLabel(s.airline, s.flight_no)}</span>
                 {(s.dep || s.arr) && (
                   <span className="text-muted">
                     {s.dep}{s.arr && ` – ${s.arr}`}
