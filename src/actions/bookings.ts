@@ -110,7 +110,7 @@ export async function duplicateLine(id: string): Promise<ActionResult<{ id: stri
     if (error) throw error;
     const d = { ...(l.details ?? {}) } as Record<string, unknown>;
     if (l.service === "flight" && Array.isArray(d.sectors)) {
-      d.sectors = [...(d.sectors as Record<string, string>[])].reverse().map((s) => ({ ...s, from: s.to, to: s.from, date: "", flight_no: "", dep: "", arr: "" }));
+      d.sectors = [...(d.sectors as Record<string, string>[])].reverse().map((s) => ({ ...s, from: s.to, to: s.from, date: "", flight_no: "", dep: "", arr: "", arr_date: "", dep_tz: s.arr_tz ?? "", arr_tz: s.dep_tz ?? "" }));
       d.pnr = ""; d.tickets = []; d.trip_type = "one-way";
     }
     // a visa is per person: copy country/type/checklist, clear everything specific to the old application

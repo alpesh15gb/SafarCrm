@@ -171,7 +171,7 @@ function tempPassword() {
 export async function inviteToPortal(customerId: string): Promise<ActionResult<{ login: string; password: string; wa: string; text: string }>> {
   try {
     const me = await getMe();
-    if (me?.role !== "boss") return { ok: false, error: "Only the boss can invite clients to the portal." };
+    if (me?.role !== "boss" || me.mfa_pending || me.must_change_password) return { ok: false, error: "Only the boss, fully logged in, can invite clients to the portal." };
     const sb = await createClient();
     const { data: c } = await sb.from("customers").select("id, code, full_name, first_name, mobile, whatsapp").eq("id", customerId).single();
     if (!c) return { ok: false, error: "Customer not found." };
@@ -184,8 +184,20 @@ export async function inviteToPortal(customerId: string): Promise<ActionResult<{
     let email: string;
     if (existing) {
       email = existing.email!;
-      const { error } = await admin.auth.admin.updateUserById(existing.id, { password, app_metadata: meta, ban_duration: "none" });
-      if (error) throw error;
+      const patch = { password, app_metadata: meta, ban_duration: "none" };
+      if (email !== portalEmail(c.mobile) && email !== portalCodeEmail(c.code)) {
+        // the mobile changed since the first invitation: move the login to the new number, so the login we show works
+        let res = await admin.auth.admin.updateUserById(existing.id, { ...patch, email: portalEmail(c.mobile), email_confirm: true });
+        email = portalEmail(c.mobile);
+        if (res.error && /already|exists|registered/i.test(res.error.message)) {
+          email = portalCodeEmail(c.code);   // the new number is someone else's login: use the customer code
+          res = await admin.auth.admin.updateUserById(existing.id, { ...patch, email, email_confirm: true });
+        }
+        if (res.error) throw res.error;
+      } else {
+        const { error } = await admin.auth.admin.updateUserById(existing.id, patch);
+        if (error) throw error;
+      }
       await admin.from("profiles").update({ active: true, must_change_password: true }).eq("id", existing.id);
     } else {
       email = portalEmail(c.mobile);
@@ -208,7 +220,7 @@ export async function inviteToPortal(customerId: string): Promise<ActionResult<{
 export async function revokePortal(customerId: string): Promise<ActionResult> {
   try {
     const me = await getMe();
-    if (me?.role !== "boss") return { ok: false, error: "Only the boss can do this." };
+    if (me?.role !== "boss" || me.mfa_pending || me.must_change_password) return { ok: false, error: "Only the boss, fully logged in, can do this." };
     const admin = createAdmin();
     const { data: p } = await admin.from("profiles").select("id").eq("customer_id", customerId).eq("role", "client").maybeSingle();
     if (!p) return { ok: false, error: "This customer has no portal login." };

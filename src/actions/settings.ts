@@ -6,6 +6,8 @@ import { fail, getMe, type ActionResult } from "@/lib/auth";
 async function boss() {
   const me = await getMe();
   if (me?.role !== "boss") throw new Error("Only the boss can change settings.");
+  // a password alone is not enough: these actions use the service key, so the two-step login must be complete
+  if (me.mfa_pending || me.must_change_password) throw new Error("Finish logging in first (two-step code or new password).");
   return me;
 }
 
@@ -128,7 +130,11 @@ export async function resetStaffPassword(id: string): Promise<ActionResult<{ pas
     const { error } = await admin.auth.admin.updateUserById(id, { password });
     if (error) throw error;
     await admin.from("profiles").update({ must_change_password: true }).eq("id", id);
-    return { ok: true, data: { password }, message: "Temporary password set" };
+    // a lost authenticator app must not lock the person out for good: the reset also removes their two-step login,
+    // and they set it up again the next time they log in
+    const { data: mfa } = await admin.auth.admin.mfa.listFactors({ userId: id });
+    for (const f of mfa?.factors ?? []) await admin.auth.admin.mfa.deleteFactor({ id: f.id, userId: id });
+    return { ok: true, data: { password }, message: mfa?.factors?.length ? "Temporary password set. Their two-step login was removed too." : "Temporary password set" };
   } catch (e) {
     return fail(e);
   }

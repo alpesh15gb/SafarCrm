@@ -158,7 +158,8 @@ function TravellersCard({ caseId, customer, travellers }: { caseId: string; cust
     familyMembers(customer.id).then((f) => { setMembers(f.members); setCorporate(f.corporate); });
     setSel(travellers.map((t) => t.id));
     setExtra(travellers.filter((t) => t.id !== customer.id));
-  }, [edit, customer.id, travellers]);
+  // only when the editor opens: a page refresh (after adding a new traveller) must not wipe the ticks made so far
+  }, [edit, customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = [
     ...(corporate ? [] : [{ id: customer.id, full_name: customer.full_name, note: "customer" }]),

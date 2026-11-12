@@ -90,6 +90,11 @@ function friendly(msg: string) {
   if (msg.includes("import_incomplete")) return `Not ready to confirm: ${msg.split("import_incomplete:")[1]?.trim() ?? "some required fields are empty"}.`;
   if (msg.includes("unpublished_file")) return "This file is waiting for the boss to publish it, so it can't be shared yet.";
   if (msg.includes("task_already_linked")) return "This task is already linked to a case. Open it, or move the task to another case.";
+  if (msg.includes("doc_type_locked")) return "This document has a number saved, so only the boss can change its type.";
+  if (msg.includes("case_has_money")) return "This case has payments, expenses or an invoice, so it can't be deleted. Cancel the case instead; to really delete it, remove the payments and expenses and cancel its invoices first.";
+  if (msg.includes("file_locked")) return "Only the boss can change what this file is linked to.";
+  if (msg.includes("task_required_locked")) return "Only the boss or whoever created this task can change whether it is required.";
+  if (msg.includes("row-level security") && msg.includes("tasks")) return "This task belongs to someone else. Ask them or the boss to change it.";
   if (msg.includes("invoice_nothing_to_bill")) return "Nothing to invoice: every priced booking on this case is already on an invoice, or no booking has a selling price yet. To change an invoice, cancel it and issue a new one.";
   if (msg.includes("invoice_case_cancelled")) return "This case is cancelled, so it can't be invoiced.";
   if (msg.includes("invoice_cancel_reason")) return "Say why the invoice is being cancelled.";

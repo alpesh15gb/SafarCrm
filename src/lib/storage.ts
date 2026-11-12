@@ -23,10 +23,15 @@ export async function streamFile(path: string, fileName: string, mime: string | 
   const { data, error } = await createAdmin().storage.from("files").download(path);
   if (error || !data) return new Response("File not found", { status: 404 });
   const safe = fileName.replace(/["\\\r\n]/g, "");
+  // Only the three types the app accepts are shown in the browser. Anything else (a type someone changed, an old
+  // file) is sent as a plain download, and nothing is allowed to run: a stored file can never act as a page of the app.
+  const known = !!mime && mime in EXT;
   return new Response(data.stream(), {
     headers: {
-      "Content-Type": mime || data.type || "application/octet-stream",
-      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Content-Type": known ? mime! : "application/octet-stream",
+      // (no sandbox on PDFs and images: the browser's PDF viewer does not run inside a sandbox)
+      ...(known ? {} : { "Content-Security-Policy": "sandbox; default-src 'none'" }),
+      "Content-Disposition": `${download || !known ? "attachment" : "inline"}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

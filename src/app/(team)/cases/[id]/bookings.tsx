@@ -317,7 +317,10 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
         id: line?.id, case_id: caseId, service, supplier_id: supplier?.id ?? null, status, reference, traveller_ids: trav,
         supplier_cost: m.supplier_cost, selling_price: m.selling_price, commission_type: m.commission_type, commission_value: m.commission_value,
         gst: m.gst, payment_due_date: m.payment_due_date || null, supplier_due_date: line ? m.supplier_due_date || null : undefined, notes,
-        details: service === "hotel" && nights !== null ? { ...d, nights } : d, visible_to_client: visible,
+        details: service === "hotel" && nights !== null ? { ...d, nights }
+          // a ticket stays only while its passenger is on the booking (unticking someone removes their ticket too)
+          : service === "flight" && tickets.length ? { ...d, tickets: tickets.filter((t) => !t.customer_id || trav.includes(t.customer_id)) } : d,
+        visible_to_client: visible,
       }),
       { then: () => onClose() },
     );
