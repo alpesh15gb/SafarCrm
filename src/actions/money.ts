@@ -10,12 +10,18 @@ export async function addClientPayment(p: PayIn): Promise<ActionResult> {
     if (!amount(p.amount)) return { ok: false, error: "Enter an amount." };
     const me = await getMe();
     const sb = await createClient();
+    const { data: before } = await sb.from("cases").select("status").eq("id", p.case_id).maybeSingle();
     const { error } = await sb.from("payments").insert({
       direction: "in", case_id: p.case_id, pay_date: p.pay_date, amount: amount(p.amount), mode: p.mode,
       reference: p.reference?.trim() || null, received_by: p.received_by || me?.id, notes: p.notes?.trim() || null,
     });
     if (error) throw error;
-    return { ok: true, message: amount(p.amount) < 0 ? "Refund recorded" : "Payment recorded" };
+    // the payment may have moved the case on: say so
+    const { data: after } = await sb.from("cases").select("status, max_id").eq("id", p.case_id).maybeSingle();
+    const moved = after && before && after.status !== before.status
+      ? after.status === "completed" ? `. ${after.max_id} is complete: booked and fully paid.` : `. ${after.max_id} moved to ${after.status.charAt(0).toUpperCase()}${after.status.slice(1)}.`
+      : "";
+    return { ok: true, message: `${amount(p.amount) < 0 ? "Refund recorded" : "Payment recorded"}${moved}` };
   } catch (e) {
     return fail(e);
   }

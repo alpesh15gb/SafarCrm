@@ -156,6 +156,7 @@ const REMINDERS: [string, string, string][] = [
   ["birthday", "Customer birthday or anniversary", "On the day"],
   ["stage_tasks", "Tasks for each stage (send quote, follow up, collect advance, send documents)", "When a case enters the stage"],
   ["auto_stage", "Move the stage forward automatically", "Confirmed on the first client payment; Booked when every booking is confirmed"],
+  ["auto_complete", "Complete a case automatically", "When every booking is confirmed and priced, the client and suppliers are paid, and no task is left"],
   ["ticket_name", "Ticket name differs from the passport", "Flights in the next 21 days, checked every 15 minutes"],
   ["missing_docs", "Passport details missing for an international trip", "Trips in the next 30 days, checked every 15 minutes"],
 ];

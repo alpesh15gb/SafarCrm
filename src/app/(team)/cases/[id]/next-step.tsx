@@ -42,3 +42,24 @@ export function NextStepBar({ w, kase }: { w: WorkSummary | null; kase: { id: st
     </div>
   );
 }
+
+export type FinishItem = { key: string; ok: boolean; text: string };
+
+/** What still stands between this case and Completed. The case completes by itself when every item is ticked. */
+export function FinishLine({ items }: { items: FinishItem[] }) {
+  if (!items.length) return null;
+  const left = items.filter((i) => !i.ok);
+  return (
+    <div className="mb-4 rounded-xl border border-line bg-white px-4 py-2.5 text-[13px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="font-medium">{left.length ? "Completes by itself when:" : "Everything is done. Mark the case Completed on the stage bar."}</span>
+        {items.map((i) => (
+          <span key={i.key} className={cx("inline-flex items-center gap-1", i.ok ? "text-muted" : "font-medium text-amber-800")}>
+            {i.ok ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+            {i.text}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}

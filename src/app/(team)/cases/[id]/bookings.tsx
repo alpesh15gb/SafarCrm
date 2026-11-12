@@ -368,9 +368,9 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
                 footer={(q, close) => <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm link" onClick={() => { setAddSup(q); close(); }}>+ Quick add supplier{q ? ` “${q}”` : ""}</button>} />
             )}
           </Field>
-          {!isVisa && <Field label="Status">
+          {!isVisa && <Field label="Status" hint={status === "pending" ? "Keeps the case open until set to Confirmed. Choose Confirmed if it is already booked." : undefined}>
             <select className="field" value={status} disabled={status === "cancelled"} onChange={(e) => setStatus(e.target.value)}>
-              <option value="pending">Pending</option><option value="confirmed">Confirmed</option>
+              <option value="confirmed">Confirmed: booked, ticket or voucher issued</option><option value="pending">Pending: quoted or on hold, not booked yet</option>
               {status === "cancelled" && <option value="cancelled">Cancelled</option>}
             </select>
           </Field>}

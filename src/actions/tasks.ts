@@ -83,19 +83,30 @@ export type AfterDone = { needs_next: { id: string; max_id: string; title: strin
 export async function setTaskStatus(id: string, status: string): Promise<ActionResult<AfterDone>> {
   try {
     const sb = await createClient();
+    // the case's stage before, so the message can say when finishing this task completed the case
+    const { data: before } = await sb.from("tasks").select("case:cases(status)").eq("id", id).maybeSingle();
+    const wasStatus = (before?.case as unknown as { status: string } | null)?.status;
     const { data, error } = await sb.from("tasks").update({ status }).eq("id", id).select("id, case_id");
     if (error) throw error;
     if (!data?.length) return { ok: false, error: "You can't change this task." };
     let needs_next: AfterDone["needs_next"] = null;
+    let message = status === "done" ? "Task done" : "Task updated";
     const caseId = data[0].case_id as string | null;
     if (status === "done" && caseId) {
-      const [{ count }, { data: c }] = await Promise.all([
+      const [{ count }, { data: c }, { data: items }] = await Promise.all([
         sb.from("tasks").select("id", { count: "exact", head: true }).eq("case_id", caseId).neq("status", "done"),
         sb.from("cases").select("id, max_id, title, status").eq("id", caseId).maybeSingle(),
+        sb.rpc("case_finish_items", { p_case: caseId }),
       ]);
-      if (c && !["completed", "cancelled"].includes(c.status) && (count ?? 0) === 0) needs_next = { id: c.id, max_id: c.max_id, title: c.title };
+      if (c?.status === "completed" && wasStatus !== "completed") message = `Task done. ${c.max_id} is complete: booked and fully paid.`;
+      else if (c && !["completed", "cancelled"].includes(c.status)) {
+        if ((count ?? 0) === 0) needs_next = { id: c.id, max_id: c.max_id, title: c.title };
+        // say what still keeps the case open, so nobody wonders why it didn't complete
+        const left = ((items ?? []) as { ok: boolean; text: string; key: string }[]).filter((x) => !x.ok && x.key !== "tasks");
+        if (left.length) message = `Task done. ${c.max_id} still needs: ${left.map((x) => x.text.charAt(0).toLowerCase() + x.text.slice(1)).join("; ")}.`;
+      }
     }
-    return { ok: true, data: { needs_next }, message: status === "done" ? "Task done" : "Task updated" };
+    return { ok: true, data: { needs_next }, message };
   } catch (e) {
     return fail(e);
   }
