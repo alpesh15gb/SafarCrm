@@ -229,7 +229,7 @@ function SupplierPaymentDialog({ sup, onClose, caseId }: { sup: SupMoney | null;
   return (
     <Dialog open={!!sup} onClose={onClose} title={`Pay ${sup.supplier_name}`}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending}
-        onClick={() => { run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: amt }] }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } }); }}>Save payment</Button></>}>
+        onClick={() => { run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: Math.min(amt, Math.max(due, 0)) }] }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } }); }}>Save payment</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Amount (₹)" hint={`Due on this case ${inr(due)}`}><input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>

@@ -53,7 +53,10 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
   try {
     const problem = lineProblem(input.service as Service, (input.details ?? {}) as Record<string, unknown>) ?? moneyProblems(input);
     if (problem) return { ok: false, error: problem };
-    const priced = parseMoney(input.selling_price).kind === "value" || parseMoney(input.supplier_cost).kind === "value";
+    const hasSale = parseMoney(input.selling_price).kind === "value", hasCost = parseMoney(input.supplier_cost).kind === "value";
+    // a selling price with no cost would be saved as cost ₹0 and show 100% profit; ask instead of guessing
+    if (hasSale && !hasCost && input.status !== "cancelled") return { ok: false, error: "Enter the supplier cost as well (type 0 if there is none), so the profit is right." };
+    const priced = hasSale || hasCost;
     const sb = await createClient();
     const row: Record<string, unknown> = {
       case_id: input.case_id,
@@ -123,6 +126,8 @@ export async function duplicateLine(id: string): Promise<ActionResult<{ id: stri
       case_id: l.case_id, service: l.service, supplier_id: l.supplier_id, status: "pending", traveller_ids: l.traveller_ids,
       supplier_cost: l.supplier_cost, selling_price: l.selling_price, commission_type: l.commission_type, commission_value: l.commission_value,
       gst: l.gst, notes: l.notes, details: d, sort: (l.sort ?? 0) + 1,
+      // a copy of a booking nobody has priced is not priced either
+      pricing_state: l.pricing_state ?? "entered",
     }).select("id").single();
     if (ie) throw ie;
     return { ok: true, data, message: l.service === "visa" ? "New visa file created. Change the traveller if it is for someone else." : "Line duplicated. Fill in the new dates." };
@@ -137,6 +142,13 @@ export async function cancelLine(id: string, v: { reason: string; cancellation_c
     const bad = moneyProblem("Cancellation charge", v.cancellation_charge) ?? moneyProblem("Refund to client", v.refund_to_client) ?? moneyProblem("Refund from supplier", v.refund_from_supplier);
     if (bad) return { ok: false, error: bad };
     const sb = await createClient();
+    // a refund can never be more than what was charged: a slipped digit here would invent profit or debt
+    const { data: line } = await sb.from("booking_lines").select("supplier_cost, selling_price, gst").eq("id", id).maybeSingle();
+    if (!line) return { ok: false, error: "That booking could not be found." };
+    const paidByClient = Number(line.selling_price) + Number(line.gst);
+    if (n(v.refund_to_client) > paidByClient + 0.009) return { ok: false, error: `The refund to the client (₹${n(v.refund_to_client)}) is more than the booking's price (₹${paidByClient}). Check the amount.` };
+    if (n(v.refund_from_supplier) > Number(line.supplier_cost) + 0.009) return { ok: false, error: `The refund from the supplier (₹${n(v.refund_from_supplier)}) is more than the supplier cost (₹${Number(line.supplier_cost)}). Check the amount.` };
+    if (n(v.refund_to_client) < 0 || n(v.refund_from_supplier) < 0 || n(v.cancellation_charge) < 0) return { ok: false, error: "Refunds and charges can't be negative." };
     const { error } = await sb.from("booking_lines").update({
       status: "cancelled", cancel_reason: v.reason.trim(), cancellation_charge: n(v.cancellation_charge),
       refund_to_client: n(v.refund_to_client), refund_from_supplier: n(v.refund_from_supplier),

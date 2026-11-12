@@ -39,6 +39,9 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
         <div><span className="text-muted">Trip: </span><b>{kase.title}</b>{trip && <span className="text-muted"> · {trip}</span>}</div>
         {people.length > 0 && <div className="sm:col-span-2"><span className="text-muted">Travellers ({people.length}): </span>{people.map((p) => p.full_name).join(", ")}</div>}
       </div>
+      {rows.some((l) => Number(l.selling_price) + Number(l.gst) === 0) && (
+        <p className="no-print mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">Some bookings have no selling price yet, so they show as ₹0. Enter the prices on the Bookings tab before sending this.</p>
+      )}
       {rows.length === 0 ? <p className="text-muted">No services added yet. Add bookings on the case first.</p> : (
         <table className="w-full text-[14px]">
           <thead><tr className="border-b border-ink text-left text-[12px] uppercase tracking-wide text-muted"><th className="py-2">#</th><th className="py-2">Service</th><th className="py-2">Date</th>{gst > 0 && <th className="py-2 text-right">GST</th>}<th className="py-2 text-right">Amount</th></tr></thead>

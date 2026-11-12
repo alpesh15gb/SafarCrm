@@ -59,6 +59,7 @@ export async function deletePayment(id: string): Promise<ActionResult> {
 export async function addExpense(case_id: string, name: string, amt: number | string): Promise<ActionResult> {
   try {
     if (!name.trim() || !amount(amt)) return { ok: false, error: "Enter a name and an amount." };
+    if (amount(amt) < 0) return { ok: false, error: "An expense can't be negative. To take one back, delete it." };
     const sb = await createClient();
     const { error } = await sb.from("expenses").insert({ case_id, name: name.trim(), amount: amount(amt) });
     if (error) throw error;
