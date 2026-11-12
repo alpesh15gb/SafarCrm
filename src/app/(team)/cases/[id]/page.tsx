@@ -2,9 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { Check, IndianRupee, Layers, TrendingUp, Wallet, Receipt } from "lucide-react";
+import { IndianRupee, Layers, TrendingUp, Wallet, Receipt } from "lucide-react";
 import { Avatar, Card, IconChip, Money, PageHeader, Tabs, cx } from "@/components/ui";
-import { STATUS_LABEL } from "@/lib/constants";
 import type { PaxSource } from "@/lib/iata";
 
 type PaxRow = PaxSource & { id: string; full_name: string; dob: string | null; passport_expiry: string | null; mobile: string };
@@ -12,6 +11,7 @@ import { MaxId } from "@/components/client";
 import { fdate, prettyPhone, inr } from "@/lib/format";
 import { CaseHeaderControls } from "./header-controls";
 import { NextStepBar } from "./next-step";
+import { StageSteps } from "./stage-steps";
 import type { WorkSummary } from "../board";
 import { OverviewTab } from "./overview";
 import { BookingsTab, type Line } from "./bookings";
@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "bookings", label: "Bookings" },
-  { key: "payments", label: "Payments and P&L" },
+  { key: "payments", label: "Payments" },
   { key: "files", label: "Files" },
   { key: "tasks", label: "Tasks" },
   { key: "activity", label: "Activity" },
@@ -84,7 +84,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         action={<CaseHeaderControls kase={{ id: c.id, status: c.status, assigned_to: c.assigned_to, max_id: c.max_id, cancel_reason: c.cancel_reason, work_state: c.work_state, waiting_reason: c.waiting_reason, waiting_follow_up_at: c.waiting_follow_up_at }} />}
       />
 
-      <StatusSteps status={c.status} />
+      <StageSteps status={c.status} />
       <NextStepBar w={((workData ?? []) as WorkSummary[])[0] ?? null} kase={{ id: c.id, max_id: c.max_id, title: c.title }} />
       {(() => {
         // the case dates drive reminders (e.g. the check-in task): flag them when the bookings say otherwise
@@ -150,34 +150,6 @@ function Strip({ label, value, sub, icon, tone }: { label: string; value: React.
         {sub && <div className="truncate text-xs text-muted">{sub}</div>}
       </div>
     </div>
-  );
-}
-
-const FLOW = ["enquiry", "quoted", "confirmed", "booked", "completed"];
-/** Where this case sits in Enquiry → Completed. */
-function StatusSteps({ status }: { status: string }) {
-  if (status === "cancelled") {
-    return <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700">This case is cancelled.</div>;
-  }
-  const at = FLOW.indexOf(status);
-  return (
-    <ol className="no-print mb-4 flex items-center overflow-x-auto rounded-[14px] border border-line bg-white px-4 py-3 shadow-soft">
-      {FLOW.map((s, i) => {
-        const done = i < at, cur = i === at;
-        return (
-          <li key={s} className={cx("flex items-center", i < FLOW.length - 1 && "flex-1")}>
-            <span className="flex shrink-0 items-center gap-2">
-              <span className={cx("flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold",
-                done ? "bg-emerald-500 text-white" : cur ? "bg-coral text-white ring-4 ring-coral/15" : "bg-gray-100 text-gray-400")}>
-                {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
-              </span>
-              <span className={cx("whitespace-nowrap text-[13px]", cur ? "font-semibold text-ink" : done ? "font-medium text-ink" : "text-muted")}>{STATUS_LABEL[s]}</span>
-            </span>
-            {i < FLOW.length - 1 && <span className={cx("mx-3 h-0.5 min-w-6 flex-1 rounded-full", i < at ? "bg-emerald-400" : "bg-gray-200")} />}
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 

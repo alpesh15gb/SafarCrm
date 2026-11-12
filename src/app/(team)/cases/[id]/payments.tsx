@@ -38,60 +38,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
 
   return (
     <div className="space-y-4">
-      {me.can_see_profit && (
-        <Card title="Profit and loss" pad={false}>
-          <Table
-            head={["Service", "Supplier", "Cost", "Selling price", "Commission", "Profit", "Margin"]}
-            foot={
-              <>
-                <tr>
-                  <td data-label="" colSpan={2}>Bookings total</td>
-                  <td data-label="Cost"><Money value={tot.cost} /></td>
-                  <td data-label="Selling price"><Money value={tot.sale} /></td>
-                  <td data-label="Commission"><Money value={tot.commission} /></td>
-                  <td data-label="Profit"><Money value={tot.profit} profit /></td>
-                  <td data-label="Margin">{tot.sale ? `${Math.round((tot.profit / tot.sale) * 1000) / 10}%` : "—"}</td>
-                </tr>
-                {expTotal > 0 && (
-                  <tr><td data-label="" colSpan={5}>Less case expenses</td><td data-label="Expenses"><Money value={-expTotal} /></td><td data-label="" /></tr>
-                )}
-                <tr className="text-base">
-                  <td data-label="" colSpan={5}>Case profit</td>
-                  <td data-label="Case profit"><span className="flex items-center gap-1.5"><Money value={money?.profit as number} profit />{Number(money?.profit) < 0 && <Badge tone="red">Loss</Badge>}</span></td>
-                  <td data-label="Margin">{money?.margin != null ? `${money.margin}%` : "—"}</td>
-                </tr>
-              </>
-            }
-          >
-            {lines.map((l) => (
-              <tr key={l.id} className={l.status === "cancelled" ? "text-muted" : ""}>
-                <td data-label="Service"><span className="inline-flex items-center gap-1.5"><ServiceIcon service={l.service} />{SERVICE_LABEL[l.service]}{l.status === "cancelled" && <Badge tone="red">Cancelled</Badge>}</span><div className="text-xs text-muted">{l.summary}</div></td>
-                <td data-label="Supplier">{l.supplier?.name ?? "—"}</td>
-                <td data-label="Cost"><Money value={l.money?.cost} /></td>
-                <td data-label="Selling price"><Money value={l.money?.sale} /></td>
-                <td data-label="Commission"><Money value={l.status === "cancelled" ? 0 : l.commission_amount} /></td>
-                <td data-label="Profit"><Money value={l.money?.profit} profit /></td>
-                <td data-label="Margin">{l.money?.margin != null ? `${l.money.margin}%` : "—"}</td>
-              </tr>
-            ))}
-          </Table>
-          <div className="border-t border-line p-4">
-            <div className="mb-2 text-sm font-medium">Case expenses <span className="font-normal text-muted">(courier, card charges, visa fees paid; these reduce profit)</span></div>
-            {expenses.map((e) => (
-              <div key={e.id} className="flex items-center justify-between border-b border-line py-1.5 text-sm last:border-0">
-                <span>{e.name} <span className="text-xs text-muted">· {fdate(e.exp_date)}</span></span>
-                <span className="flex items-center gap-2"><Money value={e.amount} />{me.role === "boss" && <button type="button" className="text-muted hover:text-red-600" aria-label="Delete expense" onClick={() => setDel({ kind: "expense", id: e.id, text: `${e.name} · ${inr(e.amount)}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span>
-              </div>
-            ))}
-            <div className="mt-2 flex flex-wrap gap-2">
-              <input className="field !w-56" placeholder="Expense name" value={exp.name} onChange={(e) => setExp({ ...exp, name: e.target.value })} />
-              <input className="field !w-32 tabular" placeholder="₹" inputMode="decimal" value={exp.amount} onChange={(e) => setExp({ ...exp, amount: e.target.value })} />
-              <Button disabled={pending || !exp.name || !exp.amount} onClick={() => run(() => addExpense(caseId, exp.name, amount(exp.amount)), { then: () => setExp({ name: "", amount: "" }) })}>Add expense</Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
+      {/* taking and making payments is the everyday job here; the profit breakdown follows */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="From client" action={<Button size="sm" variant="primary" onClick={() => setPayOpen(true)}><Plus className="h-3.5 w-3.5" />Record payment</Button>} pad={false}>
           <div className="grid grid-cols-3 gap-2 border-b border-line p-4 text-center">
@@ -160,6 +107,60 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
           )}
         </Card>
       </div>
+
+      {me.can_see_profit && (
+        <Card title="Profit and loss" pad={false}>
+          <Table
+            head={["Service", "Supplier", "Cost", "Selling price", "Commission", "Profit", "Margin"]}
+            foot={
+              <>
+                <tr>
+                  <td data-label="" colSpan={2}>Bookings total</td>
+                  <td data-label="Cost"><Money value={tot.cost} /></td>
+                  <td data-label="Selling price"><Money value={tot.sale} /></td>
+                  <td data-label="Commission"><Money value={tot.commission} /></td>
+                  <td data-label="Profit"><Money value={tot.profit} profit /></td>
+                  <td data-label="Margin">{tot.sale ? `${Math.round((tot.profit / tot.sale) * 1000) / 10}%` : "—"}</td>
+                </tr>
+                {expTotal > 0 && (
+                  <tr><td data-label="" colSpan={5}>Less case expenses</td><td data-label="Expenses"><Money value={-expTotal} /></td><td data-label="" /></tr>
+                )}
+                <tr className="text-base">
+                  <td data-label="" colSpan={5}>Case profit</td>
+                  <td data-label="Case profit"><span className="flex items-center gap-1.5"><Money value={money?.profit as number} profit />{Number(money?.profit) < 0 && <Badge tone="red">Loss</Badge>}</span></td>
+                  <td data-label="Margin">{money?.margin != null ? `${money.margin}%` : "—"}</td>
+                </tr>
+              </>
+            }
+          >
+            {lines.map((l) => (
+              <tr key={l.id} className={l.status === "cancelled" ? "text-muted" : ""}>
+                <td data-label="Service"><span className="inline-flex items-center gap-1.5"><ServiceIcon service={l.service} />{SERVICE_LABEL[l.service]}{l.status === "cancelled" && <Badge tone="red">Cancelled</Badge>}</span><div className="text-xs text-muted">{l.summary}</div></td>
+                <td data-label="Supplier">{l.supplier?.name ?? "—"}</td>
+                <td data-label="Cost"><Money value={l.money?.cost} /></td>
+                <td data-label="Selling price"><Money value={l.money?.sale} /></td>
+                <td data-label="Commission"><Money value={l.status === "cancelled" ? 0 : l.commission_amount} /></td>
+                <td data-label="Profit"><Money value={l.money?.profit} profit /></td>
+                <td data-label="Margin">{l.money?.margin != null ? `${l.money.margin}%` : "—"}</td>
+              </tr>
+            ))}
+          </Table>
+          <div className="border-t border-line p-4">
+            <div className="mb-2 text-sm font-medium">Case expenses <span className="font-normal text-muted">(courier, card charges, visa fees paid; these reduce profit)</span></div>
+            {expenses.map((e) => (
+              <div key={e.id} className="flex items-center justify-between border-b border-line py-1.5 text-sm last:border-0">
+                <span>{e.name} <span className="text-xs text-muted">· {fdate(e.exp_date)}</span></span>
+                <span className="flex items-center gap-2"><Money value={e.amount} />{me.role === "boss" && <button type="button" className="text-muted hover:text-red-600" aria-label="Delete expense" onClick={() => setDel({ kind: "expense", id: e.id, text: `${e.name} · ${inr(e.amount)}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span>
+              </div>
+            ))}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <input className="field !w-56" placeholder="Expense name" value={exp.name} onChange={(e) => setExp({ ...exp, name: e.target.value })} />
+              <input className="field !w-32 tabular" placeholder="₹" inputMode="decimal" value={exp.amount} onChange={(e) => setExp({ ...exp, amount: e.target.value })} />
+              <Button disabled={pending || !exp.name || !exp.amount} onClick={() => run(() => addExpense(caseId, exp.name, amount(exp.amount)), { then: () => setExp({ name: "", amount: "" }) })}>Add expense</Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} received={Number(money?.received ?? 0)} status={status} />
       {/* keyed on the supplier, so the amount and reference typed for one supplier are never offered for the next */}

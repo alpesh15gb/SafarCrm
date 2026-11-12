@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { Button, Field } from "@/components/ui";
@@ -8,7 +8,8 @@ import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
 import { deleteCase, getReadiness, setWorkState, updateCase } from "@/actions/cases";
 import { istLocalToISO } from "@/lib/format";
-import { CASE_STATUSES, STATUS_LABEL } from "@/lib/constants";
+import { STATUS_LABEL } from "@/lib/constants";
+import { STAGE_EVENT } from "./stage-steps";
 import type { Readiness } from "@/lib/readiness";
 
 export function CaseHeaderControls({ kase }: { kase: {
@@ -30,37 +31,35 @@ export function CaseHeaderControls({ kase }: { kase: {
   // "waiting" is the only work status set by hand; everything else is worked out from the case's tasks
   const waiting = !!kase.work_state?.startsWith("waiting");
 
+  // the stage is changed by clicking a step in the stage bar under the header (see stage-steps.tsx)
+  const changeStage = (to: string) => {
+    if (to === kase.status || pending) return;
+    if (to === "cancelled") { setReason(""); setCancelOpen(true); return; }
+    if (to === "completed") {
+      // show what is still open before closing
+      getReadiness(kase.id).then((r) => {
+        if (r.blockers.length || r.loose_ends.length) { setCloseWhy(""); setClosing(r); }
+        else run(() => updateCase(kase.id, { status: "completed" }), { success: "Stage: Completed" });
+      });
+      return;
+    }
+    run(() => updateCase(kase.id, { status: to }), { success: `Stage: ${STATUS_LABEL[to]}` });
+  };
+  useEffect(() => {
+    const onStage = (e: Event) => changeStage((e as CustomEvent<string>).detail);
+    window.addEventListener(STAGE_EVENT, onStage);
+    return () => window.removeEventListener(STAGE_EVENT, onStage);
+  });
+
   return (
     <>
-      <label className="flex items-center gap-1.5 text-xs text-muted">
-        Stage
-        <select
-          className="field !w-auto text-ink"
-          value={kase.status}
-          disabled={pending}
-          onChange={(e) => {
-            if (e.target.value === "cancelled") { setReason(""); setCancelOpen(true); return; }
-            if (e.target.value === "completed") {
-              // show what is still open before closing
-              getReadiness(kase.id).then((r) => {
-                if (r.blockers.length || r.loose_ends.length) { setCloseWhy(""); setClosing(r); }
-                else run(() => updateCase(kase.id, { status: "completed" }), { success: "Stage: Completed" });
-              });
-              return;
-            }
-            run(() => updateCase(kase.id, { status: e.target.value }), { success: `Stage: ${STATUS_LABEL[e.target.value]}` });
-          }}
-        >
-          {CASE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-        </select>
-      </label>
       <label className="flex items-center gap-1.5 text-xs text-muted">
         Owner
         <span className="block w-40 text-ink">
           <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Owner changed. Their open tasks on this case moved too." })} />
         </span>
       </label>
-      {/* less common actions live in one menu, so the header has just Stage and Owner */}
+      {/* less common actions live in one menu, so the header stays short */}
       <Menu trigger={<Button aria-label="More actions" className="!px-2"><MoreHorizontal className="h-4 w-4" /></Button>}>
         {waiting
           ? <button type="button" onClick={() => run(() => setWorkState(kase.id, "in_progress"), { success: "No longer waiting" })}>No longer waiting</button>
@@ -68,6 +67,7 @@ export function CaseHeaderControls({ kase }: { kase: {
               <button type="button" onClick={() => { setWaitWhy(""); setWaitUntil(""); setWaitFor("waiting_customer"); }}>Waiting on the customer…</button>
               <button type="button" onClick={() => { setWaitWhy(""); setWaitUntil(""); setWaitFor("waiting_supplier"); }}>Waiting on a supplier…</button>
             </>}
+        {kase.status !== "cancelled" && <button type="button" onClick={() => changeStage("cancelled")}>Cancel case…</button>}
         {me.role === "boss" && <button type="button" className="text-red-600" onClick={() => setDelOpen(true)}>Delete case</button>}
       </Menu>
       {kase.status === "cancelled" && kase.cancel_reason && <span className="w-full text-right text-xs text-red-600">Cancelled: {kase.cancel_reason}</span>}

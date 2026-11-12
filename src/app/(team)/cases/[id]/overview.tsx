@@ -108,18 +108,27 @@ export function OverviewTab({ kase, customer, travellers, lines }: { kase: Kase;
           title="Client view"
           action={<Button size="sm" onClick={async () => { setPreview("loading"); setPreview(await previewAsClient(kase.id)); }}><Eye className="h-4 w-4" />Preview as client</Button>}
         >
-          <div className="space-y-2.5">
-            {VIEW_SWITCHES.map(([k, label]) => (
-              <Toggle
-                key={k}
-                label={label}
-                checked={!!view[k as keyof typeof view]}
-                disabled={me.role !== "boss" || pending}
-                onChange={(v) => run(() => setClientView(kase.id, { ...view, [k]: v }))}
-              />
-            ))}
-            {me.role !== "boss" && <p className="text-xs text-muted">Only the boss can change what the client sees.</p>}
-          </div>
+          {/* five switches most people never touch: staff get one line, the boss opens them when needed */}
+          {me.role !== "boss" ? (
+            <p className="text-[13px] text-muted">The boss decides what the client sees. Use the preview to check.</p>
+          ) : (
+            <details className="group">
+              <summary className="cursor-pointer select-none list-none text-[13px] font-medium text-muted hover:text-ink">
+                <span className="mr-1 inline-block transition-transform group-open:rotate-90">›</span> Choose what the client sees
+              </summary>
+              <div className="mt-3 space-y-2.5">
+                {VIEW_SWITCHES.map(([k, label]) => (
+                  <Toggle
+                    key={k}
+                    label={label}
+                    checked={!!view[k as keyof typeof view]}
+                    disabled={pending}
+                    onChange={(v) => run(() => setClientView(kase.id, { ...view, [k]: v }))}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
         </Card>
       </div>
 

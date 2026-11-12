@@ -61,7 +61,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     profitOk ? sb.rpc("dashboard_money", { p_from: prev.from, p_to: prev.to }) : none,
     profitOk ? sb.rpc("dashboard_trend", { p_months: 6 }) : none,
     sb.rpc("dashboard_pipeline"),
-    boss ? sb.from("activity_log").select("*").order("created_at", { ascending: false }).limit(7) : none,
+    boss ? sb.from("activity_log").select("*").not("actor", "is", null).order("created_at", { ascending: false }).limit(7) : none,
     sb.rpc("service_dates", { p_from: todayIST(), p_to: todayIST(7) }),
     sb.from("ticket_imports").select("id, status, file_name, created_at, channel", { count: "exact" }).in("status", ["received", "processing", "needs_review", "failed"]).order("created_at").limit(5),
   ]);
@@ -118,33 +118,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
       </section>
 
-      {profitOk && m && (
-        <>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Business overview</h2>
-              <p className="text-xs text-muted">{range.label} · compared with the previous period</p>
-            </div>
-            <DateRange />
-          </div>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="Sales" value={inr(m.sales)} icon={IndianRupee} tone="blue" delta={mp ? pct(m.sales, mp.sales) : null} sub="vs previous" spark={tr.map((x) => x.sales)} />
-            <Kpi label="Profit (incl. commission)" value={<span className={m.profit < 0 ? "text-red-600" : ""}>{inr(m.profit)}</span>} icon={TrendingUp} tone="green"
-              delta={mp ? pct(m.profit, mp.profit) : null} sub={m.sales ? `${Math.round((m.profit / m.sales) * 1000) / 10}% margin` : "vs previous"} spark={tr.map((x) => x.profit)} />
-            <Kpi label="Due from clients" value={inr(m.due_from_clients)} icon={Wallet} tone="amber" sub="All open balances" />
-            <Kpi label="Supplier cost" value={inr(m.cost)} icon={Layers} tone="violet" delta={mp ? pct(m.cost, mp.cost) : null} deltaGood="down" sub="vs previous" />
-          </div>
-        </>
-      )}
-
+      {/* what needs doing today comes first; the money figures follow below */}
       <div className="grid gap-5 xl:grid-cols-3">
         {/* left column (2/3) */}
         <div className="min-w-0 space-y-5 xl:col-span-2">
-          {profitOk && tr.length > 0 && (
-            <Card title="Performance" sub="Monthly trend" icon={TrendingUp}>
-              <TrendChart data={tr} />
-            </Card>
-          )}
           {pendingImports.length > 0 && (
             <Card title="Tickets to review" sub={`${pendingImportCount} waiting · nothing is added to a case until someone confirms`} icon={Ticket} pad={false}
               action={<Link href="/imports" className="text-xs link">All imports</Link>}>
@@ -162,7 +139,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           )}
           {boss ? <TasksByStaff tasks={t} /> : <MyDay tasks={t} />}
           {boss ? <PaymentsDue /> : <MyOpenCases userId={me.id} />}
-          {boss && m && <StaffBoard rows={m.by_staff} />}
         </div>
 
         {/* right column (1/3) */}
@@ -218,6 +194,37 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               </div>
             )}
           </Card>
+        </div>
+      </div>
+
+      {profitOk && m && (
+        <>
+          <div className="mb-3 mt-8 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Business overview</h2>
+              <p className="text-xs text-muted">{range.label} · compared with the previous period</p>
+            </div>
+            <DateRange />
+          </div>
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Kpi label="Sales" value={inr(m.sales)} icon={IndianRupee} tone="blue" delta={mp ? pct(m.sales, mp.sales) : null} sub="vs previous" spark={tr.map((x) => x.sales)} />
+            <Kpi label="Profit (incl. commission)" value={<span className={m.profit < 0 ? "text-red-600" : ""}>{inr(m.profit)}</span>} icon={TrendingUp} tone="green"
+              delta={mp ? pct(m.profit, mp.profit) : null} sub={m.sales ? `${Math.round((m.profit / m.sales) * 1000) / 10}% margin` : "vs previous"} spark={tr.map((x) => x.profit)} />
+            <Kpi label="Due from clients" value={inr(m.due_from_clients)} icon={Wallet} tone="amber" sub="All open balances" />
+            <Kpi label="Supplier cost" value={inr(m.cost)} icon={Layers} tone="violet" delta={mp ? pct(m.cost, mp.cost) : null} deltaGood="down" sub="vs previous" />
+          </div>
+        </>
+      )}
+      <div className="grid gap-5 xl:grid-cols-3">
+        <div className="min-w-0 space-y-5 xl:col-span-2">
+          {profitOk && tr.length > 0 && (
+            <Card title="Performance" sub="Monthly trend" icon={TrendingUp}>
+              <TrendChart data={tr} />
+            </Card>
+          )}
+          {boss && m && <StaffBoard rows={m.by_staff} />}
+        </div>
+        <div className="min-w-0 space-y-5">
           {profitOk && m && <ProfitByService rows={m.by_service} />}
           {boss && activity.data && (
             <Card title="Recent activity" icon={Activity}>
@@ -267,6 +274,9 @@ function Pipeline({ rows }: { rows: { status: string; cases: number; sale: numbe
   );
 }
 
+// a long list hides what matters: each group shows its first few tasks and links to the rest
+const SHOWN = 6;
+
 function MyDay({ tasks }: { tasks: TaskRow[] }) {
   const groups = [
     { key: "overdue", label: "Overdue", cls: "text-red-600 bg-red-50/60" },
@@ -282,7 +292,8 @@ function MyDay({ tasks }: { tasks: TaskRow[] }) {
         return (
           <div key={g.key}>
             <div className={cx("px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.05em]", g.cls)}>{g.label} · {list.length}</div>
-            <TaskList tasks={list} showAssignee={false} />
+            <TaskList tasks={list.slice(0, SHOWN)} showAssignee={false} />
+            {list.length > SHOWN && <Link href="/tasks" className="block border-t border-line px-4 py-2 text-xs link">{list.length - SHOWN} more in {g.label.toLowerCase()}</Link>}
           </div>
         );
       })}
@@ -305,7 +316,10 @@ function TasksByStaff({ tasks }: { tasks: TaskRow[] }) {
               <span className="flex items-center gap-2"><Avatar name={name} size="xs" />{name}</span>
               {over > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">{over} overdue</span>}
             </div>
-            <TaskList tasks={list} showAssignee={false} />
+            <TaskList tasks={list.slice(0, SHOWN)} showAssignee={false} />
+            {list.length > SHOWN && (
+              <Link href={list[0].assigned_to ? `/tasks?staff=${list[0].assigned_to}` : "/tasks"} className="block border-t border-line px-4 py-2 text-xs link">{list.length - SHOWN} more for {name}</Link>
+            )}
           </div>
         );
       })}
