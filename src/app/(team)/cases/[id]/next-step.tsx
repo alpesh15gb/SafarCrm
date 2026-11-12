@@ -21,9 +21,9 @@ export function NextStepBar({ w, kase }: { w: WorkSummary | null; kase: { id: st
       none || late ? "border-red-200 bg-red-50" : "border-line bg-white")}>
       <StatusBadge status={w.state} />
       {none ? (
-        <span className="min-w-0 flex-1 text-red-900">Nobody has a task on this case. Add the next step so it isn&apos;t forgotten.</span>
+        <span className="min-w-[12rem] flex-1 text-red-900">Nobody has a task on this case. Add the next step so it isn&apos;t forgotten.</span>
       ) : next ? (
-        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => next.id && openNew("task", { task_id: next.id })}>
+        <button type="button" className="min-w-[12rem] flex-1 text-left" onClick={() => next.id && openNew("task", { task_id: next.id })}>
           <span className="font-medium">Next: {next.title}</span>
           <span className={cx("text-muted", late && "font-medium !text-red-700")}>
             {next.due_at && <> · {fdatetime(next.due_at)}</>}{next.assignee && <> · {next.assignee}</>}

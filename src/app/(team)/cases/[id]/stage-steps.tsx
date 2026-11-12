@@ -23,7 +23,15 @@ export function StageSteps({ status }: { status: string }) {
   }
   const at = FLOW.indexOf(status);
   return (
-    <ol aria-label="Stage. Click a step to move the case there." className="no-print mb-4 flex items-center overflow-x-auto rounded-[14px] border border-line bg-white px-3 py-2 shadow-soft">
+    <>
+    {/* on a phone the five steps don't fit side by side, so the stage is one labelled choice */}
+    <label className="no-print mb-4 flex items-center gap-2 rounded-[14px] border border-line bg-white px-3 py-2 text-xs text-muted shadow-soft sm:hidden">
+      Stage {at + 1} of {FLOW.length}
+      <select className="field !w-auto flex-1 font-semibold text-ink" value={status} onChange={(e) => go(e.target.value)}>
+        {FLOW.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+      </select>
+    </label>
+    <ol aria-label="Stage. Click a step to move the case there." className="no-print mb-4 hidden items-center overflow-x-auto rounded-[14px] border border-line bg-white px-3 py-2 shadow-soft sm:flex">
       {FLOW.map((s, i) => {
         const done = i < at, cur = i === at;
         return (
@@ -41,5 +49,6 @@ export function StageSteps({ status }: { status: string }) {
         );
       })}
     </ol>
+    </>
   );
 }
