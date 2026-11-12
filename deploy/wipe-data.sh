@@ -89,13 +89,14 @@ update public.profiles set customer_id = null;
 alter table public.profiles drop constraint profiles_customer_fk;
 truncate public.payment_allocations, public.payments, public.expenses, public.share_links, public.files,
          public.task_comments, public.tasks, public.notifications, public.booking_lines, public.case_travellers,
-         public.cases, public.customer_documents, public.customers, public.families, public.suppliers, public.activity_log
+         public.cases, public.customer_documents, public.customers, public.families, public.suppliers, public.activity_log,
+         public.invoices, public.invoice_counters, public.ticket_imports, public.case_requests
          restart identity cascade;
 alter table public.profiles add constraint profiles_customer_fk foreign key (customer_id) references public.customers (id) on delete set null;
 do \$\$ begin
   if not exists (select 1 from public.profiles where role = 'boss' and active) then raise exception 'owner login missing; stopping'; end if;
 end \$\$;
-$([ "$DRY" = 1 ] && echo "rollback;" || printf "select setval('public.max_seq', %s, false);\nselect setval('public.customer_code_seq', 1, false);\ncommit;" "$START")
+$([ "$DRY" = 1 ] && echo "rollback;" || printf "select setval('public.max_seq', %s, false);\nselect setval('public.customer_code_seq', 1, false);\nselect setval('public.receipt_seq', 1, false);\ncommit;" "$START")
 SQL
 
 if [ "$DRY" = 1 ]; then

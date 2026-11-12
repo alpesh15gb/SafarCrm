@@ -59,13 +59,18 @@ echo "• Clearing the transactions"
 # client payments, expenses, files and tasks (database cascades, the same as "Delete case" in the CRM).
 q <<SQL
 begin;
+-- invoices and ticket imports outlive their case by design, so they are cleared explicitly, with the invoice numbering
+delete from public.invoices;
+delete from public.invoice_counters;
+delete from public.ticket_imports;
 delete from public.payments where direction = 'out';
 delete from public.cases;
 delete from public.notifications;
 delete from public.activity_log
   where case_id is not null or entity in ('case', 'booking_line', 'payment', 'expense', 'file', 'task');
 do \$\$ begin
-  if exists (select 1 from public.cases) or exists (select 1 from public.payments) or exists (select 1 from public.booking_lines) then
+  if exists (select 1 from public.cases) or exists (select 1 from public.payments) or exists (select 1 from public.booking_lines)
+     or exists (select 1 from public.invoices) then
     raise exception 'transactions still present; stopping';
   end if;
 end \$\$;
