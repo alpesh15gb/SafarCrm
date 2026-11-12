@@ -78,7 +78,13 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
+    if (open && !d.open) {
+      d.showModal();
+      // the browser puts the cursor on the Close button; move it to the first box you can type in
+      requestAnimationFrame(() => {
+        d.querySelector<HTMLElement>("[data-dialog-body] input:not([type]):not([disabled]), [data-dialog-body] input[type=text]:not([disabled]), [data-dialog-body] input[type=search]:not([disabled]), [data-dialog-body] textarea:not([disabled])")?.focus();
+      });
+    }
     if (!open && d.open) d.close();
   }, [open]);
   return (
@@ -99,7 +105,7 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="overflow-y-auto px-5 py-4">{children}</div>
+          <div data-dialog-body className="overflow-y-auto px-5 py-4">{children}</div>
           {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-gray-50/70 px-5 py-3">{footer}</div>}
         </div>
       )}
