@@ -3,7 +3,7 @@ import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AGENCY_COLS, PayTo, PrintDoc, type Agency } from "@/components/print-doc";
 import { SERVICE_LABEL, type Service } from "@/lib/constants";
-import { fdate, inr, rupeesInWords, waLink } from "@/lib/format";
+import { fdate, inr, prettyPhone, rupeesInWords, waLink } from "@/lib/format";
 
 export const metadata = { title: "Invoice" };
 
@@ -46,7 +46,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           <div className="text-[12px] uppercase tracking-wide text-muted">Bill to</div>
           <div className="font-semibold">{bill.name}</div>
           {bill.address && <div className="whitespace-pre-line text-[13px]">{bill.address}</div>}
-          {bill.mobile && <div className="text-[13px] text-muted">{bill.mobile}</div>}
+          {bill.mobile && <div className="text-[13px] text-muted">{prettyPhone(bill.mobile)}</div>}
           {bill.gstin && <div className="text-[13px]">GSTIN <span className="font-mono">{bill.gstin}</span></div>}
         </div>
         <div>
