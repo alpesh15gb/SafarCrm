@@ -51,8 +51,8 @@ select is((select count(*)::int from public.tasks where case_id = '00000000-0000
 insert into public.payments (direction, case_id, amount, mode) values ('in', '00000000-0000-0000-0000-0000001ca5e1', 5000, 'upi');
 select is((select status from public.cases where id = '00000000-0000-0000-0000-0000001ca5e1'), 'confirmed',
   'a client payment moves an enquiry or quote to Confirmed');
-select is((select count(*)::int from public.tasks where case_id = '00000000-0000-0000-0000-0000001ca5e1' and status <> 'done'), 2,
-  'Confirmed creates its two tasks and the quote follow-up is closed');
+select is((select string_agg(title, ',') from public.tasks where case_id = '00000000-0000-0000-0000-0000001ca5e1' and status <> 'done'), 'Make the bookings and issue tickets',
+  'Confirmed by a payment: the quote follow-up and "Collect the advance" are closed (the advance is in), "Make the bookings" is open');
 
 -- ---------------------------------------------------------------- no open task = no next step
 update public.tasks set status = 'done' where case_id = '00000000-0000-0000-0000-0000001ca5e1' and status <> 'done';
