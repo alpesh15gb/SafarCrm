@@ -51,7 +51,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         }
       />
       <div className="mb-4 space-y-2.5">
-        <SearchBox placeholder="Search MAX ID, title, destination, customer name or mobile" />
+        <SearchBox placeholder="Search by MAX ID, customer, mobile or place" />
         {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
         <Chips param="work" current={sp.work} base={sp} allLabel="Any next step" items={[
           { value: "no_next", label: "No next step" }, { value: "overdue", label: "Overdue" },

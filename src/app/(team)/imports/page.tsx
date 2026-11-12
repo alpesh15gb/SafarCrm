@@ -89,18 +89,17 @@ function AccuracyCard({ a }: { a: Accuracy }) {
   return (
     <Card className="mt-4">
       <div className="mb-2 text-sm font-semibold">Reading accuracy, last 30 days</div>
-      <div className="grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-3 text-[13px]">
         <div><div className="text-lg font-semibold">{a.imports}</div><div className="text-muted">tickets confirmed</div></div>
         <div><div className="text-lg font-semibold">{a.untouched}</div><div className="text-muted">confirmed with no corrections</div></div>
         <div><div className="text-lg font-semibold">{pctRight === null ? "—" : `${pctRight}%`}</div><div className="text-muted">of fields kept as read</div></div>
-        <div><div className="text-lg font-semibold">{a.median_minutes_to_confirm ?? "—"}{a.median_minutes_to_confirm !== null && " min"}</div><div className="text-muted">typical time from reading to confirming</div></div>
       </div>
       {a.most_corrected.length > 0 && (
         <p className="mt-3 text-[13px] text-muted">
           Most corrected: {a.most_corrected.map((f) => `${label(f.field)} (${f.times})`).join(", ")}.
         </p>
       )}
-      <p className="mt-2 text-xs text-muted">Counts only. The values staff changed are not stored. Time to confirm includes time the ticket waited in the list.</p>
+      <p className="mt-2 text-xs text-muted">Counts only. The values staff changed are not stored.</p>
     </Card>
   );
 }

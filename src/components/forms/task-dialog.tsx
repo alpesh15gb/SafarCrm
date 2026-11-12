@@ -139,7 +139,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             <input type="datetime-local" aria-label="Due date and time (India time)" className="field !w-auto !py-1 text-[13px]" value={due} onChange={(e) => setDue(e.target.value)} />
           </div>
         </Field>
-        <Field label="Case" hint={taskId ? undefined : "Optional. Leave empty for an office task, like paying a bill."}>
+        <Field label="Case" hint={taskId || kase ? undefined : "Optional. Leave empty for an office task, like paying a bill."}>
           {taskId ? (
             <TaskCasePanel taskId={taskId} taskTitle={title} linked={kase} customer={cust} onChanged={(c) => setKase(c)} />
           ) : newCase ? (
@@ -151,7 +151,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             <div className="space-y-2">
               <div className="flex gap-2">
                 <div className="flex-1"><CasePicker value={kase} onChange={setKase} /></div>
-                <Button onClick={() => setNewCase(true)}>New case</Button>
+                {!kase && <Button onClick={() => setNewCase(true)}>New case</Button>}
               </div>
               {suggest.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">

@@ -85,28 +85,39 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
           </div>
         </Field>
       )}
-      <Field label="Title" required hint="Suggested from the customer and destination; change it if you like.">
-        <input className="field" value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} />
+      <Field label="What does the client want?" hint="Number of people, budget, hotel type: whatever they said. Saved in the case notes.">
+        <textarea className="field min-h-16" value={want} onChange={(e) => setWant(e.target.value)} placeholder="4 adults, beach hotel, budget about 80,000" />
       </Field>
-      <Field label="What does the client want?" hint="Dates, number of people, budget, hotel type: whatever they said. Saved in the case notes.">
-        <textarea className="field min-h-16" value={want} onChange={(e) => setWant(e.target.value)} placeholder="4 adults, Goa 20 to 24 Dec, beach hotel, budget about 80,000" />
-      </Field>
-      <More title="More details (dates, destination, staff)" defaultOpen={!compact}>
+      {!compact && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Going to"><input className="field" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Goa" /></Field>
+          <Field label="From date"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field label="To date"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+        </div>
+      )}
+      {/* filled in for you or rarely changed: the title is suggested, the case goes to you */}
+      <More title={`More: title, starting city, lead source, owner${compact ? ", dates" : ""}`}>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="From"><input className="field" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Delhi" /></Field>
-          <Field label="Destination"><input className="field" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Goa" /></Field>
-          <Field label="Travel start"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-          <Field label="Travel end"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+          <div className="sm:col-span-2">
+            <Field label="Title" required hint="Suggested from the customer and destination; change it if you like.">
+              <input className="field" value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} />
+            </Field>
+          </div>
+          <Field label="Starting from"><input className="field" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Delhi" /></Field>
+          {compact && <Field label="Going to"><input className="field" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Goa" /></Field>}
+          {compact && <Field label="From date"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>}
+          {compact && <Field label="To date"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>}
           <Field label="Lead source">
             <select className="field" value={lead} onChange={(e) => setLead(e.target.value)}>
               <option value="">—</option>
               {LEAD_SOURCES.map((l) => <option key={l}>{l}</option>)}
             </select>
           </Field>
-          <Field label="Assigned to"><StaffSelect staff={staff} value={assigned} onChange={setAssigned} /></Field>
+          <Field label="Owner"><StaffSelect staff={staff} value={assigned} onChange={setAssigned} /></Field>
         </div>
       </More>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {customer && title.trim() && <span className="min-w-0 truncate text-xs text-muted">Will be saved as “{title}”</span>}
         <Button variant="primary" disabled={pending || !customer || !title.trim()} onClick={submit}>Create case</Button>
       </div>
     </div>
