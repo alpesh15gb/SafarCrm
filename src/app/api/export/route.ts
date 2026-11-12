@@ -94,7 +94,9 @@ export async function GET(req: Request) {
     if (kind === "suppliers") {
       const { rows } = await listSuppliers(sp, true);
       addSheet(wb, "Suppliers", [{ key: "name", label: "Supplier" }, { key: "type", label: "Type" }, { key: "contact_person", label: "Contact" }, { key: "mobile", label: "Mobile" },
-        { key: "city", label: "City" }, { key: "terms", label: "Terms" }, { key: "payable", label: "Payable", money: true }, { key: "paid", label: "Paid", money: true }, { key: "due", label: "Due", money: true }],
+        { key: "city", label: "City" }, { key: "terms", label: "Terms" },
+        // what we owe a supplier is for those who may see profit
+        ...(me.can_see_profit ? [{ key: "payable", label: "Payable", money: true }, { key: "paid", label: "Paid", money: true }, { key: "due", label: "Due", money: true }] as Col[] : [])],
         rows.map((r) => ({ ...r, type: SUPPLIER_TYPE_LABEL[r.supplier_type], terms: r.terms === "credit" ? `Credit ${r.credit_days} days` : "Prepaid", due: r.payable - r.paid })));
       return respond(wb, "Suppliers");
     }

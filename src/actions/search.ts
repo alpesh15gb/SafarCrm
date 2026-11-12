@@ -9,18 +9,12 @@ export async function searchAll(q: string): Promise<SearchHit[]> {
   return (data ?? []) as SearchHit[];
 }
 
+/** Customer search in forms. Finds any customer, so nobody adds a duplicate; for staff who may only see their own
+ *  customers, someone else's customer comes back with just the name, code and a masked mobile. */
 export async function searchCustomers(q: string) {
   const sb = await createClient();
-  const t = q.trim();
-  let query = sb.from("customers").select("id, code, full_name, mobile, family_id, customer_type").order("full_name").limit(12);
-  if (t) {
-    const digits = t.replace(/\D/g, "");
-    query = digits.length >= 4
-      ? query.or(`mobile.ilike.%${digits}%,full_name.ilike.%${t.replace(/[,()%]/g, "")}%,code.ilike.%${t.replace(/[,()%]/g, "")}%`)
-      : query.or(`full_name.ilike.%${t.replace(/[,()%]/g, "")}%,code.ilike.${t.replace(/[,()%]/g, "")}%`);
-  }
-  const { data } = await query;
-  return data ?? [];
+  const { data } = await sb.rpc("customer_picker", { q: q.trim().replace(/[%_]/g, "") });
+  return (data ?? []) as { id: string; code: string; full_name: string; mobile: string; family_id: string | null; customer_type: string }[];
 }
 
 export async function searchCases(q: string) {
@@ -47,14 +41,11 @@ export async function searchSuppliers(q: string, service?: string) {
 /** Who can travel on this customer's cases: the customer, their family, and (for a company) its employees. */
 export async function familyMembers(customerId: string) {
   const sb = await createClient();
-  const { data: c } = await sb.from("customers").select("id, family_id, last_name, customer_type").eq("id", customerId).single();
-  const corporate = c?.customer_type === "corporate";
-  const [{ data: fam }, { data: emp }] = await Promise.all([
-    c?.family_id ? sb.from("customers").select("id, full_name, dob, relation").eq("family_id", c.family_id).neq("id", customerId).order("dob") : Promise.resolve({ data: [] }),
-    corporate ? sb.from("customers").select("id, full_name, dob, designation").eq("company_id", customerId).order("full_name") : Promise.resolve({ data: [] }),
-  ]);
+  // names only, for choosing travellers; works for a customer found in search who is not yet this user's own
+  const { data } = await sb.rpc("customer_family", { p_customer: customerId });
   type M = { id: string; full_name: string; dob: string | null; relation?: string | null; designation?: string | null };
-  return { last_name: (c?.last_name ?? null) as string | null, corporate, members: [...(fam ?? []), ...(emp ?? [])] as M[] };
+  const f = (data ?? null) as { last_name: string | null; corporate: boolean; members: M[] } | null;
+  return { last_name: f?.last_name ?? null, corporate: !!f?.corporate, members: f?.members ?? [] };
 }
 
 export async function lookupValues(kind: string) {

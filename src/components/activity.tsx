@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getMe } from "@/lib/auth";
 import { fdate, fdatetime, inr } from "@/lib/format";
 import { STATUS_LABEL } from "@/lib/constants";
 import { Avatar } from "./ui";
@@ -52,7 +53,16 @@ function show(k: string, v: unknown, names: Map<string, string>): string {
 }
 
 /** The history of a case, customer or supplier in plain words: names instead of ids, labels instead of column names. */
-export async function ActivityList({ items }: { items: Item[] }) {
+// what a booking costs us, and what we pay suppliers, is for the boss and staff who may see profit
+const COST_KEYS = new Set(["supplier_cost", "commission_value", "commission_type", "commission_amount", "refund_from_supplier", "cancellation_charge"]);
+
+export async function ActivityList({ items: all }: { items: Item[] }) {
+  const me = await getMe();
+  const profit = !!me?.can_see_profit;
+  const items = profit ? all : all
+    .filter((a) => !/^(Payment to supplier|Pay supplier |Supplier advance)/.test(a.summary ?? ""))
+    .map((a) => ({ ...a, changes: a.changes ? Object.fromEntries(Object.entries(a.changes).filter(([k]) => !COST_KEYS.has(k))) : a.changes }))
+    .filter((a) => a.action !== "update" || !a.changes || Object.keys(a.changes).length > 0);
   if (!items.length) return <p className="text-muted">No activity yet.</p>;
 
   // ids that appear in the changes are looked up once and shown as names

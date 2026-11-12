@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { setNewPassword } from "@/actions/account";
 import { Button, Field } from "@/components/ui";
 
 export function SetPasswordForm() {
@@ -18,10 +18,9 @@ export function SetPasswordForm() {
         if (a.length < 8) return setErr("Use at least 8 characters.");
         if (a !== b) return setErr("The two passwords don't match.");
         setBusy(true); setErr("");
-        const sb = supabaseBrowser();
-        const { error } = await sb.auth.updateUser({ password: a });
-        if (error) { setErr(error.message); setBusy(false); return; }
-        await sb.rpc("password_changed");
+        // set on the server, which also clears "must change password" only once the new password is saved
+        const r = await setNewPassword(a);
+        if (!r.ok) { setErr(r.error); setBusy(false); return; }
         router.replace("/");
         router.refresh();
       }}

@@ -18,7 +18,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function SupplierPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const me = await requireTeam();
   const { id } = await params;
-  const { tab = "ledger" } = await searchParams;
+  // what a supplier costs and is owed is for the boss and staff who may see profit; others get the supplier's details
+  const money = me.can_see_profit;
+  const { tab = money ? "ledger" : "details" } = await searchParams;
   const sb = await createClient();
   const { data: s } = await sb.from("suppliers").select("*").eq("id", id).maybeSingle();
   if (!s) notFound();
@@ -35,16 +37,16 @@ export default async function SupplierPage({ params, searchParams }: { params: P
     <>
       <PageHeader back={{ href: "/suppliers", label: "Suppliers" }} title={s.name}
         sub={<>{SUPPLIER_TYPE_LABEL[s.supplier_type] ?? s.supplier_type} · {s.terms === "credit" ? `Credit ${s.credit_days} days${s.credit_limit ? `, limit ${inr(s.credit_limit)}` : ""}` : "Prepaid"} · <StatusBadge status={s.status} /></>}
-        action={<SupplierPayButton supplier={{ id: s.id, name: s.name }} open={open} />} />
-      <div className="mb-4 grid grid-cols-3 gap-3">
+        action={money ? <SupplierPayButton supplier={{ id: s.id, name: s.name }} open={open} /> : undefined} />
+      {money && <div className="mb-4 grid grid-cols-3 gap-3">
         <Stat label="Payable" value={inr(payable)} />
         <Stat label="Paid" value={inr(paid)} />
         {payable - paid < 0
           ? <Stat label="Advance with supplier" value={inr(paid - payable)} sub="Paid ahead; it is used up as new bookings with this supplier are added" />
           : <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />}
-      </div>
-      <Tabs active={tab} base={`/suppliers/${id}`} tabs={[{ key: "ledger", label: "Ledger" }, { key: "details", label: "Details" }, { key: "files", label: "Files and notes" }, { key: "activity", label: "Activity" }]} />
-      {tab === "ledger" && <Ledger id={id} isBoss={me.role === "boss" || me.can_see_all_cases} canDelete={me.role === "boss"} />}
+      </div>}
+      <Tabs active={tab} base={`/suppliers/${id}`} tabs={[...(money ? [{ key: "ledger", label: "Ledger" }] : []), { key: "details", label: "Details" }, { key: "files", label: "Files and notes" }, { key: "activity", label: "Activity" }]} />
+      {tab === "ledger" && money && <Ledger id={id} isBoss={me.role === "boss" || me.can_see_all_cases} canDelete={me.role === "boss"} />}
       {tab === "details" && <div className="max-w-3xl"><SupplierForm supplier={s} /></div>}
       {tab === "files" && <FilesLoader id={id} notes={s.notes} isBoss={me.role === "boss"} />}
       {tab === "activity" && <ActivityLoader id={id} />}

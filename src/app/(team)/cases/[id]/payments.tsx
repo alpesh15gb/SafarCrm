@@ -7,7 +7,7 @@ import { Confirm, Dialog, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
 import { amount } from "@/lib/money";
-import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment } from "@/actions/money";
+import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment, useSupplierAdvance } from "@/actions/money";
 import { PAY_MODES, PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
 import { fdate, todayIST, inr } from "@/lib/format";
 import type { Line } from "./bookings";
@@ -17,13 +17,16 @@ type Exp = { id: string; name: string; amount: number; exp_date: string };
 type SupMoney = { supplier_id: string; supplier_name: string; payable: number; paid: number; due_date: string | null };
 type SupPay = { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string } | null } };
 
-export function PaymentsTab({ caseId, lines, money, payments, expenses, suppliers, supplierPayments, status }: {
+export function PaymentsTab({ caseId, lines, money, payments, expenses, suppliers, supplierPayments, status, advances = {} }: {
   status: string; caseId: string; lines: Line[]; money: Record<string, unknown> | null; payments: Pay[]; expenses: Exp[]; suppliers: SupMoney[]; supplierPayments: SupPay[];
+  /** money each supplier holds that isn't put against any case yet */
+  advances?: Record<string, number>;
 }) {
   const { me } = useApp();
   const { run, pending } = useAction();
   const [payOpen, setPayOpen] = useState(false);
   const [supPay, setSupPay] = useState<SupMoney | null>(null);
+  const [supRefund, setSupRefund] = useState<SupMoney | null>(null);
   const [exp, setExp] = useState({ name: "", amount: "" });
   const [del, setDel] = useState<{ kind: "payment" | "expense"; id: string; text: string } | null>(null);
 
@@ -39,7 +42,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
   return (
     <div className="space-y-4">
       {/* taking and making payments is the everyday job here; the profit breakdown follows */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className={me.can_see_profit ? "grid gap-4 lg:grid-cols-2" : "grid gap-4"}>
         <Card title="From client" action={<Button size="sm" variant="primary" onClick={() => setPayOpen(true)}><Plus className="h-3.5 w-3.5" />Record payment</Button>} pad={false}>
           <div className="grid grid-cols-3 gap-2 border-b border-line p-4 text-center">
             <div><div className="text-xs text-muted">Billed (incl. GST)</div><Money value={money?.billed as number} className="font-semibold" /></div>
@@ -62,6 +65,8 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
           )}
         </Card>
 
+        {/* paying suppliers shows what they cost, so it is for the boss and staff who may see profit */}
+        {me.can_see_profit && (
         <Card title="To suppliers" pad={false}>
           <div className="grid grid-cols-3 gap-2 border-b border-line p-4 text-center">
             <div><div className="text-xs text-muted">Payable</div><Money value={money?.supplier_payable as number} className="font-semibold" /></div>
@@ -92,7 +97,14 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
                     <td data-label="Due">{due < 0
                       ? <span className="text-sky-700" title="Paid more than this booking costs; stays as an advance with the supplier">Advance <Money value={-due} /></span>
                       : <Money value={due} className={due > 0 ? "text-amber-700" : ""} />}</td>
-                    <td data-label="">{due > 0 && <Button size="sm" onClick={() => setSupPay(s)}>Pay</Button>}</td>
+                    <td data-label="" className="whitespace-nowrap">
+                      {due > 0 && <Button size="sm" onClick={() => setSupPay(s)}>Pay</Button>}
+                      {due > 0 && Number(advances[s.supplier_id] ?? 0) > 0.009 && (
+                        <Button size="sm" className="ml-1.5" disabled={pending} title={`${s.supplier_name} holds ${inr(advances[s.supplier_id])} paid in advance`}
+                          onClick={() => run(() => useSupplierAdvance(s.supplier_id, caseId, due))}>Use advance {inr(Math.min(due, advances[s.supplier_id]))}</Button>
+                      )}
+                      {due < 0 && <Button size="sm" onClick={() => setSupRefund(s)} title="The supplier owes this money back: record it when they pay">Record refund</Button>}
+                    </td>
                   </tr>
                 );
               })}
@@ -106,6 +118,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
             </div>
           )}
         </Card>
+        )}
       </div>
 
       {me.can_see_profit && (
@@ -165,6 +178,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
       <ClientPaymentDialog open={payOpen} onClose={() => setPayOpen(false)} caseId={caseId} due={Number(money?.due ?? 0)} received={Number(money?.received ?? 0)} status={status} />
       {/* keyed on the supplier, so the amount and reference typed for one supplier are never offered for the next */}
       <SupplierPaymentDialog key={supPay?.supplier_id ?? "none"} sup={supPay} onClose={() => setSupPay(null)} caseId={caseId} />
+      <SupplierPaymentDialog key={`r-${supRefund?.supplier_id ?? "none"}`} sup={supRefund} refund onClose={() => setSupRefund(null)} caseId={caseId} />
       <Confirm open={!!del} onClose={() => setDel(null)} title={del?.kind === "payment" ? "Delete this payment?" : "Delete this expense?"} pending={pending} confirmLabel="Delete"
         text={`${del?.text ?? ""}. This changes what the client owes${del?.kind === "expense" ? " and the profit" : ""}. It can't be undone.`}
         onConfirm={() => del && run(() => (del.kind === "payment" ? deletePayment(del.id) : deleteExpense(del.id)), { then: () => setDel(null) })} />
@@ -219,29 +233,40 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
   );
 }
 
-function SupplierPaymentDialog({ sup, onClose, caseId }: { sup: SupMoney | null; onClose: () => void; caseId: string }) {
+function SupplierPaymentDialog({ sup, onClose, caseId, refund }: { sup: SupMoney | null; onClose: () => void; caseId: string; refund?: boolean }) {
   const { run, pending } = useAction();
-  const due = sup ? Number(sup.payable) - Number(sup.paid) : 0;
+  const balance = sup ? Number(sup.payable) - Number(sup.paid) : 0;
+  // a refund is money the supplier pays back (we paid more than the booking now costs, e.g. after a cancellation)
+  const due = refund ? Math.max(-balance, 0) : balance;
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" });
   if (!sup) return null;
-  const amt = v.amount.trim() ? amount(v.amount) : due;
+  const amt = Math.abs(v.amount.trim() ? amount(v.amount) : due);
   const extra = Math.round((amt - Math.max(due, 0)) * 100) / 100;
+  const save = () => run(() => addSupplierPayment({
+    supplier_id: sup.supplier_id, pay_date: v.pay_date, mode: v.mode, reference: v.reference,
+    amount: refund ? -amt : amt,
+    allocations: [{ case_id: caseId, amount: refund ? -Math.min(amt, due) : Math.min(amt, Math.max(due, 0)) }],
+  }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } });
   return (
-    <Dialog open={!!sup} onClose={onClose} title={`Pay ${sup.supplier_name}`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending}
-        onClick={() => { run(() => addSupplierPayment({ supplier_id: sup.supplier_id, pay_date: v.pay_date, amount: amt, mode: v.mode, reference: v.reference, allocations: [{ case_id: caseId, amount: Math.min(amt, Math.max(due, 0)) }] }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } }); }}>Save payment</Button></>}>
+    <Dialog open={!!sup} onClose={onClose} title={refund ? `Refund from ${sup.supplier_name}` : `Pay ${sup.supplier_name}`}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !amt} onClick={save}>{refund ? "Save refund" : "Save payment"}</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Amount (₹)" hint={`Due on this case ${inr(due)}`}><input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} /></Field>
+        <Field label={refund ? "Amount received back (₹)" : "Amount (₹)"} hint={refund ? `${sup.supplier_name} owes ${inr(due)} back on this case` : `Due on this case ${inr(due)}`}>
+          <input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} />
+        </Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
         <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
         <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
       </div>
-      {extra > 0 && (
+      {!refund && extra > 0 && (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-          This is {inr(extra)} more than is due on this case ({inr(Math.max(due, 0))}). Check the amount. If you are paying in advance, save it: the extra shows as an advance with {sup.supplier_name}.
+          This is {inr(extra)} more than is due on this case ({inr(Math.max(due, 0))}). Check the amount. If you are paying in advance, save it: the extra shows as an advance with {sup.supplier_name}, and can be used on a later case with “Use advance”.
         </p>
       )}
-      <p className="mt-3 text-xs text-muted">To pay for several MAX IDs at once, use “Record payment” on the supplier page.</p>
+      {refund && extra > 0 && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">This is more than {sup.supplier_name} owes back on this case ({inr(due)}). Check the amount.</p>
+      )}
+      {!refund && <p className="mt-3 text-xs text-muted">To pay for several MAX IDs at once, use “Record payment” on the supplier page.</p>}
     </Dialog>
   );
 }

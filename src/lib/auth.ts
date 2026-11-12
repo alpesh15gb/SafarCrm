@@ -90,6 +90,13 @@ function friendly(msg: string) {
   if (msg.includes("import_incomplete")) return `Not ready to confirm: ${msg.split("import_incomplete:")[1]?.trim() ?? "some required fields are empty"}.`;
   if (msg.includes("unpublished_file")) return "This file is waiting for the boss to publish it, so it can't be shared yet.";
   if (msg.includes("task_already_linked")) return "This task is already linked to a case. Open it, or move the task to another case.";
+  if (msg.includes("supplier_change_paid")) return "This supplier has already been paid for this booking. Record a refund from them on the Payments tab first, or ask the boss to remove the payment, then change the supplier.";
+  if (msg.includes("case_cancel_direct")) return "Use “Cancel case…” in the ⋯ menu, so bookings and refunds are checked and a reason is saved.";
+  if (msg.includes("case_new_closed")) return "A new case starts open; complete or cancel it from the case page.";
+  if (msg.includes("supplier_money_profit_only")) return "Supplier payments are for the boss and staff who may see profit.";
+  if (msg.includes("allocation_sign")) return "A payment and the amounts put against cases must both be payments, or both be refunds.";
+  if (msg.includes("allocation_over_payment")) return "The amounts put against cases add up to more than the payment.";
+  if (msg.includes("advance_nothing_to_use")) return "There is no advance left with this supplier, or nothing is owed to them on this case.";
   if (msg.includes("doc_type_locked")) return "This document has a number saved, so only the boss can change its type.";
   if (msg.includes("case_has_money")) return "This case has payments, expenses or an invoice, so it can't be deleted. Cancel the case instead; to really delete it, remove the payments and expenses and cancel its invoices first.";
   if (msg.includes("file_locked")) return "Only the boss can change what this file is linked to.";

@@ -152,7 +152,7 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
                 const b = cancelBreakdown({ ...l, base_fare: null });
                 return (
                   <div className="mt-1 tabular">
-                    Kept from client {inr(l.selling_price)} − {inr(l.refund_to_client)} = <b>{inr(b.kept)}</b> · Supplier keeps (charge) {inr(l.supplier_cost)} − {inr(l.refund_from_supplier)} = <b>{inr(b.charge)}</b>
+                    Kept from client {inr(l.selling_price)} − {inr(l.refund_to_client)} = <b>{inr(b.kept)}</b>{me.can_see_profit && <> · Supplier keeps (charge) {inr(l.supplier_cost)} − {inr(l.refund_from_supplier)} = <b>{inr(b.charge)}</b></>}
                     {me.can_see_profit && <> · Profit {inr(b.kept)} − {inr(b.charge)} = <b>{inr(b.profit)}</b> (commission doesn&apos;t count after cancelling)</>}
                   </div>
                 );
@@ -163,7 +163,7 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
         <div className="space-y-1 rounded-lg bg-gray-50 p-3 text-[13px]">
           <Row k={l.service === "visa" ? "Charged to client" : "Selling price"} v={<Money value={l.selling_price} />} />
           {Number(l.gst) > 0 && <Row k="GST (not profit)" v={<Money value={l.gst} />} />}
-          <Row k={l.service === "visa" ? "Our cost (embassy + VFS)" : "Supplier cost"} v={<Money value={l.supplier_cost} />} />
+          {me.can_see_profit && <Row k={l.service === "visa" ? "Our cost (embassy + VFS)" : "Supplier cost"} v={<Money value={l.supplier_cost} />} />}
           {me.can_see_profit && (l.service !== "visa" || Number(l.commission_amount) > 0) && <Row k={`Commission${l.commission_type === "percent" ? ` (${l.commission_value}% of ${l.service === "flight" && Number(l.details?.base_fare) > 0 ? "base fare" : "cost"})` : ""}`} v={<Money value={l.commission_amount} />} />}
           {cancelled && <Row k="Refunds (client / supplier)" v={<>{inr(l.refund_to_client)} / {inr(l.refund_from_supplier)}</>} />}
           {me.can_see_profit && profit !== null && profit !== undefined && (
@@ -446,9 +446,9 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
 
         <div className="rounded-lg border border-line p-3">
           <div className="grid gap-3 sm:grid-cols-4">
-            <Field label={isVisa ? "Our cost (₹)" : "Supplier cost (₹)"} hint={isVisa ? `Embassy + VFS fees${visaPerPerson ? ", per person" : ""}` : undefined}><input className="field tabular" inputMode="decimal" value={m.supplier_cost} onChange={(e) => setM({ ...m, supplier_cost: e.target.value })} /></Field>
+            <Field label={isVisa ? "Our cost (₹)" : "Supplier cost (₹)"} hint={!me.can_see_profit && line ? "Hidden. Leave empty to keep the cost already saved." : isVisa ? `Embassy + VFS fees${visaPerPerson ? ", per person" : ""}` : undefined}><input className="field tabular" inputMode="decimal" placeholder={!me.can_see_profit && line ? "Hidden" : undefined} value={m.supplier_cost} onChange={(e) => setM({ ...m, supplier_cost: e.target.value })} /></Field>
             <Field label={isVisa ? "Charge to client (₹)" : "Selling price (₹)"} hint={isVisa ? `Fees + our service charge${visaPerPerson ? ", per person" : ""}` : "Without GST"}><input className="field tabular" inputMode="decimal" value={m.selling_price} onChange={(e) => setM({ ...m, selling_price: e.target.value })} /></Field>
-            {!isVisa && <Field label="Commission">
+            {!isVisa && me.can_see_profit && <Field label="Commission">
               <div className="flex">
                 <input className="field tabular !rounded-r-none" inputMode="decimal" value={m.commission_value} onChange={(e) => setM({ ...m, commission_value: e.target.value })} />
                 <select className="field !w-16 !rounded-l-none !border-l-0 !px-2" value={m.commission_type} onChange={(e) => setM({ ...m, commission_type: e.target.value as "amount" | "percent" })}>
@@ -569,10 +569,10 @@ function CancelDialog({ line, onClose }: { line: Line | null; onClose: () => voi
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Supplier cancellation charge (₹)">
             <input className="field tabular" inputMode="decimal" value={v.cancellation_charge}
-              onChange={(e) => setV({ ...v, cancellation_charge: e.target.value, refund_from_supplier: e.target.value === "" ? v.refund_from_supplier : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} />
+              onChange={(e) => setV({ ...v, cancellation_charge: e.target.value, refund_from_supplier: e.target.value === "" || !me.can_see_profit ? v.refund_from_supplier : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} />
           </Field>
-          <Field label="Refund from supplier (₹)" hint={`Charge + refund = supplier cost ${inr(line.supplier_cost)}`}><input className="field tabular" inputMode="decimal" value={v.refund_from_supplier}
-            onChange={(e) => setV({ ...v, refund_from_supplier: e.target.value, cancellation_charge: e.target.value === "" ? v.cancellation_charge : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} /></Field>
+          <Field label="Refund from supplier (₹)" hint={me.can_see_profit ? `Charge + refund = supplier cost ${inr(line.supplier_cost)}` : undefined}><input className="field tabular" inputMode="decimal" value={v.refund_from_supplier}
+            onChange={(e) => setV({ ...v, refund_from_supplier: e.target.value, cancellation_charge: e.target.value === "" || !me.can_see_profit ? v.cancellation_charge : String(Math.max(0, Math.round((Number(line.supplier_cost) - n(e.target.value)) * 100) / 100)) })} /></Field>
           <Field label="Refund to client (₹)"><input className="field tabular" inputMode="decimal" value={v.refund_to_client} onChange={(e) => setV({ ...v, refund_to_client: e.target.value })} /></Field>
         </div>
         {Number(line.gst) > 0 && (

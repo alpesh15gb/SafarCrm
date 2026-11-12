@@ -11,7 +11,7 @@ export const REPORTS = [
   { key: "pnl", label: "Profit and loss", profit: true },
   { key: "client_dues", label: "Client dues" },
   { key: "client_credits", label: "Client credits" },
-  { key: "supplier_dues", label: "Supplier dues" },
+  { key: "supplier_dues", label: "Supplier dues", profit: true },
   { key: "sales", label: "Sales by service and staff", profit: true },
   { key: "upcoming", label: "Upcoming travel" },
   { key: "expiry", label: "Document expiry" },

@@ -62,7 +62,9 @@ export default async function CasePage({ params, searchParams }: { params: Promi
   const trav = (travellers ?? []).map((t) => t.customer as unknown as PaxRow);
   const customer = c.customer as { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null; family_id: string | null; code: string; customer_type: string };
   const lm = new Map((lineMoney ?? []).map((m) => [m.line_id, m]));
-  const linesWithMoney = (lines ?? []).map((l) => ({ ...l, money: lm.get(l.id) })) as Line[];
+  // supplier cost and commission never reach the browser of staff who may not see profit
+  const hideCost = (l: Record<string, unknown>) => (me.can_see_profit ? l : { ...l, supplier_cost: null, commission_type: "amount", commission_value: null, commission_amount: null, refund_from_supplier: null, cancellation_charge: null });
+  const linesWithMoney = (lines ?? []).map((l) => ({ ...hideCost(l), money: lm.get(l.id) })) as Line[];
 
   const profit = money?.profit as number | null;
   const tabs = TABS.map((t) => ({
@@ -185,6 +187,9 @@ async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string
     sb.from("v_case_supplier_money").select("*").eq("case_id", caseId),
     sb.from("payment_allocations").select("amount, payment:payments(id, pay_date, mode, reference, supplier:suppliers(name))").eq("case_id", caseId),
   ]);
+  // advance each supplier still holds (only for people who may see supplier money)
+  const supIds = Array.from(new Set(((suppliers ?? []) as { supplier_id: string }[]).map((s) => s.supplier_id)));
+  const advanceRows = await Promise.all(supIds.map(async (sid) => [sid, Number((await sb.rpc("supplier_advance", { p_supplier: sid })).data ?? 0)] as const));
   return (
     <PaymentsTab
       status={status}
@@ -194,6 +199,7 @@ async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string
       payments={payments ?? []}
       expenses={expenses ?? []}
       suppliers={suppliers ?? []}
+      advances={Object.fromEntries(advanceRows)}
       supplierPayments={(allocs ?? []) as unknown as { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string } | null } }[]}
     />
   );

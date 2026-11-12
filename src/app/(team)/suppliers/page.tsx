@@ -10,14 +10,14 @@ import { prettyPhone } from "@/lib/format";
 export const metadata = { title: "Suppliers" };
 
 export default async function SuppliersPage({ searchParams }: { searchParams: Promise<SP> }) {
-  await requireTeam();
+  const me = await requireTeam();
   const sp = await searchParams;
   const { rows, count, page } = await listSuppliers(sp);
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "page") as [string, string][]).toString();
   const filtered = Object.keys(sp).some((k) => k !== "page" && sp[k]);
   return (
     <>
-      <PageHeader title="Suppliers" sub="Who we buy from, and what we owe them."
+      <PageHeader title="Suppliers" sub={me.can_see_profit ? "Who we buy from, and what we owe them." : "Who we buy from."}
         action={<><a className={btnClass("secondary")} href={`/api/export?export=suppliers&${qs}`}><Download className="h-4 w-4" />Export to Excel</a><NewButton kind="supplier" label="New supplier" /></>} />
       <div className="mb-3 space-y-2">
         <SearchBox placeholder="Supplier name" />
@@ -32,7 +32,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
           filtered ? <Empty text="No suppliers match." action={<LinkButton href="/suppliers">Clear filters</LinkButton>} />
             : <Empty text="No suppliers yet. Add the consolidators, hotels and insurers you book with." action={<NewButton kind="supplier" label="New supplier" />} />
         ) : (
-          <Table head={["Supplier", "Type", "Services", "Contact", "Terms", "We owe", "Status"]}>
+          <Table head={["Supplier", "Type", "Services", "Contact", "Terms", ...(me.can_see_profit ? ["We owe"] : []), "Status"]}>
             {rows.map((r) => {
               const due = r.payable - r.paid;
               return (
@@ -42,7 +42,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                   <td data-label="Services"><span className="inline-flex gap-1">{(r.services as string[]).map((s) => <span key={s} className="flex h-6 w-6 items-center justify-center rounded-md bg-gray-100 text-gray-600"><ServiceIcon service={s} className="h-3.5 w-3.5" /></span>)}</span></td>
                   <td data-label="Contact">{r.contact_person ?? ""}{r.mobile && <div className="text-xs text-muted">{prettyPhone(r.mobile)}</div>}</td>
                   <td data-label="Terms">{r.terms === "credit" ? `Credit ${r.credit_days} days` : "Prepaid"}</td>
-                  <td data-label="We owe">{due < 0 ? <span className="text-sky-700">Advance <Money value={-due} /></span> : due ? <Money value={due} className="text-amber-700" /> : <span className="text-muted">—</span>}</td>
+                  {me.can_see_profit && <td data-label="We owe">{due < 0 ? <span className="text-sky-700">Advance <Money value={-due} /></span> : due ? <Money value={due} className="text-amber-700" /> : <span className="text-muted">—</span>}</td>}
                   <td data-label="Status"><StatusBadge status={r.status} /></td>
                 </tr>
               );

@@ -35,7 +35,8 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
     const alloc = p.allocations.filter((a) => amount(a.amount));
     const sum = alloc.reduce((s, a) => s + amount(a.amount), 0);
     // the rest (if any) is an advance with the supplier
-    if (sum - amount(p.amount) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, more than the payment of ₹${p.amount}.` };
+    // a refund from a supplier is a negative payment, put against the case as a negative amount
+    if (Math.abs(sum) - Math.abs(amount(p.amount)) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, more than the payment of ₹${p.amount}.` };
     const sb = await createClient();
     // payment + allocations in one database transaction (all or nothing)
     const { error } = await sb.rpc("record_supplier_payment", {
@@ -45,6 +46,18 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
     });
     if (error) throw error;
     return { ok: true, message: "Supplier payment recorded" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Put part of a supplier's advance against what this case owes them (oldest payment first). */
+export async function useSupplierAdvance(supplierId: string, caseId: string, amt: number): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { data, error } = await sb.rpc("use_supplier_advance", { p_supplier: supplierId, p_case: caseId, p_amount: amt });
+    if (error) throw error;
+    return { ok: true, message: `Advance of ₹${Number(data).toLocaleString("en-IN")} used on this case` };
   } catch (e) {
     return fail(e);
   }

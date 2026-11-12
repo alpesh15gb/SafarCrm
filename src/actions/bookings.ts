@@ -1,6 +1,6 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
-import { fail, type ActionResult } from "@/lib/auth";
+import { fail, getMe, type ActionResult } from "@/lib/auth";
 import { lineProblem } from "@/lib/validate";
 import { moneyProblem, parseMoney, strictAmount } from "@/lib/money";
 import type { Service } from "@/lib/constants";
@@ -53,7 +53,10 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
   try {
     const problem = lineProblem(input.service as Service, (input.details ?? {}) as Record<string, unknown>) ?? moneyProblems(input);
     if (problem) return { ok: false, error: problem };
-    const hasSale = parseMoney(input.selling_price).kind === "value", hasCost = parseMoney(input.supplier_cost).kind === "value";
+    const me = await getMe();
+    // staff who may not see profit never see the saved cost or commission: on an edit, an empty cost means "keep it"
+    const keepCost = !!input.id && !me?.can_see_profit && parseMoney(input.supplier_cost).kind !== "value";
+    const hasSale = parseMoney(input.selling_price).kind === "value", hasCost = keepCost || parseMoney(input.supplier_cost).kind === "value";
     // a selling price with no cost would be saved as cost ₹0 and show 100% profit; ask instead of guessing
     if (hasSale && !hasCost && input.status !== "cancelled") return { ok: false, error: "Enter the supplier cost as well (type 0 if there is none), so the profit is right." };
     const priced = hasSale || hasCost;
@@ -83,6 +86,8 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
       // a booking nobody has priced yet (both prices left empty) is flagged, so it isn't mistaken for a free one
       pricing_state: priced ? "entered" : "not_entered",
     };
+    if (keepCost) delete row.supplier_cost;
+    if (!me?.can_see_profit) { delete row.commission_type; delete row.commission_value; }   // commission is set by those who see profit
     if (input.supplier_due_date !== undefined) row.supplier_due_date = input.supplier_due_date || null;
     if (input.visible_to_client !== undefined && !input.id) row.visible_to_client = input.visible_to_client;
     if (row.status === undefined) delete row.status;
