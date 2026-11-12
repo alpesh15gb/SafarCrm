@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { Button, Field, StatusBadge, cx } from "@/components/ui";
 import { Dialog, More, Toggle, useAction } from "@/components/client";
 import { CasePicker, CustomerPicker, StaffSelect } from "@/components/pickers";
-import { NewCaseForm } from "./new-case";
+import { CustomerInline } from "./customer-inline";
 import { TaskCasePanel } from "./task-case";
 import { useApp } from "@/components/shell/shell";
-import { addTaskComment, deleteTask, getTaskDetail, saveTask, setTaskStatus, suggestCases } from "@/actions/tasks";
+import { addTaskComment, createTaskWithCase, deleteTask, getTaskDetail, saveTask, setTaskStatus, suggestCases } from "@/actions/tasks";
 import { ALERTS, PRIORITIES } from "@/lib/constants";
 import { fdatetime, istLocalToISO, isoToISTLocal, todayIST } from "@/lib/format";
 
@@ -37,7 +37,12 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
   const taskId = preset?.task_id as string | undefined;
   const [kase, setKase] = useState<Picked | null>(null);
   const [cust, setCust] = useState<Cust | null>(null);
-  const [newCase, setNewCase] = useState(false);
+  // new task for a customer: which case it goes on ("" not picked yet, "new", "none", or a case id)
+  const [choice, setChoice] = useState("");
+  const [adding, setAdding] = useState<string | null>(null);
+  const [byNumber, setByNumber] = useState(false);
+  // one key per opened form, so a double click never makes two cases
+  const [requestKey, setRequestKey] = useState("");
   const [title, setTitle] = useState("");
   const [assigned, setAssigned] = useState(me.id);
   const [due, setDue] = useState("");
@@ -74,7 +79,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
 
   useEffect(() => {
     if (!open) return;
-    setNewCase(false); setComment(""); setSuggest([]);
+    setChoice(""); setAdding(null); setByNumber(false); setRequestKey(crypto.randomUUID()); setComment(""); setSuggest([]);
     if (taskId) load(taskId);
     else {
       setKase((preset?.case as Picked) ?? null);
@@ -86,17 +91,33 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
     }
   }, [open, taskId, preset, me.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // new task about a customer, not yet on a case: offer their existing trips first
+  // new task about a customer: offer their open cases. With none, a new case is the default; with one, that case;
+  // with several, the user picks.
   useEffect(() => {
+    setChoice("");
     if (!open || taskId || kase || !cust) { setSuggest([]); return; }
-    suggestCases(cust.id).then(setSuggest);
+    let current = true;
+    suggestCases(cust.id).then((list) => {
+      if (!current) return;
+      const openOnes = list.filter((c) => !["completed", "cancelled"].includes(c.status));
+      setSuggest(openOnes);
+      setChoice(openOnes.length === 0 ? "new" : openOnes.length === 1 ? openOnes[0].id : "");
+    });
+    return () => { current = false; };
   }, [open, taskId, kase, cust]);
 
-  const save = () =>
-    run(() => saveTask({
-      id: taskId, case_id: kase?.id ?? null, customer_id: cust?.id ?? null, title, assigned_to: assigned, due_at: istLocalToISO(due),
-      priority, alert, notes, status: taskId ? status : undefined, blocking: kase ? blocking : false,
-    }), { then: () => onClose() });
+  const choosing = !taskId && !kase && !!cust;          // the case chips are showing
+  const caseId = kase?.id ?? (choosing && choice && choice !== "new" && choice !== "none" ? choice : null);
+  const save = () => {
+    const input = {
+      id: taskId, case_id: caseId, customer_id: cust?.id ?? null, title, assigned_to: assigned, due_at: istLocalToISO(due),
+      priority, alert, notes, status: taskId ? status : undefined, blocking: caseId ? blocking : false,
+    };
+    // a new case is made together with the task, in one step
+    if (choosing && choice === "new" && cust) return run(() => createTaskWithCase(input, cust.id, requestKey), { then: () => onClose() });
+    return run(() => saveTask(input), { then: () => onClose() });
+  };
+  const chip = (on: boolean) => cx("max-w-full truncate rounded-full border px-2.5 py-1 text-xs font-medium", on ? "border-ink bg-ink text-white" : "border-line bg-white hover:bg-gray-50");
 
   const canEditAssignee = me.role === "boss";
 
@@ -114,7 +135,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
           {taskId && status !== "done" && !loading && !loadError && (
             <Button disabled={pending} onClick={() => run(() => setTaskStatus(taskId, "done"), { then: (r) => { askNext(r.data?.needs_next ?? null); onClose(); } })}>Mark done</Button>
           )}
-          <Button variant="primary" disabled={pending || !title.trim() || loading || loadError} onClick={save}>{taskId ? "Save task" : "Create task"}</Button>
+          <Button variant="primary" disabled={pending || !title.trim() || loading || loadError || (choosing && !choice)} onClick={save}>{taskId ? "Save task" : choosing && choice === "new" ? "Create task and case" : "Create task"}</Button>
         </>
       }
     >
@@ -139,42 +160,67 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             <input type="datetime-local" aria-label="Due date and time (India time)" className="field !w-auto !py-1 text-[13px]" value={due} onChange={(e) => setDue(e.target.value)} />
           </div>
         </Field>
-        <Field label="Case" hint={taskId || kase ? undefined : "Optional. Leave empty for an office task, like paying a bill."}>
-          {taskId ? (
+        {taskId ? (
+          <Field label="Case">
             <TaskCasePanel taskId={taskId} taskTitle={title} linked={kase} customer={cust} onChanged={(c) => setKase(c)} />
-          ) : newCase ? (
-            <div className="rounded-lg border border-dashed border-line p-3">
-              <NewCaseForm compact preset={cust ? { customer: { id: cust.id, label: cust.full_name } } : undefined} onDone={(c) => { setKase({ id: c.id, label: c.max_id }); setNewCase(false); }} />
-              <button type="button" className="mt-2 text-xs link" onClick={() => setNewCase(false)}>Pick an existing case instead</button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <div className="flex-1"><CasePicker value={kase} onChange={setKase} /></div>
-                {!kase && <Button onClick={() => setNewCase(true)}>New case</Button>}
-              </div>
-              {suggest.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-muted">Open cases for {cust?.full_name}:</span>
+          </Field>
+        ) : kase ? (
+          // started from a case, or a case picked by its number
+          <Field label="Case"><CasePicker value={kase} onChange={setKase} /></Field>
+        ) : (
+          <>
+            <Field label="Customer" hint={cust ? undefined : "Leave empty for an office task, like paying a bill."}>
+              {adding !== null ? (
+                <CustomerInline initialName={adding} onCancel={() => setAdding(null)} onCreated={(c) => { setCust({ id: c.id, full_name: c.full_name }); setAdding(null); }} />
+              ) : (
+                <CustomerPicker
+                  value={cust ? { id: cust.id, label: cust.full_name } : null}
+                  onChange={(o) => setCust(o ? { id: o.id, full_name: o.raw.full_name } : null)}
+                  footer={(q, close) => (
+                    <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm link" onClick={() => { setAdding(q); close(); }}>
+                      + Add new customer{q ? ` “${q}”` : ""}
+                    </button>
+                  )}
+                />
+              )}
+            </Field>
+            {cust ? (
+              // one choice instead of a second form: an open case of theirs, a new case made with this task, or no case
+              <Field label="Case">
+                <div className="flex flex-wrap gap-1.5">
                   {suggest.map((s) => (
-                    <button key={s.id} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setKase({ id: s.id, label: s.max_id, sub: s.title })}>
+                    <button key={s.id} type="button" onClick={() => setChoice(s.id)} className={chip(choice === s.id)}>
                       <span className="font-mono font-semibold">{s.max_id}</span> {s.title}
                     </button>
                   ))}
+                  <button type="button" onClick={() => setChoice("new")} className={chip(choice === "new")}>+ New case</button>
+                  <button type="button" onClick={() => setChoice("none")} className={chip(choice === "none")}>No case</button>
                 </div>
-              )}
-            </div>
-          )}
-        </Field>
+                <p className="mt-1.5 text-xs text-muted">
+                  {choice === "new" ? `A new case, “Trip for ${cust.full_name}”, is created with this task as its first step.`
+                    : choice === "none" ? "Just a reminder about this customer. It won't show on any case."
+                    : choice ? "The task goes on this case."
+                    : "Pick the case this is about, or make a new one."}
+                </p>
+              </Field>
+            ) : byNumber ? (
+              <Field label="Case"><CasePicker value={kase} onChange={setKase} /></Field>
+            ) : (
+              <button type="button" className="text-xs link" onClick={() => setByNumber(true)}>Or link it to a case by its MAX ID</button>
+            )}
+          </>
+        )}
         {/* everything a quick task doesn't need; open when looking at an existing task */}
-        <More key={taskId ?? "new"} title="More: customer, who does it, priority, alert, notes" defaultOpen={!!taskId}>
+        <More key={taskId ?? "new"} title={taskId ? "More: customer, who does it, priority, reminder, notes" : "More: who does it, priority, reminder, notes"} defaultOpen={!!taskId}>
           <div className="space-y-4">
-            <Field label="Customer" hint="Optional. Who this is about.">
-              <CustomerPicker
-                value={cust ? { id: cust.id, label: cust.full_name } : null}
-                onChange={(o) => setCust(o ? { id: o.id, full_name: o.raw.full_name } : null)}
-              />
-            </Field>
+            {taskId && (
+              <Field label="Customer" hint="Optional. Who this is about.">
+                <CustomerPicker
+                  value={cust ? { id: cust.id, label: cust.full_name } : null}
+                  onChange={(o) => setCust(o ? { id: o.id, full_name: o.raw.full_name } : null)}
+                />
+              </Field>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Who does it" hint={canEditAssignee ? undefined : "Staff can give tasks to themselves only."}>
                 <StaffSelect staff={staff} value={assigned} onChange={setAssigned} disabled={!canEditAssignee} />
@@ -193,7 +239,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
                 </Field>
               )}
             </div>
-            {kase && (
+            {caseId && (
               <Toggle checked={blocking} onChange={setBlocking}
                 label={<span className="text-sm">Must be done before the case can be completed</span>} />
             )}

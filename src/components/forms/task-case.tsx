@@ -96,8 +96,16 @@ export function TaskCasePanel({ taskId, taskTitle, linked, customer, onChanged }
       {mode === "" && (
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => setMode("link")}><Link2 className="h-3.5 w-3.5" />Link to existing case</Button>
-          <Button size="sm" onClick={() => { setTitle(taskTitle); setMode("create"); }} disabled={!customer} title={customer ? undefined : "Pick the customer first"}><Plus className="h-3.5 w-3.5" />Create case from task</Button>
-          {!customer && <span className="self-center text-xs text-muted">To create a case, pick the customer above first.</span>}
+          {/* one click: the case is named after the customer, they travel, and this task becomes its first step */}
+          {customer && (
+            <Button size="sm" variant="primary" disabled={pending}
+              onClick={() => run(() => createCaseFromTask(taskId, { customer_id: customer.id, title: `Trip for ${customer.full_name}` }, []),
+                { then: (r) => { if (r.data) onChanged({ id: r.data.id, label: r.data.max_id }); } })}>
+              <Plus className="h-3.5 w-3.5" />New case for {customer.full_name}
+            </Button>
+          )}
+          {customer && <button type="button" className="self-center text-xs link" onClick={() => { setTitle(`Trip for ${customer.full_name}`); setMode("create"); }}>with details…</button>}
+          {!customer && <span className="self-center text-xs text-muted">To make a new case, pick the customer under More first.</span>}
         </div>
       )}
       {mode === "link" && (

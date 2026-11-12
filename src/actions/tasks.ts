@@ -52,6 +52,31 @@ export async function saveTask(t: TaskInput): Promise<ActionResult<{ id: string 
   }
 }
 
+/** A new task for a customer who has no case for it yet: the case and the task are made together, in one transaction.
+ *  The task is the new case's first step. Repeating the call with the same key returns the first result. */
+export async function createTaskWithCase(t: TaskInput, customerId: string, requestKey: string): Promise<ActionResult<{ id: string; case_id: string; max_id: string }>> {
+  try {
+    if (!t.title.trim()) return { ok: false, error: "Say what needs doing." };
+    if (!customerId) return { ok: false, error: "Pick the customer first." };
+    const me = await getMe();
+    if (!me) return { ok: false, error: "Please log in again." };
+    if (me.role !== "boss" && t.assigned_to !== me.id) return { ok: false, error: "Staff can only assign tasks to themselves." };
+    const sb = await createClient();
+    const { data, error } = await sb.rpc("create_task_with_case", {
+      p_task: { title: t.title.trim(), assigned_to: t.assigned_to || me.id, due_at: t.due_at, priority: t.priority, alert: t.alert, notes: t.notes?.trim() || null },
+      // the case goes to whoever does the task; its title and traveller are filled in by the database
+      p_case: { customer_id: customerId, assigned_to: t.assigned_to || me.id },
+      p_travellers: [],
+      p_request_key: requestKey,
+    });
+    if (error) throw error;
+    const r = data as { id: string; max_id: string; task_id: string };
+    return { ok: true, data: { id: r.task_id, case_id: r.id, max_id: r.max_id }, message: `Task created on new case ${r.max_id}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 /** What a finished task leaves behind: when it was the last open task on an open case, the screen asks for the next step. */
 export type AfterDone = { needs_next: { id: string; max_id: string; title: string } | null };
 

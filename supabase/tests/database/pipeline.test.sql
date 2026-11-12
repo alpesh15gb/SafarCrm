@@ -4,7 +4,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(21);
+select plan(26);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -107,6 +107,20 @@ update public.tasks set created_at = now() - interval '5 days' where auto_key = 
 select private.close_resolved_auto_tasks();
 select is((select status from public.tasks where auto_key = 'birthday:00000000-0000-0000-0000-00000001c001:2026'), 'done', 'an old greeting reminder closes itself');
 select is((select status from public.tasks where auto_key = 'noins:00000000-0000-0000-0000-0000001ca5e1'), 'todo', 'a reminder whose reason still holds stays open');
+
+-- ---------------------------------------------------------------- a task and its case in one step
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000001a1","role":"authenticated"}';
+insert into r select 'twc_case', public.create_task_with_case('{"title":"Call about Goa"}', '{"customer_id":"00000000-0000-0000-0000-00000001c001"}', '{}', 'pipe-key-0001') ->> 'id';
+insert into r select 'twc_again', public.create_task_with_case('{"title":"Call about Goa"}', '{"customer_id":"00000000-0000-0000-0000-00000001c001"}', '{}', 'pipe-key-0001') ->> 'id';
+reset role; reset request.jwt.claims;
+select is((select v from r where k = 'twc_again'), (select v from r where k = 'twc_case'), 'a repeated request returns the same case');
+select like((select title from public.cases where id = (select v::uuid from r where k = 'twc_case')), 'Trip for %', 'the new case is named after the customer');
+select is((select string_agg(title, ',') from public.tasks where case_id = (select v::uuid from r where k = 'twc_case')), 'Call about Goa',
+  'the task is the case''s only first step: no second "Send the quote", and no duplicate on repeat');
+select is((select assigned_to::text from public.cases where id = (select v::uuid from r where k = 'twc_case')), '00000000-0000-0000-0000-0000000001a1', 'the case belongs to whoever has the task');
+select is((select string_agg(customer_id::text, ',') from public.case_travellers where case_id = (select v::uuid from r where k = 'twc_case')),
+  '00000000-0000-0000-0000-00000001c001', 'the customer travels by default');
 
 -- ---------------------------------------------------------------- cancelling closes the case's automatic tasks, not the manual ones
 update public.cases set status = 'cancelled', cancel_reason = 'Test' where id = '00000000-0000-0000-0000-0000001ca5e1';

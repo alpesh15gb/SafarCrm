@@ -36,7 +36,12 @@ export async function createCase(input: CaseInput, requestKey?: string): Promise
     });
     if (error) throw error;
     const r = data as { id: string; max_id: string; existing: boolean };
-    return { ok: true, data: { id: r.id, max_id: r.max_id }, message: r.existing ? `${r.max_id} was already created` : `${r.max_id} created` };
+    // say what the case's first task is, so nobody creates one by hand as well
+    const { data: first } = await sb.from("tasks").select("title").eq("case_id", r.id).neq("status", "done").order("due_at").limit(1).maybeSingle();
+    return {
+      ok: true, data: { id: r.id, max_id: r.max_id },
+      message: r.existing ? `${r.max_id} was already created` : `${r.max_id} created${first ? `. First task on your list: ${first.title}` : ""}`,
+    };
   } catch (e) {
     return fail(e);
   }
