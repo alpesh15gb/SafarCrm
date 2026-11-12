@@ -80,7 +80,7 @@ export function TaskCasePanel({ taskId, taskTitle, linked, customer, onChanged }
     <div className="space-y-2">
       {suggest && suggest.length > 0 && mode !== "create" && (
         <div className="rounded-lg border border-line">
-          <div className="border-b border-line px-3 py-1.5 text-xs font-medium text-muted">Existing trips for {customer?.full_name}. Link one before making a new MAX ID.</div>
+          <div className="border-b border-line px-3 py-1.5 text-xs font-medium text-muted">Open cases for {customer?.full_name}. Link one before making a new case.</div>
           <ul className="divide-y divide-line">
             {suggest.map((s) => (
               <li key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -132,7 +132,7 @@ export function TaskCasePanel({ taskId, taskTitle, linked, customer, onChanged }
             <Button size="sm" variant="primary" disabled={pending || !title.trim()}
               onClick={() => run(() => createCaseFromTask(taskId, { customer_id: customer.id, title, destination: dest, travel_start: start || null, assigned_to: assigned }, trav),
                 { then: (r) => { if (r.data) onChanged({ id: r.data.id, label: r.data.max_id }); setMode(""); } })}>
-              Create MAX ID and link
+              Create case and link
             </Button>
             <Button size="sm" onClick={() => setMode("")}>Cancel</Button>
           </div>

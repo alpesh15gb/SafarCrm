@@ -11,11 +11,6 @@ import { istLocalToISO } from "@/lib/format";
 import { CASE_STATUSES, STATUS_LABEL } from "@/lib/constants";
 import type { Readiness } from "@/lib/readiness";
 
-// "waiting" is the only work status set by hand; everything else is worked out from the case's tasks
-const WAITING = [
-  { v: "none", l: "Not waiting" }, { v: "waiting_customer", l: "Waiting on customer" }, { v: "waiting_supplier", l: "Waiting on supplier" },
-];
-
 export function CaseHeaderControls({ kase }: { kase: {
   id: string; status: string; assigned_to: string | null; max_id: string; cancel_reason: string | null;
   work_state?: string; waiting_reason?: string | null; waiting_follow_up_at?: string | null;
@@ -32,46 +27,49 @@ export function CaseHeaderControls({ kase }: { kase: {
   const [closing, setClosing] = useState<Readiness | null>(null);
   const blocked = !!closing && closing.blockers.length > 0 && me.role !== "boss";
   const [closeWhy, setCloseWhy] = useState("");
+  // "waiting" is the only work status set by hand; everything else is worked out from the case's tasks
+  const waiting = !!kase.work_state?.startsWith("waiting");
 
   return (
     <>
-      <select
-        aria-label="Status"
-        className="field !w-auto"
-        value={kase.status}
-        disabled={pending}
-        onChange={(e) => {
-          if (e.target.value === "cancelled") { setReason(""); setCancelOpen(true); return; }
-          if (e.target.value === "completed") {
-            // show what is still open before closing
-            getReadiness(kase.id).then((r) => {
-              if (r.blockers.length || r.loose_ends.length) { setCloseWhy(""); setClosing(r); }
-              else run(() => updateCase(kase.id, { status: "completed" }), { success: "Status: Completed" });
-            });
-            return;
-          }
-          run(() => updateCase(kase.id, { status: e.target.value }), { success: `Status: ${STATUS_LABEL[e.target.value]}` });
-        }}
-      >
-        {CASE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-      </select>
-      <select aria-label="Waiting" className="field !w-auto" value={kase.work_state?.startsWith("waiting") ? kase.work_state : "none"} disabled={pending}
-        title={kase.waiting_reason ? `Waiting: ${kase.waiting_reason}` : "Set when you are waiting for the customer or a supplier. A follow-up task is created for you."}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v.startsWith("waiting")) { setWaitWhy(""); setWaitUntil(""); setWaitFor(v); return; }
-          run(() => setWorkState(kase.id, "in_progress"), { success: "No longer waiting" });
-        }}>
-        {WAITING.map((w) => <option key={w.v} value={w.v}>{w.l}</option>)}
-      </select>
-      <div className="w-44">
-        <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Reassigned" })} />
-      </div>
-      {me.role === "boss" && (
-        <Menu trigger={<Button aria-label="More actions" className="!px-2"><MoreHorizontal className="h-4 w-4" /></Button>}>
-          <button type="button" className="text-red-600" onClick={() => setDelOpen(true)}>Delete case</button>
-        </Menu>
-      )}
+      <label className="flex items-center gap-1.5 text-xs text-muted">
+        Stage
+        <select
+          className="field !w-auto text-ink"
+          value={kase.status}
+          disabled={pending}
+          onChange={(e) => {
+            if (e.target.value === "cancelled") { setReason(""); setCancelOpen(true); return; }
+            if (e.target.value === "completed") {
+              // show what is still open before closing
+              getReadiness(kase.id).then((r) => {
+                if (r.blockers.length || r.loose_ends.length) { setCloseWhy(""); setClosing(r); }
+                else run(() => updateCase(kase.id, { status: "completed" }), { success: "Stage: Completed" });
+              });
+              return;
+            }
+            run(() => updateCase(kase.id, { status: e.target.value }), { success: `Stage: ${STATUS_LABEL[e.target.value]}` });
+          }}
+        >
+          {CASE_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-muted">
+        Owner
+        <span className="block w-40 text-ink">
+          <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Owner changed. Their open tasks on this case moved too." })} />
+        </span>
+      </label>
+      {/* less common actions live in one menu, so the header has just Stage and Owner */}
+      <Menu trigger={<Button aria-label="More actions" className="!px-2"><MoreHorizontal className="h-4 w-4" /></Button>}>
+        {waiting
+          ? <button type="button" onClick={() => run(() => setWorkState(kase.id, "in_progress"), { success: "No longer waiting" })}>No longer waiting</button>
+          : <>
+              <button type="button" onClick={() => { setWaitWhy(""); setWaitUntil(""); setWaitFor("waiting_customer"); }}>Waiting on the customer…</button>
+              <button type="button" onClick={() => { setWaitWhy(""); setWaitUntil(""); setWaitFor("waiting_supplier"); }}>Waiting on a supplier…</button>
+            </>}
+        {me.role === "boss" && <button type="button" className="text-red-600" onClick={() => setDelOpen(true)}>Delete case</button>}
+      </Menu>
       {kase.status === "cancelled" && kase.cancel_reason && <span className="w-full text-right text-xs text-red-600">Cancelled: {kase.cancel_reason}</span>}
 
       <Dialog

@@ -84,12 +84,12 @@ function friendly(msg: string) {
   if (msg.includes("override_needs_reason")) return "Give a reason for completing with open items.";
   if (msg.includes("case_completion_direct")) return "Use Completed from the case page so open items are checked.";
   if (msg.includes("waiting_needs_reason")) return "Waiting needs a reason and a follow-up date and time.";
-  if (msg.includes("relink_needs_reason")) return "This task is already linked to another MAX ID. Give a reason to move it.";
+  if (msg.includes("relink_needs_reason")) return "This task is already linked to another case. Give a reason to move it.";
   if (msg.includes("import_version_conflict")) return "Someone else saved this import after you opened it. Reload to see their changes; your edits are kept on screen.";
   if (msg.includes("import_not_reviewable")) return "This import can't be changed in its current state.";
   if (msg.includes("import_incomplete")) return `Not ready to confirm: ${msg.split("import_incomplete:")[1]?.trim() ?? "some required fields are empty"}.`;
   if (msg.includes("unpublished_file")) return "This file is waiting for the boss to publish it, so it can't be shared yet.";
-  if (msg.includes("task_already_linked")) return "This task is already linked to a MAX ID. Open it, or move the task to another case.";
+  if (msg.includes("task_already_linked")) return "This task is already linked to a case. Open it, or move the task to another case.";
   if (msg.includes("case_title_required")) return "Give the case a title.";
   if (msg.includes("case_customer_required")) return "Pick who the trip is for (the paying customer).";
   if (msg.includes("duplicate_unresolved")) return "This ticket matches a booking already in the CRM. Use that booking, or give a reason why it is a separate trip.";

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Button, Field, StatusBadge } from "@/components/ui";
-import { Dialog, Toggle, useAction } from "@/components/client";
+import { Button, Field, StatusBadge, cx } from "@/components/ui";
+import { Dialog, More, Toggle, useAction } from "@/components/client";
 import { CasePicker, CustomerPicker, StaffSelect } from "@/components/pickers";
 import { NewCaseForm } from "./new-case";
 import { TaskCasePanel } from "./task-case";
@@ -18,6 +18,17 @@ type Cust = { id: string; full_name: string; corporate?: boolean };
 function defaultDue() {
   const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
   return hour >= 17 ? `${todayIST(1)}T10:00` : `${todayIST()}T18:00`;
+}
+
+// one-click choices for "When"; the date box next to them takes anything else
+function whenChoices(): { label: string; value: string }[] {
+  const late = defaultDue() !== `${todayIST()}T18:00`;
+  return [
+    ...(late ? [] : [{ label: "Today", value: `${todayIST()}T18:00` }]),
+    { label: "Tomorrow", value: `${todayIST(1)}T10:00` },
+    { label: "In 3 days", value: `${todayIST(3)}T10:00` },
+    { label: "Next week", value: `${todayIST(7)}T10:00` },
+  ];
 }
 
 export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: () => void; preset?: Record<string, unknown> }) {
@@ -93,7 +104,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
     <Dialog
       open={open}
       onClose={onClose}
-      title={taskId ? "Task" : "New task or reminder"}
+      title={taskId ? "Task" : "New task"}
       footer={
         <>
           {taskId && me.role === "boss" && (
@@ -114,13 +125,21 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
         </p>
       )}
       <div className="space-y-4">
-        <Field label="Customer" hint="Optional. Who this is about. Office tasks leave it empty.">
-          <CustomerPicker
-            value={cust ? { id: cust.id, label: cust.full_name } : null}
-            onChange={(o) => setCust(o ? { id: o.id, full_name: o.raw.full_name } : null)}
-          />
+        <Field label="What needs doing?" required>
+          <input className="field" autoFocus={!taskId} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Call client about visa documents" />
         </Field>
-        <Field label="MAX ID" hint={taskId ? undefined : "Optional. Leave empty for an office task, e.g. “Pay electricity bill”."}>
+        <Field label="When">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {whenChoices().map((w) => (
+              <button key={w.label} type="button" onClick={() => setDue(w.value)}
+                className={cx("rounded-full border px-2.5 py-1 text-xs font-medium", due === w.value ? "border-ink bg-ink text-white" : "border-line bg-white hover:bg-gray-50")}>
+                {w.label}
+              </button>
+            ))}
+            <input type="datetime-local" aria-label="Due date and time (India time)" className="field !w-auto !py-1 text-[13px]" value={due} onChange={(e) => setDue(e.target.value)} />
+          </div>
+        </Field>
+        <Field label="Case" hint={taskId ? undefined : "Optional. Leave empty for an office task, like paying a bill."}>
           {taskId ? (
             <TaskCasePanel taskId={taskId} taskTitle={title} linked={kase} customer={cust} onChanged={(c) => setKase(c)} />
           ) : newCase ? (
@@ -132,11 +151,11 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             <div className="space-y-2">
               <div className="flex gap-2">
                 <div className="flex-1"><CasePicker value={kase} onChange={setKase} /></div>
-                <Button onClick={() => setNewCase(true)}>New MAX ID</Button>
+                <Button onClick={() => setNewCase(true)}>New case</Button>
               </div>
               {suggest.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span className="text-muted">Existing trips for {cust?.full_name}:</span>
+                  <span className="text-muted">Open cases for {cust?.full_name}:</span>
                   {suggest.map((s) => (
                     <button key={s.id} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setKase({ id: s.id, label: s.max_id, sub: s.title })}>
                       <span className="font-mono font-semibold">{s.max_id}</span> {s.title}
@@ -147,31 +166,40 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
             </div>
           )}
         </Field>
-        <Field label="Title" required><input className="field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Call client about visa documents" /></Field>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Assigned to" hint={canEditAssignee ? undefined : "Staff can assign tasks to themselves only."}>
-            <StaffSelect staff={staff} value={assigned} onChange={setAssigned} disabled={!canEditAssignee} />
-          </Field>
-          <Field label="Due (IST)"><input type="datetime-local" className="field" value={due} onChange={(e) => setDue(e.target.value)} /></Field>
-          <Field label="Priority">
-            <select className="field" value={priority} onChange={(e) => setPriority(e.target.value)}>{PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
-          </Field>
-          <Field label="Alert">
-            <select className="field" value={alert} onChange={(e) => setAlert(e.target.value)}>{ALERTS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
-          </Field>
-          {taskId && (
-            <Field label="Status">
-              <select className="field" value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option>
-              </select>
+        {/* everything a quick task doesn't need; open when looking at an existing task */}
+        <More key={taskId ?? "new"} title="More: customer, who does it, priority, alert, notes" defaultOpen={!!taskId}>
+          <div className="space-y-4">
+            <Field label="Customer" hint="Optional. Who this is about.">
+              <CustomerPicker
+                value={cust ? { id: cust.id, label: cust.full_name } : null}
+                onChange={(o) => setCust(o ? { id: o.id, full_name: o.raw.full_name } : null)}
+              />
             </Field>
-          )}
-        </div>
-        {kase && (
-          <Toggle checked={blocking} onChange={setBlocking}
-            label={<span className="text-sm">Required before the case can be completed <span className="text-xs text-muted">(otherwise an optional follow-up)</span></span>} />
-        )}
-        <Field label="Notes"><textarea className="field min-h-16" value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Who does it" hint={canEditAssignee ? undefined : "Staff can give tasks to themselves only."}>
+                <StaffSelect staff={staff} value={assigned} onChange={setAssigned} disabled={!canEditAssignee} />
+              </Field>
+              <Field label="Priority">
+                <select className="field" value={priority} onChange={(e) => setPriority(e.target.value)}>{PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
+              </Field>
+              <Field label="Remind me">
+                <select className="field" value={alert} onChange={(e) => setAlert(e.target.value)}>{ALERTS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
+              </Field>
+              {taskId && (
+                <Field label="Status">
+                  <select className="field" value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option>
+                  </select>
+                </Field>
+              )}
+            </div>
+            {kase && (
+              <Toggle checked={blocking} onChange={setBlocking}
+                label={<span className="text-sm">Must be done before the case can be completed</span>} />
+            )}
+            <Field label="Notes"><textarea className="field min-h-16" value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          </div>
+        </More>
         {taskId && (
           <div className="space-y-3 border-t border-line pt-3">
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">

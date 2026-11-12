@@ -107,7 +107,7 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
         </div>
       </More>
       <div className="flex justify-end">
-        <Button variant="primary" disabled={pending || !customer || !title.trim()} onClick={submit}>Create MAX ID</Button>
+        <Button variant="primary" disabled={pending || !customer || !title.trim()} onClick={submit}>Create case</Button>
       </div>
     </div>
   );

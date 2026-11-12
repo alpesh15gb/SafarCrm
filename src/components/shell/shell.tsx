@@ -183,7 +183,7 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
             </button>
             <div className="flex-1 max-md:hidden" />
             <Menu trigger={<Button className="max-sm:px-2.5"><Plus className="h-4 w-4 text-coral" /><span className="max-sm:hidden">New</span></Button>}>
-              <button type="button" onClick={() => setDlg({ kind: "case" })}>Case (new MAX ID)</button>
+              <button type="button" onClick={() => setDlg({ kind: "case" })}>Case</button>
               <button type="button" onClick={() => setDlg({ kind: "task" })}>Task or reminder</button>
               <button type="button" onClick={() => setDlg({ kind: "customer" })}>Customer</button>
               <button type="button" onClick={() => setDlg({ kind: "supplier" })}>Supplier</button>
@@ -276,7 +276,7 @@ function CommandPalette({ open, onClose, onNew, nav }: { open: boolean; onClose:
       return hits.map((h, i) => ({ key: h.kind + h.id + i, group: "Results", label: h.label, sub: h.sub, icon: KIND[h.kind]?.icon ?? FileText, cls: KIND[h.kind]?.cls ?? "bg-gray-100", run: go(h.href) }));
     }
     const create: PItem[] = [
-      { key: "n-case", group: "Create", label: "New case (MAX ID)", icon: Plus, cls: "bg-coral-soft text-coral-dark", run: () => onNew("case") },
+      { key: "n-case", group: "Create", label: "New case", icon: Plus, cls: "bg-coral-soft text-coral-dark", run: () => onNew("case") },
       { key: "n-task", group: "Create", label: "New task or reminder", icon: CheckSquare, cls: "bg-amber-50 text-amber-600", run: () => onNew("task") },
       { key: "n-cust", group: "Create", label: "New customer", icon: Users, cls: "bg-emerald-50 text-emerald-600", run: () => onNew("customer") },
       { key: "n-sup", group: "Create", label: "New supplier", icon: Building2, cls: "bg-violet-50 text-violet-600", run: () => onNew("supplier") },

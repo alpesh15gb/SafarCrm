@@ -136,7 +136,7 @@ async function CasesLoader({ id }: { id: string }) {
   return (
     <Card pad={false}>
       {error ? <p className="p-4 text-red-700">Could not load the case history. Refresh to try again.</p> : data.length === 0 ? <p className="p-4 text-muted">No cases yet.</p> : (
-        <Table head={["MAX ID", "Title", "Travel", "Role", "Status"]}>
+        <Table head={["MAX ID", "Title", "Travel", "Role", "Stage"]}>
           {data.map((c) => (
             <tr key={c.id} className="relative hover:bg-gray-50">
               <td data-label="MAX ID" className="font-mono text-[13px] font-semibold"><Link href={`/cases/${c.id}`} className="after:absolute after:inset-0">{c.max_id}</Link></td>

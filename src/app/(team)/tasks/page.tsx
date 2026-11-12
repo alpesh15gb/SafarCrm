@@ -60,12 +60,20 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title={boss ? "Tasks" : "My tasks"} sub={`Reminders are tasks with an alert time · ${total} found`} action={<NewButton kind="task" label="New task" />} />
+      <PageHeader title={boss ? "Tasks" : "My tasks"} sub={`${total} found`} action={<NewButton kind="task" label="New task" />} />
       <div className="mb-3 space-y-2">
         <SearchBox placeholder="Search task titles" />
         <Chips param="status" current={status === "open" ? "" : status} base={sp} allLabel="Open" items={[{ value: "in_progress", label: "In progress" }, { value: "done", label: "Done" }, { value: "all", label: "All" }]} />
-        <Chips param="due" current={sp.due} base={sp} allLabel="Any due date" items={[{ value: "overdue", label: "Overdue" }, { value: "today", label: "Due today" }, { value: "week", label: "Next 7 days" }]} />
-        <Chips param="link" current={sp.link} base={sp} allLabel="Any link" items={[{ value: "case", label: "On a MAX ID" }, { value: "customer", label: "Customer, no case yet" }, { value: "office", label: "Office tasks" }]} />
+        {/* the default view is already grouped by Overdue, Today and Next 7 days; these narrow it further when needed */}
+        <details open={!!(sp.due || sp.link)} className="group">
+          <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-[13px] font-medium text-muted hover:text-ink">
+            <span className="inline-block transition-transform group-open:rotate-90">›</span> More filters
+          </summary>
+          <div className="mt-2 space-y-2">
+            <Chips param="due" current={sp.due} base={sp} allLabel="Any due date" items={[{ value: "overdue", label: "Overdue" }, { value: "today", label: "Due today" }, { value: "week", label: "Next 7 days" }]} />
+            <Chips param="link" current={sp.link} base={sp} allLabel="Any link" items={[{ value: "case", label: "On a case" }, { value: "customer", label: "Customer, no case yet" }, { value: "office", label: "Office tasks" }]} />
+          </div>
+        </details>
         {boss && (
           <Chips param="staff" current={sp.staff} base={sp} allLabel="Everyone"
             items={(staff ?? []).map((s: { id: string; full_name: string }) => ({ value: s.id, label: `${s.full_name}${overdueBy.get(s.id) ? ` · ${overdueBy.get(s.id)} overdue` : ""}` }))} />

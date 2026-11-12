@@ -35,7 +35,7 @@ export async function saveTask(t: TaskInput): Promise<ActionResult<{ id: string 
       const { data: cur } = await sb.from("tasks").select("case_id").eq("id", t.id).maybeSingle();
       if (!cur) return { ok: false, error: "You can't change this task." };
       if ((t.case_id || null) !== (cur.case_id ?? null)) {
-        if (cur.case_id) return { ok: false, error: "Use “Move to another case” to change the MAX ID of a linked task." };
+        if (cur.case_id) return { ok: false, error: "Use “Move to another case” to change the case of a linked task." };
         const l = await linkTaskToCase(t.id, t.case_id as string);
         if (!l.ok) return l;
       }
