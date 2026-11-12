@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { PrintDoc, type Agency } from "@/components/print-doc";
+import { AGENCY_COLS, PayTo, PrintDoc, type Agency } from "@/components/print-doc";
 import { SERVICE_LABEL, type Service } from "@/lib/constants";
 import { fdate, inr, todayIST, waLink } from "@/lib/format";
 
-export const metadata = { title: "Quotation" };
+export const metadata = { title: "Estimate" };
 
-/** Client-facing price quote for a case: services and selling prices only (never costs, commission or profit). */
+/** Client-facing estimate (quotation) for a case: services and selling prices only (never costs, commission or profit). */
 export default async function QuotePage({ params }: { params: Promise<{ id: string }> }) {
   await requireTeam();
   const { id } = await params;
@@ -16,7 +16,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
     sb.from("cases").select("max_id, title, travel_start, travel_end, destination, customer:customers!cases_customer_id_fkey(full_name, mobile, whatsapp)").eq("id", id).maybeSingle(),
     sb.from("booking_lines").select("id, service, summary, service_date, selling_price, gst, traveller_ids, status").eq("case_id", id).neq("status", "cancelled").order("sort").order("service_date", { nullsFirst: false }).order("created_at"),
     sb.from("case_travellers").select("customer:customers(id, full_name, dob)").eq("case_id", id),
-    sb.from("settings").select("agency_name, agency_phone, agency_email, agency_address").eq("id", 1).single(),
+    sb.from("settings").select(`${AGENCY_COLS}, estimate_valid_days`).eq("id", 1).single(),
   ]);
   if (!kase) notFound();
   const cu = kase.customer as unknown as { full_name: string; mobile: string; whatsapp: string | null };
@@ -26,13 +26,14 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
   const sub = rows.reduce((s, l) => s + Number(l.selling_price), 0);
   const gst = rows.reduce((s, l) => s + Number(l.gst), 0);
   const total = sub + gst;
-  const validTill = todayIST(2);
+  const a = agency as unknown as Agency & { estimate_valid_days: number | null };
+  const validTill = todayIST(a?.estimate_valid_days ?? 2);
   const trip = [kase.destination, kase.travel_start && `${fdate(kase.travel_start)}${kase.travel_end ? " to " + fdate(kase.travel_end) : ""}`].filter(Boolean).join(", ");
-  const text = `Namaste ${cu.full_name},\nHere is our quotation for ${kase.title}${trip ? ` (${trip})` : ""}:\n${rows.map((l) => `• ${SERVICE_LABEL[l.service as Service]}${l.summary ? `: ${l.summary}` : ""} – ${inr(Number(l.selling_price) + Number(l.gst))}`).join("\n")}\nTotal: ${inr(total)}${gst ? " (incl. GST)" : ""}\nValid until ${fdate(validTill)}, subject to availability. Ref ${kase.max_id}.\n– ${agency?.agency_name ?? ""}`;
+  const text = `Namaste ${cu.full_name},\nHere is our estimate for ${kase.title}${trip ? ` (${trip})` : ""}:\n${rows.map((l) => `• ${SERVICE_LABEL[l.service as Service]}${l.summary ? `: ${l.summary}` : ""} – ${inr(Number(l.selling_price) + Number(l.gst))}`).join("\n")}\nTotal: ${inr(total)}${gst ? " (incl. GST)" : ""}\nValid until ${fdate(validTill)}, subject to availability. Ref ${kase.max_id}.\n– ${a?.agency_name ?? ""}`;
 
   return (
-    <PrintDoc back={{ href: `/cases/${id}`, label: kase.max_id }} wa={waLink(cu.whatsapp || cu.mobile, text)} agency={agency as Agency}
-      title="Quotation" meta={[["Ref", `${kase.max_id}-Q`], ["Date", fdate(todayIST())], ["Valid until", fdate(validTill)]]}>
+    <PrintDoc back={{ href: `/cases/${id}`, label: kase.max_id }} wa={waLink(cu.whatsapp || cu.mobile, text)} agency={a}
+      title="Estimate" meta={[["Ref", `${kase.max_id}-E`], ["Date", fdate(todayIST())], ["Valid until", fdate(validTill)]]}>
       <div className="mb-5 grid gap-1 sm:grid-cols-2">
         <div><span className="text-muted">For: </span><b>{cu.full_name}</b></div>
         <div><span className="text-muted">Trip: </span><b>{kase.title}</b>{trip && <span className="text-muted"> · {trip}</span>}</div>
@@ -66,6 +67,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
         <li>Bookings are confirmed after the advance payment is received.</li>
         <li>Cancellation charges are as per airline, hotel and supplier rules.</li>
       </ul>
+      <PayTo agency={a} />
     </PrintDoc>
   );
 }

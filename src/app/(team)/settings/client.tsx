@@ -15,6 +15,11 @@ export function GeneralTab({ settings, nextMax }: { settings: S; nextMax: number
   const { run, pending } = useAction();
   const [v, setV] = useState({ agency_name: String(settings.agency_name ?? ""), agency_phone: String(settings.agency_phone ?? ""), agency_email: String(settings.agency_email ?? ""), agency_address: String(settings.agency_address ?? ""), app_url: String(settings.app_url ?? "") });
   const [start, setStart] = useState(String(nextMax));
+  // printed on estimates, invoices and receipts
+  const [d, setD] = useState({
+    agency_gstin: String(settings.agency_gstin ?? ""), agency_pan: String(settings.agency_pan ?? ""), bank_details: String(settings.bank_details ?? ""),
+    upi_id: String(settings.upi_id ?? ""), invoice_prefix: String(settings.invoice_prefix ?? "INV"), estimate_valid_days: String(settings.estimate_valid_days ?? 2),
+  });
   return (
     <div className="grid max-w-4xl gap-4 lg:grid-cols-2">
       <Card title="Agency">
@@ -32,6 +37,26 @@ export function GeneralTab({ settings, nextMax }: { settings: S; nextMax: number
         <div className="flex gap-2">
           <input className="field !w-40 font-mono" inputMode="numeric" value={start} onChange={(e) => setStart(e.target.value.replace(/\D/g, ""))} />
           <Button disabled={pending || Number(start) === nextMax} onClick={() => run(() => setMaxStart(Number(start)))}>Set next number</Button>
+        </div>
+      </Card>
+      <Card title="Estimates and invoices" sub="Printed on every estimate, invoice and receipt" className="lg:col-span-2">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="GSTIN" hint="Leave empty if the agency is not registered for GST."><input className="field font-mono uppercase" value={d.agency_gstin} onChange={(e) => setD({ ...d, agency_gstin: e.target.value.toUpperCase() })} placeholder="36ABCDE1234F1Z5" /></Field>
+          <Field label="PAN"><input className="field font-mono uppercase" value={d.agency_pan} onChange={(e) => setD({ ...d, agency_pan: e.target.value.toUpperCase() })} /></Field>
+          <Field label="Bank details" hint="Shown under “How to pay”. Account name, number, IFSC, bank and branch.">
+            <textarea className="field min-h-20" value={d.bank_details} onChange={(e) => setD({ ...d, bank_details: e.target.value })} placeholder={"Max Travel\nA/c 1234567890\nIFSC HDFC0001234, HDFC Bank, Secunderabad"} />
+          </Field>
+          <div className="space-y-3">
+            <Field label="UPI ID"><input className="field font-mono" value={d.upi_id} onChange={(e) => setD({ ...d, upi_id: e.target.value })} placeholder="maxtravel@hdfcbank" /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Invoice number starts with" hint="e.g. INV/26-27/0001"><input className="field font-mono uppercase" maxLength={8} value={d.invoice_prefix} onChange={(e) => setD({ ...d, invoice_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "") })} /></Field>
+              <Field label="Estimate valid for (days)"><input className="field" inputMode="numeric" value={d.estimate_valid_days} onChange={(e) => setD({ ...d, estimate_valid_days: e.target.value.replace(/\D/g, "") })} /></Field>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Button variant="primary" disabled={pending}
+            onClick={() => run(() => saveSettings({ ...d, invoice_prefix: d.invoice_prefix || "INV", estimate_valid_days: Math.min(60, Math.max(1, Number(d.estimate_valid_days) || 2)) }))}>Save</Button>
         </div>
       </Card>
     </div>

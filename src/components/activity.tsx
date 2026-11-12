@@ -8,8 +8,9 @@ type Item = { id: number; actor_name: string | null; action: string; entity: str
 const VERB: Record<string, string> = {
   insert: "added", update: "changed", delete: "deleted", reveal: "revealed", convert: "converted", link: "linked", relink: "moved",
   override: "completed with open items", confirm: "confirmed", review: "reviewed", reject: "rejected", publish: "published",
+  issue: "issued", cancel: "cancelled",
 };
-const ENTITY: Record<string, string> = { case: "case", booking_line: "booking", payment: "payment", expense: "expense", file: "file", customer: "customer", document: "document", supplier: "supplier", task: "task", ticket_import: "ticket import" };
+const ENTITY: Record<string, string> = { case: "case", booking_line: "booking", payment: "payment", expense: "expense", file: "file", customer: "customer", document: "document", supplier: "supplier", task: "task", ticket_import: "ticket import", invoice: "invoice" };
 
 // shown as "… updated" without the values (long or structured)
 const NO_VALUES = new Set(["details", "client_view", "traveller_ids", "visas", "loyalty", "other_ids", "notes", "tags"]);

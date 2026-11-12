@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, FileText, Pencil, UserPlus } from "lucide-react";
+import { Eye, Pencil, UserPlus } from "lucide-react";
 import { Badge, Button, Card, Field, KV, ServiceIcon, StatusBadge } from "@/components/ui";
 import { Dialog, Toggle, useAction } from "@/components/client";
 import { CustomerPicker } from "@/components/pickers";
@@ -82,7 +82,6 @@ export function OverviewTab({ kase, customer, travellers, lines }: { kase: Kase;
 
         <Card title="Bookings" pad={false} action={
           <span className="flex items-center gap-3">
-            {lines.some((l) => l.status !== "cancelled") && <Link className="inline-flex items-center gap-1 text-sm link" href={`/cases/${kase.id}/quote`}><FileText className="h-3.5 w-3.5" />Quotation</Link>}
             <Link className="text-sm link" href={`/cases/${kase.id}?tab=bookings`}>Open bookings</Link>
           </span>}>
           {lines.length === 0 ? (

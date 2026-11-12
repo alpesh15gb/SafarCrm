@@ -90,6 +90,10 @@ function friendly(msg: string) {
   if (msg.includes("import_incomplete")) return `Not ready to confirm: ${msg.split("import_incomplete:")[1]?.trim() ?? "some required fields are empty"}.`;
   if (msg.includes("unpublished_file")) return "This file is waiting for the boss to publish it, so it can't be shared yet.";
   if (msg.includes("task_already_linked")) return "This task is already linked to a case. Open it, or move the task to another case.";
+  if (msg.includes("invoice_nothing_to_bill")) return "Nothing to invoice: every priced booking on this case is already on an invoice, or no booking has a selling price yet. To change an invoice, cancel it and issue a new one.";
+  if (msg.includes("invoice_case_cancelled")) return "This case is cancelled, so it can't be invoiced.";
+  if (msg.includes("invoice_cancel_reason")) return "Say why the invoice is being cancelled.";
+  if (msg.includes("task_title_required")) return "Say what needs doing.";
   if (msg.includes("case_title_required")) return "Give the case a title.";
   if (msg.includes("case_customer_required")) return "Pick who the trip is for (the paying customer).";
   if (msg.includes("duplicate_unresolved")) return "This ticket matches a booking already in the CRM. Use that booking, or give a reason why it is a separate trip.";

@@ -12,6 +12,7 @@ import { fdate, prettyPhone, inr } from "@/lib/format";
 import { CaseHeaderControls } from "./header-controls";
 import { NextStepBar } from "./next-step";
 import { StageSteps } from "./stage-steps";
+import { CaseDocs, type InvoiceRow } from "./case-docs";
 import type { WorkSummary } from "../board";
 import { OverviewTab } from "./overview";
 import { BookingsTab, type Line } from "./bookings";
@@ -119,6 +120,8 @@ export default async function CasePage({ params, searchParams }: { params: Promi
 
       <Tabs tabs={tabs} active={tab} base={`/cases/${id}`} />
 
+      {["overview", "bookings", "payments"].includes(tab) && <DocsLoader caseId={id} caseStatus={c.status} lines={linesWithMoney} />}
+
       {tab === "overview" && (
         <OverviewTab
           kase={c}
@@ -201,6 +204,16 @@ async function FilesLoader(p: { caseId: string; maxId: string; customer: { full_
     sb.from("customer_documents").select("id, customer_id, doc_type, file_name, expiry, customer:customers(full_name)").in("customer_id", p.travellers.map((t) => t.id)).not("storage_path", "is", null),
   ]);
   return <FilesTab {...p} files={files} docs={(docs ?? []) as unknown as { id: string; customer_id: string; doc_type: string; file_name: string; expiry: string | null; customer: { full_name: string } }[]} />;
+}
+
+/** Estimate and invoices of the case, shown where prices and payments are worked on. */
+async function DocsLoader({ caseId, caseStatus, lines }: { caseId: string; caseStatus: string; lines: Line[] }) {
+  const sb = await createClient();
+  const { data } = await sb.from("invoices").select("id, number, issued_on, total, status, cancel_reason, lines").eq("case_id", caseId).order("created_at", { ascending: false });
+  return (
+    <CaseDocs caseId={caseId} caseStatus={caseStatus} invoices={(data ?? []) as unknown as InvoiceRow[]}
+      lines={lines.map((l) => ({ id: l.id, status: l.status, selling_price: Number(l.selling_price), gst: Number(l.gst) }))} />
+  );
 }
 
 async function TasksLoader({ caseId, maxId, title }: { caseId: string; maxId: string; title: string }) {

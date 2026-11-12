@@ -12,7 +12,7 @@ async function boss() {
 export async function saveSettings(patch: Record<string, unknown>): Promise<ActionResult> {
   try {
     await boss();
-    const allowed = ["agency_name", "agency_phone", "agency_email", "agency_address", "app_url", "auto_reminders", "portal_defaults", "portal_hide_until_confirmed", "portal_allow_uploads"];
+    const allowed = ["agency_name", "agency_phone", "agency_email", "agency_address", "app_url", "agency_gstin", "agency_pan", "bank_details", "upi_id", "invoice_prefix", "estimate_valid_days", "auto_reminders", "portal_defaults", "portal_hide_until_confirmed", "portal_allow_uploads"];
     const row = Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k)));
     const sb = await createClient();
     const { error } = await sb.from("settings").update(row).eq("id", 1);

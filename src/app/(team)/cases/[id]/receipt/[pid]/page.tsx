@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { PrintDoc, type Agency } from "@/components/print-doc";
+import { AGENCY_COLS, PrintDoc, type Agency } from "@/components/print-doc";
 import { PAY_MODE_LABEL } from "@/lib/constants";
 import { fdate, inr, rupeesInWords, waLink } from "@/lib/format";
 
@@ -16,7 +16,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
     sb.from("cases").select("max_id, title, travel_start, travel_end, destination, customer:customers!cases_customer_id_fkey(full_name, mobile, whatsapp, address1, city)").eq("id", id).maybeSingle(),
     sb.from("payments").select("id, amount, pay_date, created_at").eq("case_id", id).eq("direction", "in"),
     sb.from("v_case_money").select("billed").eq("case_id", id).maybeSingle(),
-    sb.from("settings").select("agency_name, agency_phone, agency_email, agency_address").eq("id", 1).single(),
+    sb.from("settings").select(AGENCY_COLS).eq("id", 1).single(),
   ]);
   if (!pay || !kase || Number(pay.amount) <= 0 || !pay.receipt_no) notFound();
   const cu = kase.customer as unknown as { full_name: string; mobile: string; whatsapp: string | null; address1: string | null; city: string | null };
@@ -31,7 +31,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   const text = `Namaste ${cu.full_name},\nWe have received ${inr(amt)} on ${fdate(pay.pay_date)} by ${PAY_MODE_LABEL[pay.mode]}${pay.reference ? ` (ref ${pay.reference})` : ""} for ${kase.max_id} ${kase.title}.\nReceipt no. ${no}. ${balance > 0 ? `Balance due: ${inr(balance)}.` : "Fully paid. Thank you!"}\n– ${agency?.agency_name ?? ""}`;
 
   return (
-    <PrintDoc back={{ href: `/cases/${id}?tab=payments`, label: kase.max_id }} wa={waLink(cu.whatsapp || cu.mobile, text)} agency={agency as Agency}
+    <PrintDoc back={{ href: `/cases/${id}?tab=payments`, label: kase.max_id }} wa={waLink(cu.whatsapp || cu.mobile, text)} agency={agency as unknown as Agency}
       title="Payment receipt" meta={[["Receipt no.", no], ["Date", fdate(pay.pay_date)]]}>
       <p>
         Received with thanks from <b>{cu.full_name}</b>{cu.city && `, ${cu.city}`} the sum of <b>{inr(amt)}</b>{" "}
