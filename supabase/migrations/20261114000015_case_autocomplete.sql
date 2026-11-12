@@ -213,7 +213,7 @@ begin
   if position('(c.status in (''completed'', ''cancelled'') and (t.auto_key like ''trip:%''' in def) > 0 then
     execute replace(def,
       '(c.status in (''completed'', ''cancelled'') and (t.auto_key like ''trip:%'' or t.auto_key like ''tktname:%'' or t.auto_key like ''missingdoc:%'' or t.auto_key like ''waitfollow:%''))',
-      '(c.status = ''completed'' and t.auto_key like ''waitfollow:%''))');
+      '(c.status = ''completed'' and t.auto_key like ''waitfollow:%'')');
   end if;
   -- entering a stage closes its tasks that are already done (e.g. Confirmed by a payment: the advance is in)
   def := pg_get_functiondef('private.case_stage_changed()'::regprocedure);
