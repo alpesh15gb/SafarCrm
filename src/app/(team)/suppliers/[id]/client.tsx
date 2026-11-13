@@ -106,7 +106,12 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
             {!opening && <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>}
             <Field label={opening ? "Note" : "Reference no."}><input className="field" value={v.reference} placeholder={opening ? "Optional" : undefined} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
           </div>
-          {!opening && <>
+          {wallet && !opening && open.length > 0 && (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+              The wallet is short for {open.map((o) => `${o.max_id} (${inr(o.due)})`).join(", ")}: {inr(open.reduce((s, o) => s + o.due, 0))} in all.
+            </div>
+          )}
+          {!opening && !wallet && <>
           <div>
             <div className="mb-1.5 flex items-center justify-between text-[13px] font-medium">
               <span>MAX IDs this payment covers</span>
@@ -126,7 +131,7 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
             </div>
           </div>
           </>}
-          {wallet && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-800">{opening ? "The opening balance covers any confirmed bookings already in the CRM first; the rest stays as wallet balance." : "Top-ups cover any confirmed bookings the wallet was short for first, oldest due first; the rest stays as wallet balance. You don't need to pick MAX IDs."}</p>}
+          {wallet && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-800">{opening ? "The opening balance covers any confirmed bookings already in the CRM first; the rest stays as wallet balance." : "Top-ups cover any confirmed bookings the wallet was short for first, oldest due first; the rest stays as wallet balance."}</p>}
           <Field label={opening ? "Balance in the wallet (₹)" : wallet ? "Top-up amount (₹)" : "Advance or wallet top-up (₹)"} hint={wallet ? undefined : "Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier."}>
             <input className="field !w-40 tabular" inputMode="decimal" value={advance} onChange={(e) => setAdvance(e.target.value)} />
           </Field>

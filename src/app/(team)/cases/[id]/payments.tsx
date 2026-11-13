@@ -15,7 +15,7 @@ import type { Line } from "./bookings";
 type Pay = { id: string; receipt_no: number | null; pay_date: string; amount: number; mode: string; reference: string | null; notes: string | null; receiver: { full_name: string } | null };
 type Exp = { id: string; name: string; amount: number; exp_date: string };
 type SupMoney = { supplier_id: string; supplier_name: string; payable: number; paid: number; due_date: string | null };
-type SupPay = { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string } | null } };
+type SupPay = { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string; terms?: string } | null } };
 
 export function PaymentsTab({ caseId, lines, money, payments, expenses, suppliers, supplierPayments, status, advances = {} }: {
   status: string; caseId: string; lines: Line[]; money: Record<string, unknown> | null; payments: Pay[]; expenses: Exp[]; suppliers: SupMoney[]; supplierPayments: SupPay[];
@@ -113,7 +113,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
           {supplierPayments.length > 0 && (
             <div className="border-t border-line px-4 py-3 text-xs text-muted">
               {supplierPayments.map((a, i) => (
-                <div key={i}>{fdate(a.payment.pay_date)} · {a.payment.supplier?.name} · <Money value={a.amount} /> · {PAY_MODE_LABEL[a.payment.mode]}{a.payment.reference && ` · ${a.payment.reference}`}</div>
+                <div key={i}>{fdate(a.payment.pay_date)} · {a.payment.supplier?.name} · <Money value={a.amount} /> · {a.payment.supplier?.terms === "wallet" ? "from the wallet" : <>{PAY_MODE_LABEL[a.payment.mode]}{a.payment.reference && ` · ${a.payment.reference}`}</>}</div>
               ))}
             </div>
           )}

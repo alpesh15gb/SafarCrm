@@ -32,8 +32,10 @@ export async function searchCases(q: string) {
 export async function searchSuppliers(q: string, service?: string) {
   const sb = await createClient();
   let query = sb.from("suppliers").select("id, name, supplier_type, services, default_commission").eq("status", "active").order("name").limit(15);
+  // the opening list is narrowed to suppliers offering this service; a typed name finds any active supplier,
+  // so nobody "quick adds" a duplicate of a supplier whose services weren't ticked
   if (q.trim()) query = query.ilike("name", `%${q.trim().replace(/[,()%]/g, "")}%`);
-  if (service) query = query.or(`services.cs.{${service}},services.eq.{}`);
+  else if (service) query = query.or(`services.cs.{${service}},services.eq.{}`);
   const { data } = await query;
   return data ?? [];
 }

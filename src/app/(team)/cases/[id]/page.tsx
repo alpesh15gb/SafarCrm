@@ -185,7 +185,7 @@ async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string
     sb.from("payments").select("*, receiver:profiles!payments_received_by_fkey(full_name)").eq("case_id", caseId).eq("direction", "in").order("pay_date", { ascending: false }),
     sb.from("expenses").select("*").eq("case_id", caseId).order("exp_date"),
     sb.from("v_case_supplier_money").select("*").eq("case_id", caseId),
-    sb.from("payment_allocations").select("amount, payment:payments(id, pay_date, mode, reference, supplier:suppliers(name))").eq("case_id", caseId),
+    sb.from("payment_allocations").select("amount, payment:payments(id, pay_date, mode, reference, supplier:suppliers(name, terms))").eq("case_id", caseId),
   ]);
   // advance each supplier still holds (only for people who may see supplier money)
   const supIds = Array.from(new Set(((suppliers ?? []) as { supplier_id: string }[]).map((s) => s.supplier_id)));
@@ -200,7 +200,7 @@ async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string
       expenses={expenses ?? []}
       suppliers={suppliers ?? []}
       advances={Object.fromEntries(advanceRows)}
-      supplierPayments={(allocs ?? []) as unknown as { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string } | null } }[]}
+      supplierPayments={(allocs ?? []) as unknown as { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string; terms?: string } | null } }[]}
     />
   );
 }

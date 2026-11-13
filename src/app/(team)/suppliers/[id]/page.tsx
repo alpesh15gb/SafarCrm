@@ -50,7 +50,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
           : <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />}
       </div>}
       <Tabs active={tab} base={`/suppliers/${id}`} tabs={[...(money ? [{ key: "ledger", label: "Ledger" }] : []), { key: "details", label: "Details" }, { key: "files", label: "Files and notes" }, { key: "activity", label: "Activity" }]} />
-      {tab === "ledger" && money && <Ledger id={id} isBoss={me.role === "boss" || me.can_see_all_cases} canDelete={me.role === "boss"} />}
+      {tab === "ledger" && money && <Ledger id={id} wallet={s.terms === "wallet"} isBoss={me.role === "boss" || me.can_see_all_cases} canDelete={me.role === "boss"} />}
       {tab === "details" && <div className="max-w-3xl"><SupplierForm supplier={s} /></div>}
       {tab === "files" && <FilesLoader id={id} notes={s.notes} isBoss={me.role === "boss"} />}
       {tab === "activity" && <ActivityLoader id={id} />}
@@ -58,7 +58,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
   );
 }
 
-async function Ledger({ id, isBoss, canDelete }: { id: string; isBoss: boolean; canDelete: boolean }) {
+async function Ledger({ id, wallet, isBoss, canDelete }: { id: string; wallet: boolean; isBoss: boolean; canDelete: boolean }) {
   const sb = await createClient();
   const [{ data: lines }, { data: pays }] = await Promise.all([
     sb.from("booking_lines").select("id, service, summary, service_date, status, supplier_cost, refund_from_supplier, supplier_due_date, case:cases(id, max_id)").eq("supplier_id", id).order("created_at", { ascending: false }).limit(300),
@@ -95,8 +95,8 @@ async function Ledger({ id, isBoss, canDelete }: { id: string; isBoss: boolean; 
                 {(() => {
                   const used = p.allocations.reduce((s, a) => s + Number(a.amount), 0);
                   const adv = Math.round((Number(p.amount) - used) * 100) / 100;
-                  const parts = [...p.allocations.map((a) => `${a.case?.max_id ?? "another staff member's case"} (${inr(a.amount)})`), ...(adv > 0 ? [`advance ${inr(adv)}`] : [])];
-                  return parts.length > 0 && <div className="text-xs text-muted">For {parts.join(", ")}</div>;
+                  const parts = [...p.allocations.map((a) => `${a.case?.max_id ?? "another staff member's case"} (${inr(a.amount)})`), ...(adv > 0 ? [wallet ? `${inr(adv)} still in the wallet` : `advance ${inr(adv)}`] : [])];
+                  return parts.length > 0 && <div className="text-xs text-muted">{wallet ? "Used for" : "For"} {parts.join(", ")}</div>;
                 })()}
               </li>
             ))}

@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(18);
+select plan(19);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -75,6 +75,9 @@ select public.record_supplier_payment('00000000-0000-0000-0000-00000007d001', cu
 reset role; reset request.jwt.claims;
 select ok(not exists (select 1 from public.tasks where auto_key like 'walletlow:00000000-0000-0000-0000-00000007d001:%' and status <> 'done'),
   'topping up above the alert closes the reminder');
+update public.suppliers set wallet_alert_below = 20000 where id = '00000000-0000-0000-0000-00000007d001';
+select ok(exists (select 1 from public.tasks where auto_key like 'walletlow:00000000-0000-0000-0000-00000007d001:%' and status <> 'done'),
+  'dropping below the alert again the same day brings the reminder back');
 
 -- ---------------------------------------------------------------- 8. pay-on-booking suppliers are unchanged until switched to wallet
 insert into public.payments (direction, supplier_id, amount, mode) values ('out', '00000000-0000-0000-0000-00000007d002', 5000, 'bank');

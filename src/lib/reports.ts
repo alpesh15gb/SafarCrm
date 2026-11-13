@@ -55,12 +55,17 @@ export async function runReport(key: string, sp: Record<string, string | undefin
   if (key === "supplier_dues") {
     const { data, error } = await sb.rpc("report_supplier_dues", { p_supplier: f.p_supplier });
     throwIf(error);
-    const rows = data ?? [];
+    // money held by a supplier (wallet balance or advance) is shown on its own, never netted against what others are owed
+    const rows = (data ?? []).map((r: Record<string, unknown>) => {
+      const d = Number(r.due ?? 0);
+      return { ...r, due: d > 0 ? d : 0, held: d < 0 ? -d : 0, oldest_due: d > 0 ? r.oldest_due : null };
+    });
     return {
-      title: "Supplier dues", sub: "What we owe each supplier",
-      cols: [{ key: "name", label: "Supplier" }, { key: "payable", label: "Payable", money: true }, { key: "paid", label: "Paid", money: true }, { key: "due", label: "Due", money: true }, { key: "oldest_due", label: "Oldest due date", date: true }],
+      title: "Supplier dues", sub: "What we owe each supplier, and money a supplier holds for us (wallet balance or advance)",
+      cols: [{ key: "name", label: "Supplier" }, { key: "payable", label: "Payable", money: true }, { key: "paid", label: "Paid", money: true }, { key: "due", label: "We owe", money: true },
+        { key: "held", label: "Wallet / advance", money: true }, { key: "oldest_due", label: "Oldest due date", date: true }],
       rows, link: (r) => `/suppliers/${r.supplier_id}`,
-      totals: { name: `Total (${rows.length})`, payable: sum(rows, "payable"), paid: sum(rows, "paid"), due: sum(rows, "due") },
+      totals: { name: `Total (${rows.length})`, payable: sum(rows, "payable"), paid: sum(rows, "paid"), due: sum(rows, "due"), held: sum(rows, "held") },
     };
   }
   if (key === "sales") {

@@ -440,10 +440,6 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           <InlineTravellerAdd caseId={caseId} exclude={allTravellers.map((t) => t.id)}
             onAdded={(p) => { setAdded((a) => [...a, { id: p.id, full_name: p.full_name } as Pax]); setTrav((x) => (x.includes(p.id) ? x : [...x, p.id])); }} />
         </Field>
-        {unpriced && !isCancelled && (
-          <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">No prices entered yet. That is fine to save; the booking is marked “not priced” until someone enters them (enter 0 if it really is free).</p>
-        )}
-
         <div className="rounded-lg border border-line p-3">
           <div className="grid gap-3 sm:grid-cols-4">
             <Field label={isVisa ? "Our cost (₹)" : "Supplier cost (₹)"} hint={!me.can_see_profit && line ? "Hidden. Leave empty to keep the cost already saved." : isVisa ? `Embassy + VFS fees${visaPerPerson ? ", per person" : ""}` : undefined}><input className="field tabular" inputMode="decimal" placeholder={!me.can_see_profit && line ? "Hidden" : undefined} value={m.supplier_cost} onChange={(e) => setM({ ...m, supplier_cost: e.target.value })} /></Field>
@@ -458,6 +454,10 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             </Field>}
             <Field label="GST (₹, optional)"><input className="field tabular" inputMode="decimal" value={m.gst} onChange={(e) => setM({ ...m, gst: e.target.value })} /></Field>
           </div>
+          {/* below the price boxes, so they don't jump up under the cursor when it goes away */}
+          {unpriced && !isCancelled && (
+            <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">No prices entered yet. That is fine to save; the booking is marked “not priced” until someone enters them (enter 0 if it really is free).</p>
+          )}
           {!supplier && num(m.supplier_cost) > 0 && addSup === null && (
             <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">Who do we pay this {inr(num(m.supplier_cost))} to? Choose the supplier at the top, so it shows in what we owe.</p>
           )}
@@ -473,7 +473,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="Client payment due date" hint="Left empty, it is set to a week before the service (or today) so the payment reminder runs."><input className="field" type="date" value={m.payment_due_date} onChange={(e) => setM({ ...m, payment_due_date: e.target.value })} /></Field>
-            {line && <Field label="Supplier payment due" hint="Set from the supplier's credit days"><input className="field" type="date" value={m.supplier_due_date} onChange={(e) => setM({ ...m, supplier_due_date: e.target.value })} /></Field>}
+            {line && <Field label="Supplier payment due" hint="Set from the supplier's payment terms (a wallet supplier is paid from the wallet when the case is confirmed)"><input className="field" type="date" value={m.supplier_due_date} onChange={(e) => setM({ ...m, supplier_due_date: e.target.value })} /></Field>}
           </div>
         </div>
 
