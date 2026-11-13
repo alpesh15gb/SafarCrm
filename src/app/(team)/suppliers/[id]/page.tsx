@@ -96,6 +96,7 @@ async function Ledger({ id, wallet, isBoss, canDelete }: { id: string; wallet: b
                   const used = p.allocations.reduce((s, a) => s + Number(a.amount), 0);
                   const adv = Math.round((Number(p.amount) - used) * 100) / 100;
                   const parts = [...p.allocations.map((a) => `${a.case?.max_id ?? "another staff member's case"} (${inr(a.amount)})`), ...(adv > 0 ? [wallet ? `${inr(adv)} still in the wallet` : `advance ${inr(adv)}`] : [])];
+                  if (wallet && p.allocations.length === 0 && adv > 0) return <div className="text-xs text-muted">Not used yet: all of it is in the wallet</div>;
                   return parts.length > 0 && <div className="text-xs text-muted">{wallet ? "Used for" : "For"} {parts.join(", ")}</div>;
                 })()}
               </li>
