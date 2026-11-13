@@ -4,7 +4,8 @@
 #   bash deploy/wipe-transactions.sh 2001     first case becomes MAX-2001
 #   DRY_RUN=1 bash deploy/wipe-transactions.sh   checks it would work, deletes nothing
 #
-# DELETES: cases (MAX IDs), bookings, travellers on trips, client payments / receipts / refunds, supplier payments
+# DELETES: cases (MAX IDs), bookings, travellers on trips, client payments / receipts / refunds, supplier payments,
+#          wallet top-ups and "Top up wallet" reminders
 #          (including advances), expenses, files uploaded to cases, tasks that belong to a case, notifications,
 #          and the history (activity log) of all of these.
 # KEEPS:   customers, families, employees and their documents (passport, Aadhaar...), suppliers and their agreements
@@ -65,6 +66,8 @@ delete from public.invoice_counters;
 delete from public.ticket_imports;
 delete from public.payments where direction = 'out';
 delete from public.cases;
+-- deleting the top-ups above empties wallet suppliers, which raises fresh "Top up … wallet" reminders; clear them last
+delete from public.tasks where auto_key like 'walletlow:%';
 delete from public.notifications;
 delete from public.activity_log
   where case_id is not null or entity in ('case', 'booking_line', 'payment', 'expense', 'file', 'task');
