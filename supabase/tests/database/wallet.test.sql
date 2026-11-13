@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(16);
+select plan(18);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -88,6 +88,15 @@ select is(pg_temp.drawn('00000000-0000-0000-0000-0000007ca5e2', '00000000-0000-0
 delete from public.payments where id = (select v::uuid from r where k = 'pay1');
 select ok(pg_temp.drawn('00000000-0000-0000-0000-0000007ca5e2') = 7000 and pg_temp.drawn('00000000-0000-0000-0000-0000007ca5e3') = 1000,
   'after a top-up is deleted, the remaining top-ups cover the bookings again');
+
+-- ---------------------------------------------------------------- 10. opening balance
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000007b1","role":"authenticated"}';
+select public.record_supplier_payment('00000000-0000-0000-0000-00000007d001', current_date - 30, 4000, 'opening');
+reset role; reset request.jwt.claims;
+select is(pg_temp.bal(), 4000.00, 'an opening balance adds to the wallet');
+select throws_ok($$ insert into public.payments (direction, case_id, amount, mode) values ('in', '00000000-0000-0000-0000-0000007ca5e1', 100, 'opening') $$,
+  '23514', null, 'a client payment cannot be an opening balance');
 
 select * from finish();
 rollback;

@@ -28,7 +28,8 @@ export const PAY_MODES = [
   { value: "cash", label: "Cash" }, { value: "upi", label: "UPI" }, { value: "bank", label: "Bank transfer" },
   { value: "card", label: "Card" }, { value: "cheque", label: "Cheque" },
 ];
-export const PAY_MODE_LABEL = Object.fromEntries(PAY_MODES.map((m) => [m.value, m.label]));
+// "opening" is only for a supplier wallet's opening balance, so it isn't offered in the mode pickers
+export const PAY_MODE_LABEL: Record<string, string> = { ...Object.fromEntries(PAY_MODES.map((m) => [m.value, m.label])), opening: "Opening balance" };
 
 export const PRIORITIES = [{ value: "low", label: "Low" }, { value: "normal", label: "Normal" }, { value: "high", label: "High" }];
 export const ALERTS = [

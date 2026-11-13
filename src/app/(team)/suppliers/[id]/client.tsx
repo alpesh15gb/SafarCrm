@@ -82,20 +82,31 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
   const [v, setV] = useState({ pay_date: todayIST(), mode: "bank", reference: "", notes: "" });
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [advance, setAdvance] = useState("");
-  const total = Object.values(alloc).reduce((s, a) => s + amount(a), 0) + amount(advance);
+  const [opening, setOpening] = useState(false);
+  const total = opening ? amount(advance) : Object.values(alloc).reduce((s, a) => s + amount(a), 0) + amount(advance);
+  const save = () => opening
+    ? addSupplierPayment({ supplier_id: supplier.id, ...v, mode: "opening", amount: total, allocations: [] })
+    : addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: amount(a) })) });
   return (
     <>
-      <Button variant="primary" onClick={() => { setAlloc({}); setAdvance(""); setShow(true); }}>{wallet ? "Top up wallet" : "Record payment"}</Button>
+      <Button variant="primary" onClick={() => { setAlloc({}); setAdvance(""); setOpening(false); setShow(true); }}>{wallet ? "Top up wallet" : "Record payment"}</Button>
       <Dialog open={show} onClose={() => setShow(false)} title={wallet ? `Top up ${supplier.name} wallet` : `Payment to ${supplier.name}`} wide
-        footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !total}
-          onClick={() => run(() => addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: amount(a) })) }), { then: () => setShow(false) })}>
-          Save payment of {inr(total)}</Button></>}>
+        footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !total || (opening && total < 0)}
+          onClick={() => run(save, { then: () => setShow(false) })}>
+          {opening ? `Save opening balance of ${inr(total)}` : `Save payment of ${inr(total)}`}</Button></>}>
         <div className="space-y-4">
+          {wallet && (
+            <label className="flex items-start gap-2 rounded-lg border border-line px-3 py-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={opening} onChange={(e) => setOpening(e.target.checked)} />
+              <span><span className="font-medium">Opening balance</span><span className="block text-xs text-muted">Money already in this wallet before you started using the CRM. Enter it once, dated the day you started.</span></span>
+            </label>
+          )}
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
-            <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
-            <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
+            <Field label={opening ? "Balance as on" : "Date"}><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
+            {!opening && <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>}
+            <Field label={opening ? "Note" : "Reference no."}><input className="field" value={v.reference} placeholder={opening ? "Optional" : undefined} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
           </div>
+          {!opening && <>
           <div>
             <div className="mb-1.5 flex items-center justify-between text-[13px] font-medium">
               <span>MAX IDs this payment covers</span>
@@ -114,8 +125,9 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
               ))}
             </div>
           </div>
-          {wallet && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-800">Top-ups cover any confirmed bookings the wallet was short for first, oldest due first; the rest stays as wallet balance. You don&apos;t need to pick MAX IDs.</p>}
-          <Field label={wallet ? "Top-up amount (₹)" : "Advance or wallet top-up (₹)"} hint={wallet ? undefined : "Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier."}>
+          </>}
+          {wallet && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-800">{opening ? "The opening balance covers any confirmed bookings already in the CRM first; the rest stays as wallet balance." : "Top-ups cover any confirmed bookings the wallet was short for first, oldest due first; the rest stays as wallet balance. You don't need to pick MAX IDs."}</p>}
+          <Field label={opening ? "Balance in the wallet (₹)" : wallet ? "Top-up amount (₹)" : "Advance or wallet top-up (₹)"} hint={wallet ? undefined : "Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier."}>
             <input className="field !w-40 tabular" inputMode="decimal" value={advance} onChange={(e) => setAdvance(e.target.value)} />
           </Field>
         </div>
