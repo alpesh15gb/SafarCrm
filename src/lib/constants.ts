@@ -42,6 +42,14 @@ export const SUPPLIER_TYPES = [
   { value: "portal", label: "Booking portal or GDS" }, { value: "other", label: "Other" },
 ];
 export const SUPPLIER_TYPE_LABEL = Object.fromEntries(SUPPLIER_TYPES.map((m) => [m.value, m.label]));
+// prepaid = paid on the booking date; wallet = topped up ahead, bookings draw from it on their own
+export const SUPPLIER_TERMS = [
+  { value: "prepaid", label: "Pay on booking" }, { value: "wallet", label: "Prepaid wallet" }, { value: "credit", label: "Credit" },
+];
+export function supplierTermsText(s: { terms: string; credit_days?: number | null }) {
+  if (s.terms === "credit") return `Credit ${s.credit_days ?? 0} days`;
+  return s.terms === "wallet" ? "Prepaid wallet" : "Pay on booking";
+}
 
 export const FILE_KINDS = [
   { value: "ticket", label: "Ticket" }, { value: "voucher", label: "Voucher" }, { value: "policy", label: "Policy" }, { value: "visa", label: "Visa" },

@@ -3,7 +3,7 @@ import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { listCases, listCustomers, listSuppliers } from "@/lib/queries";
 import { REPORTS, runReport, type Col } from "@/lib/reports";
-import { SERVICE_LABEL, STATUS_LABEL, SUPPLIER_TYPE_LABEL, type Service } from "@/lib/constants";
+import { SERVICE_LABEL, STATUS_LABEL, SUPPLIER_TYPE_LABEL, supplierTermsText, type Service } from "@/lib/constants";
 import { fdate, todayIST } from "@/lib/format";
 
 // Indian digit grouping (₹1,25,000)
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
         { key: "city", label: "City" }, { key: "terms", label: "Terms" },
         // what we owe a supplier is for those who may see profit
         ...(me.can_see_profit ? [{ key: "payable", label: "Payable", money: true }, { key: "paid", label: "Paid", money: true }, { key: "due", label: "Due", money: true }] as Col[] : [])],
-        rows.map((r) => ({ ...r, type: SUPPLIER_TYPE_LABEL[r.supplier_type], terms: r.terms === "credit" ? `Credit ${r.credit_days} days` : "Prepaid", due: r.payable - r.paid })));
+        rows.map((r) => ({ ...r, type: SUPPLIER_TYPE_LABEL[r.supplier_type], terms: supplierTermsText(r), due: r.payable - r.paid })));
       return respond(wb, "Suppliers");
     }
     if (kind === "report") {

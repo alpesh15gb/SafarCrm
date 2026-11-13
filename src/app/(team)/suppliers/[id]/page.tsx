@@ -4,7 +4,7 @@ import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Money, PageHeader, ServiceIcon, Stat, StatusBadge, Table, Tabs } from "@/components/ui";
 import { ActivityList } from "@/components/activity";
-import { PAY_MODE_LABEL, SERVICE_LABEL, SUPPLIER_TYPE_LABEL, type Service } from "@/lib/constants";
+import { PAY_MODE_LABEL, SERVICE_LABEL, SUPPLIER_TYPE_LABEL, supplierTermsText, type Service } from "@/lib/constants";
 import { fdate, inr } from "@/lib/format";
 import { DeleteSupplierPayment, SupplierForm, SupplierPayButton, SupplierFiles } from "./client";
 
@@ -36,12 +36,16 @@ export default async function SupplierPage({ params, searchParams }: { params: P
   return (
     <>
       <PageHeader back={{ href: "/suppliers", label: "Suppliers" }} title={s.name}
-        sub={<>{SUPPLIER_TYPE_LABEL[s.supplier_type] ?? s.supplier_type} · {s.terms === "credit" ? `Credit ${s.credit_days} days${s.credit_limit ? `, limit ${inr(s.credit_limit)}` : ""}` : "Prepaid"} · <StatusBadge status={s.status} /></>}
-        action={money ? <SupplierPayButton supplier={{ id: s.id, name: s.name }} open={open} /> : undefined} />
+        sub={<>{SUPPLIER_TYPE_LABEL[s.supplier_type] ?? s.supplier_type} · {supplierTermsText(s)}{s.terms === "credit" && s.credit_limit ? `, limit ${inr(s.credit_limit)}` : ""} · <StatusBadge status={s.status} /></>}
+        action={money ? <SupplierPayButton supplier={{ id: s.id, name: s.name }} open={open} wallet={s.terms === "wallet"} /> : undefined} />
       {money && <div className="mb-4 grid grid-cols-3 gap-3">
-        <Stat label="Payable" value={inr(payable)} />
-        <Stat label="Paid" value={inr(paid)} />
-        {payable - paid < 0
+        <Stat label={s.terms === "wallet" ? "Used by bookings" : "Payable"} value={inr(payable)} />
+        <Stat label={s.terms === "wallet" ? "Topped up" : "Paid"} value={inr(paid)} />
+        {s.terms === "wallet"
+          ? <Stat label={paid - payable < 0 ? "Wallet short by" : "Wallet balance"} value={inr(Math.abs(paid - payable))}
+              tone={paid - payable < 0 || (s.wallet_alert_below != null && paid - payable < Number(s.wallet_alert_below)) ? "red" : undefined}
+              sub={paid - payable < 0 ? "Top up to cover the bookings already made" : s.wallet_alert_below != null && paid - payable < Number(s.wallet_alert_below) ? `Below the ${inr(s.wallet_alert_below)} alert; top up soon` : "Confirmed bookings draw from it on their own"} />
+          : payable - paid < 0
           ? <Stat label="Advance with supplier" value={inr(paid - payable)} sub="Paid ahead; it is used up as new bookings with this supplier are added" />
           : <Stat label="Due" value={inr(payable - paid)} sub={s.credit_limit && payable - paid > Number(s.credit_limit) ? "Over credit limit" : undefined} tone={payable - paid > 0 ? "red" : undefined} />}
       </div>}

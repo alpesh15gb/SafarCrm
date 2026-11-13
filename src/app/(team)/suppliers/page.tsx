@@ -4,7 +4,7 @@ import { requireTeam } from "@/lib/auth";
 import { listSuppliers, PER_PAGE, type SP } from "@/lib/queries";
 import { Card, Chips, Empty, LinkButton, Money, PageHeader, Pager, ServiceIcon, StatusBadge, Table, btnClass } from "@/components/ui";
 import { NewButton, SearchBox } from "@/components/list-tools";
-import { SERVICES, SERVICE_LABEL, SUPPLIER_TYPES, SUPPLIER_TYPE_LABEL } from "@/lib/constants";
+import { SERVICES, SERVICE_LABEL, SUPPLIER_TYPES, SUPPLIER_TYPE_LABEL, supplierTermsText } from "@/lib/constants";
 import { prettyPhone } from "@/lib/format";
 
 export const metadata = { title: "Suppliers" };
@@ -41,8 +41,8 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
                   <td data-label="Type">{SUPPLIER_TYPE_LABEL[r.supplier_type] ?? r.supplier_type}</td>
                   <td data-label="Services"><span className="inline-flex gap-1">{(r.services as string[]).map((s) => <span key={s} className="flex h-6 w-6 items-center justify-center rounded-md bg-gray-100 text-gray-600"><ServiceIcon service={s} className="h-3.5 w-3.5" /></span>)}</span></td>
                   <td data-label="Contact">{r.contact_person ?? ""}{r.mobile && <div className="text-xs text-muted">{prettyPhone(r.mobile)}</div>}</td>
-                  <td data-label="Terms">{r.terms === "credit" ? `Credit ${r.credit_days} days` : "Prepaid"}</td>
-                  {me.can_see_profit && <td data-label="We owe">{due < 0 ? <span className="text-sky-700">Advance <Money value={-due} /></span> : due ? <Money value={due} className="text-amber-700" /> : <span className="text-muted">—</span>}</td>}
+                  <td data-label="Terms">{supplierTermsText(r)}</td>
+                  {me.can_see_profit && <td data-label="We owe">{due < 0 ? <span className="text-sky-700">{r.terms === "wallet" ? "Wallet" : "Advance"} <Money value={-due} /></span> : due ? <Money value={due} className="text-amber-700" /> : <span className="text-muted">—</span>}</td>}
                   <td data-label="Status"><StatusBadge status={r.status} /></td>
                 </tr>
               );

@@ -10,15 +10,16 @@ import { deleteSupplier, saveSupplier, saveSupplierNotes } from "@/actions/suppl
 import { addSupplierPayment, deletePayment } from "@/actions/money";
 import { amount } from "@/lib/money";
 import { deleteFile } from "@/actions/files";
-import { PAY_MODES, SERVICES, SERVICE_LABEL, SUPPLIER_TYPES } from "@/lib/constants";
+import { PAY_MODES, SERVICES, SERVICE_LABEL, SUPPLIER_TERMS, SUPPLIER_TYPES } from "@/lib/constants";
 import { fdate, fdatetime, inr, todayIST } from "@/lib/format";
 
-type F = { key: string; label: string; type?: "select" | "number" | "url"; options?: { value: string; label: string }[]; hint?: string; upper?: boolean };
+type F = { key: string; label: string; type?: "select" | "number" | "url"; options?: { value: string; label: string }[]; hint?: string; upper?: boolean; only?: string };
 const SECTIONS: { title: string; open?: boolean; fields: F[] }[] = [
   { title: "Contact", open: true, fields: [{ key: "contact_person", label: "Contact person" }, { key: "mobile", label: "Mobile" }, { key: "whatsapp", label: "WhatsApp" }, { key: "email", label: "Email" }, { key: "address", label: "Address" }, { key: "city", label: "City" }] },
   { title: "Terms", open: true, fields: [
-    { key: "terms", label: "Payment terms", type: "select", options: [{ value: "prepaid", label: "Prepaid" }, { value: "credit", label: "Credit" }] },
-    { key: "credit_days", label: "Credit days", type: "number" }, { key: "credit_limit", label: "Credit limit (₹)", type: "number" },
+    { key: "terms", label: "Payment terms", type: "select", options: SUPPLIER_TERMS, hint: "Prepaid wallet: you top up first, and confirmed bookings draw from it on their own" },
+    { key: "credit_days", label: "Credit days", type: "number", only: "credit" }, { key: "credit_limit", label: "Credit limit (₹)", type: "number", only: "credit" },
+    { key: "wallet_alert_below", label: "Remind to top up below (₹)", type: "number", only: "wallet", hint: "The boss gets a reminder when the wallet drops under this. Leave empty for none." },
     { key: "default_commission", label: "Default commission %", type: "number", hint: "Pre-fills booking lines; can be changed per line" },
   ] },
   { title: "Tax and bank", fields: [
@@ -53,7 +54,7 @@ export function SupplierForm({ supplier }: { supplier: Record<string, unknown> }
       {SECTIONS.map((s) => (
         <More key={s.title} title={s.title} defaultOpen={s.open}>
           <div className="grid gap-3 sm:grid-cols-2">
-            {s.fields.map((fd) => (
+            {s.fields.filter((fd) => !fd.only || fd.only === f.terms).map((fd) => (
               <Field key={fd.key} label={fd.label} hint={fd.hint}>
                 {fd.type === "select"
                   ? <select className="field" value={String(f[fd.key] ?? "")} onChange={(e) => set(fd.key, e.target.value)}>{fd.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
@@ -75,7 +76,7 @@ export function SupplierForm({ supplier }: { supplier: Record<string, unknown> }
 
 type Open = { case_id: string; max_id: string; title: string; due: number; due_date: string | null };
 
-export function SupplierPayButton({ supplier, open }: { supplier: { id: string; name: string }; open: Open[] }) {
+export function SupplierPayButton({ supplier, open, wallet = false }: { supplier: { id: string; name: string }; open: Open[]; wallet?: boolean }) {
   const { run, pending } = useAction();
   const [show, setShow] = useState(false);
   const [v, setV] = useState({ pay_date: todayIST(), mode: "bank", reference: "", notes: "" });
@@ -84,8 +85,8 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
   const total = Object.values(alloc).reduce((s, a) => s + amount(a), 0) + amount(advance);
   return (
     <>
-      <Button variant="primary" onClick={() => { setAlloc({}); setAdvance(""); setShow(true); }}>Record payment</Button>
-      <Dialog open={show} onClose={() => setShow(false)} title={`Payment to ${supplier.name}`} wide
+      <Button variant="primary" onClick={() => { setAlloc({}); setAdvance(""); setShow(true); }}>{wallet ? "Top up wallet" : "Record payment"}</Button>
+      <Dialog open={show} onClose={() => setShow(false)} title={wallet ? `Top up ${supplier.name} wallet` : `Payment to ${supplier.name}`} wide
         footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !total}
           onClick={() => run(() => addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: amount(a) })) }), { then: () => setShow(false) })}>
           Save payment of {inr(total)}</Button></>}>
@@ -113,7 +114,8 @@ export function SupplierPayButton({ supplier, open }: { supplier: { id: string; 
               ))}
             </div>
           </div>
-          <Field label="Advance or wallet top-up (₹)" hint="Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier.">
+          {wallet && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-800">Top-ups cover any confirmed bookings the wallet was short for first, oldest due first; the rest stays as wallet balance. You don&apos;t need to pick MAX IDs.</p>}
+          <Field label={wallet ? "Top-up amount (₹)" : "Advance or wallet top-up (₹)"} hint={wallet ? undefined : "Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier."}>
             <input className="field !w-40 tabular" inputMode="decimal" value={advance} onChange={(e) => setAdvance(e.target.value)} />
           </Field>
         </div>

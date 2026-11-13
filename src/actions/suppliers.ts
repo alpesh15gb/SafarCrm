@@ -17,7 +17,7 @@ export async function saveSupplier(input: Record<string, unknown> & { id?: strin
       let val = typeof v === "string" ? v.trim() : v;
       if (["mobile", "whatsapp"].includes(k)) val = normPhone(val as string) || null;
       if (["credit_days", "default_commission"].includes(k)) val = amount(val);
-      if (k === "credit_limit") val = val === "" || val === null ? null : amount(val);
+      if (k === "credit_limit" || k === "wallet_alert_below") val = val === "" || val === null ? null : amount(val);
       if (val === "") val = null;
       row[k] = val;
     }
