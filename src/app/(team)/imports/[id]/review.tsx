@@ -7,6 +7,7 @@ import { Badge, Button, Card, Field, cx } from "@/components/ui";
 import { Dialog, useAction } from "@/components/client";
 import { CasePicker, CustomerPicker, SupplierPicker } from "@/components/pickers";
 import { CustomerInline } from "@/components/forms/customer-inline";
+import { SupplierQuickForm } from "@/components/forms/supplier-quick";
 import { TicketUploadDialog } from "@/components/ticket-upload";
 import {
   bookingForCompare, confirmImport, flightLinesOnCase, personCandidates, probableDuplicates, rejectImport, retryImport, saveImportDraft, recentFlightSuppliers,
@@ -102,11 +103,11 @@ export function ReviewScreen({ row, initialDraft, isBoss, canSeeProfit, provider
         ))}
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <section id="panel-source" role="tabpanel" aria-labelledby="tab-source" className={cx("lg:sticky lg:top-4 lg:block lg:self-start", tab === "source" ? "block" : "hidden")}>
+        <section id="panel-source" role="tabpanel" aria-labelledby="tab-source" className={cx("min-w-0 lg:sticky lg:top-4 lg:block lg:self-start", tab === "source" ? "block" : "hidden")}>
           {source}
           <p className="mt-1 text-xs text-muted">{row.pages ? `${row.pages} page${row.pages === 1 ? "" : "s"} · ` : ""}Private file. <a className="link" href={`/api/imports/${row.id}/source?download=1`}>Download</a></p>
         </section>
-        <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" className={cx("space-y-4 lg:block", tab === "review" ? "block" : "hidden")}>
+        <section id="panel-review" role="tabpanel" aria-labelledby="tab-review" className={cx("min-w-0 space-y-4 lg:block", tab === "review" ? "block" : "hidden")}>
           {editable && (
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="primary" disabled={pending || !dirty} onClick={save}><Save className="h-4 w-4" />{dirty ? "Save draft" : "Saved"}</Button>
@@ -434,7 +435,13 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
           <Field label="Who pays (the customer on the MAX ID)" hint="Matched on its own: the payer doesn't have to travel.">
             {!payer && payerPax !== null ? (
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge tone="blue">Traveller {payerPax + 1}: {matches[payerPax]?.kind === "existing" ? (matches[payerPax] as { label: string }).label : draft.passengers[payerPax]?.name_as_issued.value || "?"}</Badge>
+                <Badge tone="blue">Traveller {payerPax + 1}: {(() => {
+                  const m = matches[payerPax];
+                  if (m?.kind === "existing") return m.label;
+                  if (m?.kind === "new") return `${m.first_name} ${m.last_name}`.trim() || "?";
+                  const s = splitIssuedName(draft.passengers[payerPax]?.name_as_issued.value ?? "");
+                  return `${s.first} ${s.last}`.trim() || "?";
+                })()}</Badge>
                 <button type="button" className="text-xs link" onClick={() => setPayerPax(null)}>change</button>
               </div>
             ) : newPayer !== null ? (
@@ -635,6 +642,7 @@ function Pricing({ canSeeProfit, supplier, setSupplier, sugs, price, setPrice }:
   canSeeProfit: boolean; supplier: Picked | null; setSupplier: (s: Picked | null) => void;
   sugs: { id: string; name: string }[]; price: { cost: string; sale: string }; setPrice: (p: { cost: string; sale: string }) => void;
 }) {
+  const [addSup, setAddSup] = useState<string | null>(null);
   const both = parseMoney(price.cost).kind === "value" && parseMoney(price.sale).kind === "value";
   const profit = amount(price.sale) - amount(price.cost);
   const bad = (v: string) => v.trim() !== "" && parseMoney(v).kind === "invalid";
@@ -643,8 +651,16 @@ function Pricing({ canSeeProfit, supplier, setSupplier, sugs, price, setPrice }:
       <div className="text-[13px] font-medium">Supplier and price</div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Supplier" hint="Where you booked it. The ticket carries our name, so choose it yourself.">
-          <SupplierPicker value={supplier} service="flight" onChange={(o) => setSupplier(o ? { id: o.id, label: o.label } : null)} />
-          {!supplier && sugs.length > 0 && (
+          {addSup !== null ? (
+            <div className="rounded-lg border border-dashed border-line p-3">
+              <SupplierQuickForm initialName={addSup} onCreated={(s) => { setSupplier({ id: s.id, label: s.name }); setAddSup(null); }} />
+              <button type="button" className="mt-2 text-xs link" onClick={() => setAddSup(null)}>Pick an existing supplier</button>
+            </div>
+          ) : (
+            <SupplierPicker value={supplier} service="flight" onChange={(o) => setSupplier(o ? { id: o.id, label: o.label } : null)}
+              footer={(q, close) => <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm link" onClick={() => { setAddSup(q); close(); }}>+ Quick add supplier{q ? ` “${q}”` : ""}</button>} />
+          )}
+          {!supplier && addSup === null && sugs.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-muted">Recent:</span>
               {sugs.map((s) => (
