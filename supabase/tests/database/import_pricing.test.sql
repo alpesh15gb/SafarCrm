@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(18);
+select plan(21);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -122,5 +122,33 @@ select is((select jsonb_array_length(loyalty) from public.customers where last_n
 select results_eq($$ select supplier_id, selling_price, supplier_cost, pricing_state from public.booking_lines where import_id = '00000000-0000-0000-0000-0000000009f3' $$,
   $$ values (null::uuid, 0::numeric, 0::numeric, 'not_entered'::text) $$, 'a customer-booked ticket takes no supplier or prices');
 
+
+-- ---------------------------------------------------------------- 4. a reissue for one traveller keeps the other's ticket
+update public.booking_lines
+   set details = jsonb_set(details, '{tickets}', (details -> 'tickets') || jsonb_build_array(jsonb_build_object(
+         'customer_id', (select id from public.customers where last_name = 'Secondpax'), 'passenger', 'Testa Secondpax',
+         'name_as_issued', 'MS TESTA SECONDPAX', 'number', '176-0000000009', 'source', 'manual')))
+ where import_id = '00000000-0000-0000-0000-0000000009f1';
+insert into public.ticket_imports (id, status, channel, storage_path, file_name, mime, size, sha256, uploaded_by, draft, draft_version) values
+  ('00000000-0000-0000-0000-0000000009f5', 'needs_review', 'staff', 'imports/imp-5.pdf', 'five.pdf', 'application/pdf', 100, repeat('5', 64),
+   '00000000-0000-0000-0000-0000000009b1', pg_temp.draft('IMPA01', '176-0000000021', '2026-12-10', 'MR TESTA FIRSTPAX', '200000001'), 1);
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000009b1","role":"authenticated"}';
+do $$ begin
+  perform public.confirm_ticket_import('00000000-0000-0000-0000-0000000009f5', 1, 'key-imp-0007', jsonb_build_object(
+    'case', jsonb_build_object('mode', 'existing', 'id', (select case_id from public.booking_lines where import_id = '00000000-0000-0000-0000-0000000009f1')),
+    'booking', jsonb_build_object('mode', 'reissue', 'line_id', (select id from public.booking_lines where import_id = '00000000-0000-0000-0000-0000000009f1'), 'comparison_reviewed', true),
+    'booked_by', 'agency', 'line_status', 'confirmed',
+    'passengers', jsonb_build_array(jsonb_build_object('customer_id', (select id from public.customers where last_name = 'Firstpax')),
+                                    jsonb_build_object('customer_id', (select id from public.customers where last_name = 'Secondpax')))));
+  insert into r values ('reissue', 'ok');
+exception when others then insert into r values ('reissue', sqlerrm); end $$;
+reset role; reset request.jwt.claims;
+select is((select v from r where k = 'reissue'), 'ok', 'reissuing an existing booking is not blocked as a possible duplicate');
+select is((select string_agg(t ->> 'number', ',' order by t ->> 'number') from public.booking_lines l, jsonb_array_elements(l.details -> 'tickets') t
+           where l.id = (select (result ->> 'booking_line_id')::uuid from public.ticket_imports where id = '00000000-0000-0000-0000-0000000009f5')),
+          '176-0000000009,176-0000000021', 'the reissued traveller gets the new ticket; the other traveller keeps theirs');
+select ok((select details::text from public.booking_lines where id = (select (result ->> 'booking_line_id')::uuid from public.ticket_imports where id = '00000000-0000-0000-0000-0000000009f5'))
+          like '%ticket_history%176-0000000001%', 'the replaced ticket is kept in the history');
 select * from finish();
 rollback;

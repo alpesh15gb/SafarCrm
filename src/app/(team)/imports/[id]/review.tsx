@@ -398,7 +398,8 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
 
   const blocking = reviewIssues(draft).filter((i) => i.blocking);
   // a matching booking must be resolved: update it, or say why this is a separate trip (the database checks this too)
-  const openDups = dups.filter((x) => x.status !== "cancelled" && !(bMode !== "new" && x.line_id === lineId));
+  // only a new booking can duplicate one already on file; updating or reissuing an existing booking creates none
+  const openDups = bMode === "new" ? dups.filter((x) => x.status !== "cancelled") : [];
   // supplier and prices: our own booking, entered as a new booking (an update or reissue keeps the booking's prices)
   const pricingShown = bookedBy === "agency" && bMode === "new";
   const payerName = payer ? payer.label : payerPax !== null ? (() => {
@@ -427,7 +428,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
     bMode !== "new" && !lineId && "the booking to update",
     bMode !== "new" && lineId && !compared && "tick that you compared the booking",
     bMode === "reissue" && lineId && reissueHasNewTicket === false && "a new ticket number for the reissue",
-    bookedBy === "customer" && charge.confirmed && !charge.amount.trim() && "the agency charge",
+    bookedBy === "customer" && charge.confirmed && !charge.amount.trim() && "the service fee",
   ];
   const missing = [...mainNeeds, ...moreNeeds].filter(Boolean) as string[];
   const showMore = moreOpen || moreNeeds.some(Boolean) || bMode !== "new";
@@ -598,7 +599,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
                   <span className="flex flex-wrap gap-3 text-sm">
                     {radio(bMode === "new", () => setBMode("new"), "Add as a new booking")}
                     {radio(bMode === "update", () => setBMode("update"), "Update a booking already there")}
-                    {radio(bMode === "reissue", () => setBMode("reissue"), "Reissue (new tickets replace old)")}
+                    {radio(bMode === "reissue", () => setBMode("reissue"), "Reissue (new ticket numbers replace the old ones)")}
                   </span>
                   {bMode !== "new" && (
                     <select className="field mt-2" value={lineId} onChange={(e) => setLineId(e.target.value)}>
@@ -816,7 +817,7 @@ function Comparison({ lineId, draft, compared, setCompared, reissue, onReissueCh
             const a = oldVal(old[i], k), b = draft.segments[i] ? get(draft.segments[i]) : "";
             return <tr key={`${i}-${k}`} className={cx("border-t border-line", a !== b && "bg-amber-50")}><td className="py-1">{i + 1}</td><td>{label}</td><td className="font-mono">{a || "—"}</td><td className="font-mono">{b || "—"}</td></tr>;
           }))}
-          <tr className="border-t border-line align-top"><td className="py-1" colSpan={2}>Tickets</td>
+          <tr className={cx("border-t border-line align-top", freshTickets.length > 0 && "bg-amber-50")}><td className="py-1" colSpan={2}>Tickets</td>
             <td className="font-mono text-xs">{oldT.map((t) => <div key={t.number}>{t.name_as_issued || t.passenger}: {t.number}</div>)}{oldT.length === 0 && "—"}</td>
             <td className="font-mono text-xs">{newTickets.map((t) => <div key={t}>{t}</div>)}</td></tr>
         </tbody>
@@ -824,7 +825,7 @@ function Comparison({ lineId, draft, compared, setCompared, reissue, onReissueCh
       {reissue && !hasNew && (
         <p role="alert" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-800">No new ticket number on this document, so it isn&apos;t evidence of a reissue. Choose Update if the tickets are unchanged.</p>
       )}
-      <p className="text-xs text-muted">{reissue ? "The old tickets and flights are kept in the booking's history. No new sale is created; prices stay as they are." : "Changed flights are kept in history. Prices stay as they are."}</p>
+      <p className="text-xs text-muted">{reissue ? "The reissued travellers' old tickets go to the booking's history; other travellers keep theirs. No new sale is created; prices stay as they are." : "Changed flights are kept in history. Prices stay as they are."}</p>
       {nothingDiffers
         ? <p className="flex items-center gap-1.5 text-xs text-emerald-800"><Check className="h-3.5 w-3.5" />The ticket matches this booking: nothing to compare.</p>
         : <label className="flex items-center gap-2"><input type="checkbox" checked={compared} onChange={(e) => setCompared(e.target.checked)} />I compared every highlighted difference with the original</label>}
