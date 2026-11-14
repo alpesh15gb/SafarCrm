@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Check, Info, Plus, RotateCw, Save, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, Field, cx } from "@/components/ui";
@@ -332,73 +332,100 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
   const router = useRouter();
   const { run, pending } = useAction();
   const [key] = useState(() => crypto.randomUUID());   // one confirmation per screen: retries and double clicks reuse it
+  const hasTicketNo = draft.passengers.some((p) => p.tickets.some((t) => t.number.value.trim()));
+  // The usual case is pre-filled: we booked it, the ticket is issued, a new MAX ID at "Booked", the first traveller pays,
+  // a new booking. Staff change any of it under "More options".
   const [payer, setPayer] = useState<Picked | null>(row.customer ? { id: row.customer.id, label: row.customer.full_name } : null);
   const [payerMobile, setPayerMobile] = useState(row.customer?.mobile ?? "");
+  const [payerPax, setPayerPax] = useState<number | null>(row.customer ? null : 0);
   const [caseMode, setCaseMode] = useState<"existing" | "new">(row.case ? "existing" : "new");
   const [kase, setKase] = useState<Picked | null>(row.case ? { id: row.case.id, label: row.case.max_id, sub: row.case.title } : null);
   const [suggest, setSuggest] = useState<Awaited<ReturnType<typeof suggestCases>>>([]);
   const [newTitle, setNewTitle] = useState("");
-  const [stage, setStage] = useState("");
+  const [stage, setStage] = useState("booked");
+  const [stageTouched, setStageTouched] = useState(false);
   const [existingStage, setExistingStage] = useState("");
   const [lines, setLines] = useState<Awaited<ReturnType<typeof flightLinesOnCase>>>([]);
   const [bMode, setBMode] = useState<"new" | "update" | "reissue">(row.booking_line_id ? "update" : "new");
   const [lineId, setLineId] = useState(row.booking_line_id ?? "");
   const [compared, setCompared] = useState(false);
-  const [bookedBy, setBookedBy] = useState<"" | "agency" | "customer">("");
-  const [lineStatus, setLineStatus] = useState<"" | "pending" | "confirmed">("");
+  const [bookedBy, setBookedBy] = useState<"agency" | "customer">("agency");
+  // with a ticket number it is issued; without one, the reviewer says which (some airlines use the booking reference)
+  const [lineStatus, setLineStatus] = useState<"" | "pending" | "confirmed">(hasTicketNo ? "confirmed" : "");
   const [charge, setCharge] = useState({ amount: "", confirmed: false });
   const [matches, setMatches] = useState<Match[]>(() => draft.passengers.map(() => null));
   const [dups, setDups] = useState<Awaited<ReturnType<typeof probableDuplicates>>>([]);
   const [error, setError] = useState<string | null>(null);
   const [dupReason, setDupReason] = useState("");
-  const [noTicketAck, setNoTicketAck] = useState(false);
   const [newPayer, setNewPayer] = useState<string | null>(null);
   // set by the comparison once the booking is loaded: false when a reissue brings no new ticket number
   const [reissueHasNewTicket, setReissueHasNewTicket] = useState<boolean | null>(null);
-  // a new client: one of the travellers is the customer on the MAX ID
-  const [payerPax, setPayerPax] = useState<number | null>(null);
   const [supplier, setSupplier] = useState<Picked | null>(null);
   const [supplierSugs, setSupplierSugs] = useState<Awaited<ReturnType<typeof recentFlightSuppliers>>>([]);
   const [price, setPrice] = useState({ cost: "", sale: "" });
   const [family, setFamily] = useState(true);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => { setMatches((m) => draft.passengers.map((_, i) => m[i] ?? null)); }, [draft.passengers.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (payerPax !== null && payerPax >= draft.passengers.length) setPayerPax(null); }, [draft.passengers.length, payerPax]);
+  useEffect(() => { if (payerPax !== null && payerPax >= draft.passengers.length) setPayerPax(draft.passengers.length ? 0 : null); }, [draft.passengers.length, payerPax]);
   // tickets carry the agency's own name, so the supplier is never guessed: recent flight suppliers are offered as shortcuts
   useEffect(() => { recentFlightSuppliers().then(setSupplierSugs).catch(() => setSupplierSugs([])); }, []);
-  // a payer picked after travellers were set up as new people: their empty mobiles take the payer's
+  // the paying traveller, once matched to someone on file, also has trips to check
+  const payerPaxMatch = !payer && payerPax !== null ? matches[payerPax] : null;
+  // a new paying traveller's mobile is the payer mobile the others are filled from
+  const paxMobile = payerPaxMatch?.kind === "new" ? payerPaxMatch.mobile : null;
+  useEffect(() => { if (paxMobile !== null) setPayerMobile(paxMobile); }, [paxMobile]);
+  // other new travellers without their own mobile follow the payer's (families usually share one); a number typed
+  // for them is kept
+  const prevPayerMobile = useRef(payerMobile);
   useEffect(() => {
-    if (payerMobile) setMatches((all) => all.map((x) => (x?.kind === "new" && !x.mobile.trim() ? { ...x, mobile: payerMobile } : x)));
-  }, [payerMobile]);
-  useEffect(() => { if (payer) suggestCases(payer.id).then(setSuggest); else setSuggest([]); }, [payer]);
+    const prev = prevPayerMobile.current;
+    prevPayerMobile.current = payerMobile;
+    setMatches((all) => all.map((x, i) => (x?.kind === "new" && !(payer === null && i === payerPax) && (!x.mobile.trim() || x.mobile === prev) ? { ...x, mobile: payerMobile } : x)));
+  }, [payerMobile]); // eslint-disable-line react-hooks/exhaustive-deps
+  const payerId = payer?.id ?? (payerPaxMatch?.kind === "existing" ? payerPaxMatch.id : null);
+  useEffect(() => { if (payerId) suggestCases(payerId).then(setSuggest).catch(() => setSuggest([])); else setSuggest([]); }, [payerId]);
   useEffect(() => { if (caseMode === "existing" && kase) flightLinesOnCase(kase.id).then(setLines); else setLines([]); }, [caseMode, kase]);
   useEffect(() => { probableDuplicates(draft).then(setDups).catch(() => setDups([])); }, [row.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setCompared(false); }, [lineId, bMode]);
+  // an itinerary that isn't ticketed yet makes a quoted MAX ID, unless the reviewer chose the stage
+  useEffect(() => { if (!stageTouched) setStage(lineStatus === "pending" ? "quoted" : "booked"); }, [lineStatus, stageTouched]);
 
   const blocking = reviewIssues(draft).filter((i) => i.blocking);
   // a matching booking must be resolved: update it, or say why this is a separate trip (the database checks this too)
   const openDups = dups.filter((x) => x.status !== "cancelled" && !(bMode !== "new" && x.line_id === lineId));
-  const hasTicketNo = draft.passengers.some((p) => p.tickets.some((t) => t.number.value.trim()));
   // supplier and prices: our own booking, entered as a new booking (an update or reissue keeps the booking's prices)
   const pricingShown = bookedBy === "agency" && bMode === "new";
-  const missing = [
+  const payerName = payer ? payer.label : payerPax !== null ? (() => {
+    const m = matches[payerPax];
+    if (m?.kind === "existing") return m.label;
+    if (m?.kind === "new") return `${m.first_name} ${m.last_name}`.trim() || `traveller ${payerPax + 1}`;
+    const s = splitIssuedName(draft.passengers[payerPax]?.name_as_issued.value ?? "");
+    return `${s.first} ${s.last}`.trim() || `traveller ${payerPax + 1}`;
+  })() : "";
+  const titleText = newTitle.trim() || `Flight ${draft.segments[0]?.from.value || ""} → ${tripDestination(draft)}`;
+  const stageLabel = STAGES.find((s) => s.v === stage)?.l ?? stage;
+
+  // what is still needed, in short words; the ones that live under More options open it
+  const mainNeeds = [
     blocking.length && "fix the highlighted fields",
-    openDups.length > 0 && !dupReason.trim() && "resolve the possible duplicate (use that booking, or give a reason)",
-    lineStatus === "confirmed" && !hasTicketNo && !noTicketAck && "tick that the ticket is issued without a ticket number",
+    openDups.length > 0 && !dupReason.trim() && "sort out the possible duplicate",
+    !lineStatus && "say whether the ticket is issued",
+    matches.some((m) => !m) && "choose who each traveller is",
+    matches.some((m) => m?.kind === "new" && (!m.first_name.trim() || !m.mobile.trim())) && "a name and mobile for each new customer",
+    pricingShown && canSeeProfit && price.sale.trim() && !price.cost.trim() && "the incoming price (0 if none)",
+    pricingShown && [price.cost, price.sale].some((v) => v.trim() && parseMoney(v).kind === "invalid") && "prices as numbers",
+  ];
+  const moreNeeds = [
     caseMode === "new" && !payer && payerPax === null && "who pays",
-    caseMode === "existing" && !kase && "the MAX ID",
-    caseMode === "new" && !stage && "the stage for the new MAX ID",
+    caseMode === "existing" && !kase && "which MAX ID",
     bMode !== "new" && !lineId && "the booking to update",
     bMode !== "new" && lineId && !compared && "tick that you compared the booking",
-    bMode === "reissue" && lineId && reissueHasNewTicket === false && "a new ticket number for the reissue (or choose Update)",
-    !bookedBy && "who booked it",
-    !lineStatus && "the booking status",
-    matches.some((m) => !m) && "match every passenger",
-    matches.some((m) => m?.kind === "new" && (!m.first_name.trim() || !m.mobile.trim())) && "a first name and mobile for each new customer",
+    bMode === "reissue" && lineId && reissueHasNewTicket === false && "a new ticket number for the reissue",
     bookedBy === "customer" && charge.confirmed && !charge.amount.trim() && "the agency charge",
-    pricingShown && canSeeProfit && price.sale.trim() && !price.cost.trim() && "the incoming price (0 if there is none)",
-    pricingShown && [price.cost, price.sale].some((v) => v.trim() && parseMoney(v).kind === "invalid") && "prices as numbers",
-  ].filter(Boolean) as string[];
+  ];
+  const missing = [...mainNeeds, ...moreNeeds].filter(Boolean) as string[];
+  const showMore = moreOpen || moreNeeds.some(Boolean) || bMode !== "new";
 
   async function confirm() {
     setError(null);
@@ -409,12 +436,13 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
       pricing: pricingShown ? { supplier_id: supplier?.id ?? null, supplier_cost: canSeeProfit ? price.cost : "", selling_price: price.sale } : null,
       case: caseMode === "existing" ? { mode: "existing", id: kase!.id, stage: existingStage || null } : { mode: "new", title: newTitle, stage },
       booking: bMode === "new" ? { mode: "new" } : { mode: bMode, line_id: lineId, comparison_reviewed: compared },
-      booked_by: bookedBy as "agency" | "customer",
+      booked_by: bookedBy,
       line_status: lineStatus as "pending" | "confirmed",
       passengers: matches.map((m) => (m!.kind === "existing" ? { customer_id: m!.id } : { create: { first_name: m!.first_name, last_name: m!.last_name, mobile: m!.mobile, title: m!.title, gender: m!.gender } })),
       agency_charge: bookedBy === "customer" && charge.confirmed ? charge : null,
       duplicate_override_reason: openDups.length ? dupReason.trim() : null,
-      no_ticket_number_ack: lineStatus === "confirmed" && !hasTicketNo ? noTicketAck : false,
+      // "issued" chosen for a document without a ticket number is the acknowledgment
+      no_ticket_number_ack: lineStatus === "confirmed" && !hasTicketNo,
     };
     await run(async () => {
       const v = dirty ? await saveFirst() : version;
@@ -422,143 +450,27 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
     }, { then: (r) => { if (r.data) router.push(`/cases/${r.data.case_id}?tab=bookings`); } });
   }
 
+  const radio = (checked: boolean, onChange: () => void, label: string, disabled = false) => (
+    <label className={cx("flex items-center gap-1.5", disabled && "opacity-50")}><input type="radio" disabled={disabled} checked={checked} onChange={onChange} />{label}</label>
+  );
+
   return (
-    <Card title="Match and confirm" sub="Nothing is saved to a case until you confirm. Payer and travellers are matched separately.">
+    <Card title="Save this ticket" sub="Check the travellers, choose the supplier, type the prices, and confirm. Nothing is saved until you do.">
       <div className="space-y-5">
         {openDups.length > 0 && (
           <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
-            <b>This ticket matches a booking already in the CRM. Resolve it before confirming:</b>
+            <b>This ticket looks like a booking already in the CRM:</b>
             <ul className="list-disc pl-5">{openDups.map((x) => (
               <li key={x.line_id}><Link className="link" href={`/cases/${x.case_id}?tab=bookings`}>{x.max_id}</Link> {x.summary} {fdate(x.service_date)} ({x.reason}) {" "}
-                <Button size="sm" variant="primary" onClick={() => { setCaseMode("existing"); setKase({ id: x.case_id, label: x.max_id }); setBMode("update"); setLineId(x.line_id); setDupReason(""); }}>Use this booking</Button></li>
+                <Button size="sm" variant="primary" onClick={() => { setCaseMode("existing"); setKase({ id: x.case_id, label: x.max_id }); setBMode("update"); setLineId(x.line_id); setDupReason(""); }}>Update that booking</Button></li>
             ))}</ul>
-            <p className="text-xs">File: <span className="font-mono">{row.file_name}</span> · Ticket says: {draft.segments.map((s) => `${s.from.value}→${s.to.value} ${fdate(s.dep_date.value) || "?"}`).join(", ")} · PNR {draft.airline_pnrs.map((r) => r.value).join(", ") || "—"}</p>
             <Field label="Or, if it really is a separate trip, say why">
               <input className="field" value={dupReason} onChange={(e) => setDupReason(e.target.value)} placeholder="Same PNR reused by the airline for a different journey" />
             </Field>
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Who pays (the customer on the MAX ID)" hint="Matched on its own: the payer doesn't have to travel.">
-            {!payer && payerPax !== null ? (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge tone="blue">Traveller {payerPax + 1}: {(() => {
-                  const m = matches[payerPax];
-                  if (m?.kind === "existing") return m.label;
-                  if (m?.kind === "new") return `${m.first_name} ${m.last_name}`.trim() || "?";
-                  const s = splitIssuedName(draft.passengers[payerPax]?.name_as_issued.value ?? "");
-                  return `${s.first} ${s.last}`.trim() || "?";
-                })()}</Badge>
-                <button type="button" className="text-xs link" onClick={() => setPayerPax(null)}>change</button>
-              </div>
-            ) : newPayer !== null ? (
-              <CustomerInline initialName={newPayer} onCancel={() => setNewPayer(null)}
-                onCreated={(c) => { setPayer({ id: c.id, label: c.full_name }); setPayerMobile(c.mobile); setNewPayer(null); }} />
-            ) : (
-              <CustomerPicker value={payer} onChange={(o) => { setPayer(o ? { id: o.id, label: o.label } : null); setPayerMobile(o?.raw.mobile ?? ""); }}
-                footer={(q, close) => (
-                  <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm link" onClick={() => { setNewPayer(q); close(); }}>
-                    + New customer{q ? ` “${q}”` : ""}
-                  </button>
-                )} />
-            )}
-            {!payer && payerPax === null && newPayer === null && draft.passengers.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-muted">Or a traveller pays:</span>
-                {draft.passengers.map((p, i) => (
-                  <button key={p.key} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setPayerPax(i)}>
-                    {splitIssuedName(p.name_as_issued.value).first || `Traveller ${i + 1}`} {splitIssuedName(p.name_as_issued.value).last}
-                  </button>
-                ))}
-              </div>
-            )}
-          </Field>
-          <Field label="MAX ID">
-            <div className="flex gap-3 text-sm">
-              <label className="flex items-center gap-1.5"><input type="radio" checked={caseMode === "existing"} onChange={() => setCaseMode("existing")} />Existing</label>
-              <label className="flex items-center gap-1.5"><input type="radio" checked={caseMode === "new"} onChange={() => setCaseMode("new")} />New MAX ID</label>
-            </div>
-          </Field>
-        </div>
-
-        {caseMode === "existing" ? (
-          <div className="space-y-2">
-            <CasePicker value={kase} onChange={setKase} />
-            {suggest.length > 0 && !kase && (
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                <span className="text-muted">Trips for {payer?.label}:</span>
-                {suggest.map((s) => <button key={s.id} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setKase({ id: s.id, label: s.max_id, sub: s.title })}><b className="font-mono">{s.max_id}</b> {s.title}</button>)}
-              </div>
-            )}
-            {kase && (
-              <Field label="Change the stage?" hint="Only if the ticket shows it. The document is not proof of an earlier enquiry or quotation.">
-                <select className="field" value={existingStage} onChange={(e) => setExistingStage(e.target.value)}>
-                  <option value="">Leave the stage as it is</option>{STAGES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
-                </select>
-              </Field>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {suggest.length > 0 && <p className="sm:col-span-2 rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">{payer?.label} already has {suggest.length} trip{suggest.length === 1 ? "" : "s"}. Check them under “Existing” before making another MAX ID.</p>}
-            <Field label="Title"><input className="field" value={newTitle} placeholder={`Flight ${draft.segments[0]?.from.value || ""} → ${tripDestination(draft)}`} onChange={(e) => setNewTitle(e.target.value)} /></Field>
-            <Field label="Stage" required hint="Choose it yourself; nothing is assumed from the ticket.">
-              <select className="field" value={stage} onChange={(e) => setStage(e.target.value)}>
-                <option value="">Choose…</option>{STAGES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
-              </select>
-            </Field>
-          </div>
-        )}
-
-        <Field label="Booking">
-          <div className="flex flex-wrap gap-3 text-sm">
-            <label className="flex items-center gap-1.5"><input type="radio" checked={bMode === "new"} onChange={() => setBMode("new")} />New booking</label>
-            <label className={cx("flex items-center gap-1.5", caseMode !== "existing" && "opacity-50")}><input type="radio" disabled={caseMode !== "existing"} checked={bMode === "update"} onChange={() => setBMode("update")} />Update an existing booking</label>
-            <label className={cx("flex items-center gap-1.5", caseMode !== "existing" && "opacity-50")}><input type="radio" disabled={caseMode !== "existing"} checked={bMode === "reissue"} onChange={() => setBMode("reissue")} />Reissue (new tickets replace old)</label>
-          </div>
-          {bMode !== "new" && caseMode === "existing" && (
-            <select className="field mt-2" value={lineId} onChange={(e) => setLineId(e.target.value)}>
-              <option value="">Choose the flight booking…</option>
-              {lines.map((l) => <option key={l.id} value={l.id}>{l.summary ?? "Flight"} · {fdate(l.service_date) || "no date"} · {l.status}</option>)}
-            </select>
-          )}
-        </Field>
-        {bMode !== "new" && lineId && <Comparison lineId={lineId} draft={draft} compared={compared} setCompared={setCompared} reissue={bMode === "reissue"} onReissueCheck={setReissueHasNewTicket} />}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Who booked it?" required>
-            <div className="flex flex-col gap-1 text-sm">
-              <label className="flex items-center gap-1.5"><input type="radio" checked={bookedBy === "agency"} onChange={() => setBookedBy("agency")} />We (the agency) booked it</label>
-              <label className="flex items-center gap-1.5"><input type="radio" checked={bookedBy === "customer"} onChange={() => setBookedBy("customer")} />The customer booked it directly</label>
-            </div>
-          </Field>
-          <Field label="Booking status" required>
-            <div className="flex flex-col gap-1 text-sm">
-              <label className="flex items-center gap-1.5"><input type="radio" checked={lineStatus === "confirmed"} onChange={() => setLineStatus("confirmed")} />Confirmed (ticket issued)</label>
-              <label className="flex items-center gap-1.5"><input type="radio" checked={lineStatus === "pending"} onChange={() => setLineStatus("pending")} />Pending (itinerary only, not ticketed)</label>
-            </div>
-            {lineStatus === "confirmed" && !hasTicketNo && (
-              <label className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[13px] text-amber-900">
-                <input type="checkbox" className="mt-0.5" checked={noTicketAck} onChange={(e) => setNoTicketAck(e.target.checked)} />
-                The document shows no ticket number, but the ticket is issued (the airline uses the booking reference)
-              </label>
-            )}
-          </Field>
-        </div>
-        {bookedBy === "customer" && (
-          <div className="rounded-lg border border-line p-3">
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={charge.confirmed} onChange={(e) => setCharge({ ...charge, confirmed: e.target.checked })} />
-              We agreed a separate service charge with the customer</label>
-            {charge.confirmed && <Field label="Agency charge (₹)" className="mt-2"><input className="field tabular" inputMode="decimal" value={charge.amount} onChange={(e) => setCharge({ ...charge, amount: e.target.value })} /></Field>}
-            <p className="mt-1 text-xs text-muted">Only this charge is billed. The fare on the ticket is the customer&apos;s own purchase and is kept as evidence only.</p>
-          </div>
-        )}
-        {bookedBy === "agency" && bMode !== "new" && <p className="text-xs text-muted">Updating a booking keeps its supplier and prices. Change them on the Bookings tab if needed.</p>}
-        {pricingShown && (
-          <Pricing canSeeProfit={canSeeProfit} supplier={supplier} setSupplier={setSupplier} sugs={supplierSugs} price={price} setPrice={setPrice} />
-        )}
-
+        {/* 1. who travels */}
         <div>
           <div className="mb-1 text-[13px] font-medium">Travellers</div>
           <ul className="divide-y divide-line rounded-lg border border-line">
@@ -571,17 +483,157 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
           {draft.passengers.length > 1 && (
             <label className="mt-2 flex items-start gap-2 text-[13px]">
               <input type="checkbox" className="mt-0.5" checked={family} onChange={(e) => setFamily(e.target.checked)} />
-              <span>Link these travellers as one family
-                <span className="block text-xs text-muted">
-                  {(() => {
-                    const i = !payer && payerPax !== null ? payerPax : 0;
-                    const m = matches[i];
-                    const head = m?.kind === "existing" ? m.label : m?.kind === "new" ? `${m.first_name} ${m.last_name}`.trim() : "";
-                    return `${head || "The first traveller"} is the head of the family. Someone already in a family on file joins that one; nobody is moved out of a different family. Untick for colleagues or friends.`;
-                  })()}
-                </span>
+              <span>They are one family
+                <span className="block text-xs text-muted">{payerName || "The first traveller"} becomes the head. Untick for colleagues or friends.</span>
               </span>
             </label>
+          )}
+        </div>
+
+        {/* 2. no ticket number: the one question the ticket can't answer */}
+        {!hasTicketNo && (
+          <Field label="This document has no ticket number. Is the ticket issued?" required>
+            <div className="flex flex-col gap-1 text-sm">
+              {radio(lineStatus === "confirmed", () => setLineStatus("confirmed"), "Yes, it is issued (the airline uses the booking reference)")}
+              {radio(lineStatus === "pending", () => setLineStatus("pending"), "No, it is only an itinerary")}
+            </div>
+          </Field>
+        )}
+
+        {/* 3. supplier and price */}
+        {pricingShown && (
+          <Pricing canSeeProfit={canSeeProfit} supplier={supplier} setSupplier={setSupplier} sugs={supplierSugs} price={price} setPrice={setPrice} />
+        )}
+
+        {/* a trip already on file for this client: one click instead of a second MAX ID */}
+        {caseMode === "new" && suggest.length > 0 && (
+          <div className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">
+            {payerName} already has {suggest.length === 1 ? "a trip" : `${suggest.length} trips`}. Add this ticket to one of them?{" "}
+            <span className="mt-1 flex flex-wrap gap-1.5">
+              {suggest.map((s) => (
+                <button key={s.id} type="button" className="rounded-full border border-sky-300 bg-white px-2 py-0.5 text-xs hover:bg-sky-100"
+                  onClick={() => { setCaseMode("existing"); setKase({ id: s.id, label: s.max_id, sub: s.title }); }}><b className="font-mono">{s.max_id}</b> {s.title}</button>
+              ))}
+            </span>
+          </div>
+        )}
+
+        {/* 4. what will happen, in one line; the rest under More options */}
+        <div className="rounded-lg border border-line bg-gray-50 px-3 py-2.5 text-[13px]">
+          <p>
+            {caseMode === "new" ? <>A new MAX ID <b>“{titleText}”</b> at <b>{stageLabel}</b></> : kase ? <>Added to <b className="font-mono">{kase.label}</b></> : <>Added to an existing MAX ID</>}
+            {payerName && <>, paid by <b>{payerName}</b></>}
+            {". "}{bMode === "new" ? (bookedBy === "agency" ? "Booked by us" : "Booked by the customer") : bMode === "update" ? "Updates a booking on it" : "Reissue of a booking on it"}
+            {lineStatus === "confirmed" ? ", ticket issued." : lineStatus === "pending" ? ", itinerary only." : "."}
+          </p>
+          {!showMore && <button type="button" className="mt-1 text-xs link" onClick={() => setMoreOpen(true)}>More options: who pays, MAX ID, stage, update a booking, booked by the customer</button>}
+          {showMore && (
+            <div className="mt-3 space-y-4 border-t border-line pt-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Who pays" hint="The customer on the MAX ID. They don't have to travel.">
+                  {!payer && payerPax !== null ? (
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge tone="blue">Traveller {payerPax + 1}: {payerName}</Badge>
+                      <button type="button" className="text-xs link" onClick={() => setPayerPax(null)}>someone else</button>
+                    </div>
+                  ) : newPayer !== null ? (
+                    <CustomerInline initialName={newPayer} onCancel={() => setNewPayer(null)}
+                      onCreated={(c) => { setPayer({ id: c.id, label: c.full_name }); setPayerMobile(c.mobile); setNewPayer(null); }} />
+                  ) : (
+                    <CustomerPicker value={payer} onChange={(o) => { setPayer(o ? { id: o.id, label: o.label } : null); setPayerMobile(o?.raw.mobile ?? ""); }}
+                      footer={(q, close) => (
+                        <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm link" onClick={() => { setNewPayer(q); close(); }}>
+                          + New customer{q ? ` “${q}”` : ""}
+                        </button>
+                      )} />
+                  )}
+                  {!payer && payerPax === null && newPayer === null && draft.passengers.length > 0 && (
+                    <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="text-muted">Or a traveller:</span>
+                      {draft.passengers.map((p, i) => (
+                        <button key={p.key} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setPayerPax(i)}>
+                          {splitIssuedName(p.name_as_issued.value).first || `Traveller ${i + 1}`} {splitIssuedName(p.name_as_issued.value).last}
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </Field>
+                <Field label="MAX ID">
+                  <span className="flex gap-3 text-sm">
+                    {radio(caseMode === "new", () => { setCaseMode("new"); setBMode("new"); }, "New MAX ID")}
+                    {radio(caseMode === "existing", () => setCaseMode("existing"), "Add to an existing one")}
+                  </span>
+                </Field>
+              </div>
+
+              {caseMode === "existing" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Which MAX ID"><CasePicker value={kase} onChange={setKase} /></Field>
+                  {kase && (
+                    <Field label="Stage">
+                      <select className="field" value={existingStage} onChange={(e) => setExistingStage(e.target.value)}>
+                        <option value="">Leave it as it is</option>{STAGES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
+                      </select>
+                    </Field>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Title"><input className="field" value={newTitle} placeholder={titleText} onChange={(e) => setNewTitle(e.target.value)} /></Field>
+                  <Field label="Stage">
+                    <select className="field" value={stage} onChange={(e) => { setStage(e.target.value); setStageTouched(true); }}>
+                      {STAGES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
+
+              {caseMode === "existing" && (
+                <Field label="Booking">
+                  <span className="flex flex-wrap gap-3 text-sm">
+                    {radio(bMode === "new", () => setBMode("new"), "Add as a new booking")}
+                    {radio(bMode === "update", () => setBMode("update"), "Update a booking already there")}
+                    {radio(bMode === "reissue", () => setBMode("reissue"), "Reissue (new tickets replace old)")}
+                  </span>
+                  {bMode !== "new" && (
+                    <select className="field mt-2" value={lineId} onChange={(e) => setLineId(e.target.value)}>
+                      <option value="">Choose the flight booking…</option>
+                      {lines.map((l) => <option key={l.id} value={l.id}>{l.summary ?? "Flight"} · {fdate(l.service_date) || "no date"} · {l.status}</option>)}
+                    </select>
+                  )}
+                </Field>
+              )}
+              {bMode !== "new" && lineId && <Comparison lineId={lineId} draft={draft} compared={compared} setCompared={setCompared} reissue={bMode === "reissue"} onReissueCheck={setReissueHasNewTicket} />}
+              {bMode !== "new" && <p className="text-xs text-muted">Updating a booking keeps its supplier and prices. Change them on the Bookings tab if needed.</p>}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {bMode === "new" && (
+                  <Field label="Who booked it?">
+                    <span className="flex flex-col gap-1 text-sm">
+                      {radio(bookedBy === "agency", () => setBookedBy("agency"), "We booked it")}
+                      {radio(bookedBy === "customer", () => setBookedBy("customer"), "The customer booked it themselves")}
+                    </span>
+                  </Field>
+                )}
+                {hasTicketNo && (
+                  <Field label="Ticket">
+                    <span className="flex flex-col gap-1 text-sm">
+                      {radio(lineStatus === "confirmed", () => setLineStatus("confirmed"), "Issued")}
+                      {radio(lineStatus === "pending", () => setLineStatus("pending"), "Not issued yet (itinerary only)")}
+                    </span>
+                  </Field>
+                )}
+              </div>
+              {bookedBy === "customer" && bMode === "new" && (
+                <div className="rounded-lg border border-line bg-white p-3">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={charge.confirmed} onChange={(e) => setCharge({ ...charge, confirmed: e.target.checked })} />
+                    We charge the customer a service fee for it</label>
+                  {charge.confirmed && <Field label="Service fee (₹)" className="mt-2"><input className="field tabular" inputMode="decimal" value={charge.amount} onChange={(e) => setCharge({ ...charge, amount: e.target.value })} /></Field>}
+                  <p className="mt-1 text-xs text-muted">Only this fee is billed; the customer paid the airline themselves.</p>
+                </div>
+              )}
+              {!moreNeeds.some(Boolean) && bMode === "new" && <button type="button" className="text-xs link" onClick={() => setMoreOpen(false)}>Hide options</button>}
+            </div>
           )}
         </div>
 
@@ -650,7 +702,7 @@ function PassengerMatch({ name, ff, pays, match, onChange, payerMobile, taken }:
           </Field>
           <Field label="First name" required><input className="field" value={match.first_name} onChange={(e) => onChange({ ...match, first_name: e.target.value })} /></Field>
           <Field label="Last name"><input className="field" value={match.last_name} onChange={(e) => onChange({ ...match, last_name: e.target.value })} /></Field>
-          <Field label="Mobile" required hint={payerMobile && match.mobile === payerMobile ? "Filled from the payer; change it if they have their own." : !match.mobile.trim() ? "Tickets show the agency's number; type the traveller's own." : undefined}>
+          <Field label="Mobile" required hint={!pays && payerMobile && match.mobile === payerMobile ? "Same as the payer's; change it if they have their own." : !match.mobile.trim() ? "Tickets show the agency's number; type the traveller's own." : undefined}>
             <input className="field" inputMode="tel" value={match.mobile} onChange={(e) => onChange({ ...match, mobile: e.target.value })} />
           </Field>
         </div>
