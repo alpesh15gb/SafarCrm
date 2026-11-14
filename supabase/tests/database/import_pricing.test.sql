@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(15);
+select plan(18);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -41,7 +41,7 @@ insert into public.ticket_imports (id, status, channel, storage_path, file_name,
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000009a1","role":"authenticated"}';
 insert into r select 'staff', public.confirm_ticket_import('00000000-0000-0000-0000-0000000009f1', 1, 'key-imp-0001', '{
-  "payer_customer_id":null,"payer_passenger":0,"case":{"mode":"new","title":"","stage":"booked"},"booking":{"mode":"new"},
+  "payer_customer_id":null,"payer_passenger":0,"family":true,"case":{"mode":"new","title":"","stage":"booked"},"booking":{"mode":"new"},
   "booked_by":"agency","line_status":"confirmed",
   "pricing":{"supplier_id":"00000000-0000-0000-0000-00000009d001","supplier_cost":"9000","selling_price":"15,000"},
   "passengers":[{"create":{"first_name":"Testa","last_name":"Firstpax","mobile":"+919000009001","title":"Mr","gender":"Male"}},
@@ -60,6 +60,11 @@ select is((select jsonb_array_length(loyalty) from public.customers where last_n
 select is((select details -> 'tickets' -> 0 ->> 'ff' from public.booking_lines where import_id = '00000000-0000-0000-0000-0000000009f1'), 'EK 200000001',
   'the ticket entry keeps the frequent flyer number');
 select is((select count(*)::int from public.case_travellers where case_id = ((select v from r where k = 'staff')::jsonb ->> 'case_id')::uuid), 2, 'both travellers are on the case');
+select results_eq($$ select f.name, count(*)::int from public.customers c join public.families f on f.id = c.family_id
+                     where c.last_name in ('Firstpax', 'Secondpax') group by f.name $$,
+  $$ values ('Firstpax'::text, 2) $$, 'both travellers are linked as one family named after the paying traveller');
+select is((select relation from public.customers where last_name = 'Firstpax'), 'Head of family', 'the paying traveller heads the new family');
+select is((select title from public.cases where id = ((select v from r where k = 'staff')::jsonb ->> 'case_id')::uuid), 'Flight HYD → DXB', 'one-way title is unchanged');
 
 -- ---------------------------------------------------------------- 2. the boss: a loss-making price, an existing traveller gets a new FF number
 set local role authenticated;

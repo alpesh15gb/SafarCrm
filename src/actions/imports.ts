@@ -12,6 +12,8 @@ export type ConfirmPayload = {
   line_status: "pending" | "confirmed";
   /** When nobody else pays: the index of the traveller (in the passenger list) who is the customer on the MAX ID. */
   payer_passenger?: number | null;
+  /** Two or more travellers: link them as one family (existing family reused; nobody is moved out of another). */
+  family?: boolean;
   passengers: ({ customer_id: string } | { create: { first_name: string; last_name?: string; mobile: string; title?: string; gender?: string; dob?: string; passport_surname?: string; passport_given_name?: string } })[];
   agency_charge?: { amount: string; confirmed: boolean } | null;
   /** Agency-booked, new booking only: the supplier, what they charge us (incoming) and what the client pays. */

@@ -354,6 +354,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
   const [supplier, setSupplier] = useState<Picked | null>(null);
   const [supplierSugs, setSupplierSugs] = useState<Awaited<ReturnType<typeof recentFlightSuppliers>>>([]);
   const [price, setPrice] = useState({ cost: "", sale: "" });
+  const [family, setFamily] = useState(true);
 
   useEffect(() => { setMatches((m) => draft.passengers.map((_, i) => m[i] ?? null)); }, [draft.passengers.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (payerPax !== null && payerPax >= draft.passengers.length) setPayerPax(null); }, [draft.passengers.length, payerPax]);
@@ -398,6 +399,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
     const payload: ConfirmPayload = {
       payer_customer_id: payer?.id ?? null,
       payer_passenger: payer ? null : payerPax,
+      family: draft.passengers.length > 1 && family,
       pricing: pricingShown ? { supplier_id: supplier?.id ?? null, supplier_cost: canSeeProfit ? price.cost : "", selling_price: price.sale } : null,
       case: caseMode === "existing" ? { mode: "existing", id: kase!.id, stage: existingStage || null } : { mode: "new", title: newTitle, stage },
       booking: bMode === "new" ? { mode: "new" } : { mode: bMode, line_id: lineId, comparison_reviewed: compared },
@@ -560,6 +562,21 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
                 onChange={(m) => setMatches((all) => all.map((x, j) => (j === i ? m : x)))} />
             ))}
           </ul>
+          {draft.passengers.length > 1 && (
+            <label className="mt-2 flex items-start gap-2 text-[13px]">
+              <input type="checkbox" className="mt-0.5" checked={family} onChange={(e) => setFamily(e.target.checked)} />
+              <span>Link these travellers as one family
+                <span className="block text-xs text-muted">
+                  {(() => {
+                    const i = !payer && payerPax !== null ? payerPax : 0;
+                    const m = matches[i];
+                    const head = m?.kind === "existing" ? m.label : m?.kind === "new" ? `${m.first_name} ${m.last_name}`.trim() : "";
+                    return `${head || "The first traveller"} is the head of the family. Someone already in a family on file joins that one; nobody is moved out of a different family. Untick for colleagues or friends.`;
+                  })()}
+                </span>
+              </span>
+            </label>
+          )}
         </div>
 
         {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-800">{error}</p>}
