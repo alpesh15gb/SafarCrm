@@ -22,7 +22,7 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ i
     <>
       <PageHeader back={{ href: "/imports", label: "Ticket imports" }} title={<span className="flex flex-wrap items-center gap-2">{row.file_name} <StatusBadge status={row.status} /></span>}
         sub={row.channel === "portal" ? "Sent by the client from the portal" : undefined} />
-      <ReviewScreen row={row} initialDraft={(row.draft as Draft | null) ?? emptyDraft()} isBoss={me.role === "boss"}
+      <ReviewScreen row={row} initialDraft={(row.draft as Draft | null) ?? emptyDraft()} isBoss={me.role === "boss"} canSeeProfit={me.can_see_profit}
         providerHint={provider.configured ? null : provider.setupHint ?? null} />
     </>
   );

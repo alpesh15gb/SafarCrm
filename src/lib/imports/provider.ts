@@ -34,6 +34,10 @@ const SYSTEM = [
   "Airline PNR (airline booking reference) goes in airline_pnrs; GDS, agency, supplier or order references go in supplier_refs with their label as kind.",
   "One segment per flight leg, in travel order, numbered by `ref` from 1. A ticket's segment_refs lists the legs it covers (empty when the document does not say).",
   "Amounts: copy each printed amount with its label, currency and whether it is for the whole document or one passenger. Do not add up, split or convert anything.",
+  "Two-digit years printed with an apostrophe or slash (Mon, 16 Nov '26 or 13/11/26) are in the 2000s: '26 is 2026. Ordinal suffixes (13th Nov 2026) are part of the date.",
+  "Passenger names: a passenger-type marker printed beside the name, such as (ADT), ( A ), (CHD) or (INF), goes in pax_type and is left out of name_as_issued.",
+  "When the printed segment column gives airport codes (HYD-DXB, AUH-HYD), use them for from/to even if the flight table prints only city names.",
+  "frequent_flyer: every frequent flyer / loyalty number printed for that passenger (labels like FF, Frequent Flyer No., FQTV). airline = the airline code or name printed with it (e.g. AI in \"AI 100555503\"), empty if none; number = the number only. Empty list when none is printed or it shows -- / NA.",
   "Use page numbers starting at 1, and a short evidence snippet (under 80 characters) for passengers and segments.",
   "Leave a field empty when it is not on the document. Do not guess, and do not invent confidence scores.",
 ].join("\n");

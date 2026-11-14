@@ -149,6 +149,7 @@ export function PortalTab({ settings }: { settings: S }) {
 const REMINDERS: [string, string, string][] = [
   ["passport_visa", "Passport or visa expiring", "6 months before expiry"],
   ["trip_upcoming", "Trip coming up (web check-in, final documents)", "2 days before travel"],
+  ["web_checkin", "Web check-in opens", "A task for each booked flight, due 48 hours before departure (airport local time)"],
   ["client_due", "Client payment due", "On the due date, if a balance is left"],
   ["supplier_due", "Supplier payment due", "On the due date, from the supplier's credit days"],
   ["hotel_cancel", "Hotel free cancellation ending", "1 day before the deadline"],

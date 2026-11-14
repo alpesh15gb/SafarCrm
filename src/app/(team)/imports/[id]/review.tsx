@@ -5,17 +5,18 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Check, Info, Plus, RotateCw, Save, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, Field, cx } from "@/components/ui";
 import { Dialog, useAction } from "@/components/client";
-import { CasePicker, CustomerPicker } from "@/components/pickers";
+import { CasePicker, CustomerPicker, SupplierPicker } from "@/components/pickers";
 import { CustomerInline } from "@/components/forms/customer-inline";
 import { TicketUploadDialog } from "@/components/ticket-upload";
 import {
-  bookingForCompare, confirmImport, flightLinesOnCase, personCandidates, probableDuplicates, rejectImport, retryImport, saveImportDraft,
+  bookingForCompare, confirmImport, flightLinesOnCase, personCandidates, probableDuplicates, rejectImport, retryImport, saveImportDraft, recentFlightSuppliers,
   type ConfirmPayload,
 } from "@/actions/imports";
 import { suggestCases } from "@/actions/tasks";
-import { reviewIssues, splitIssuedName, tripType, type Draft, type DraftSegment, type Field as F } from "@/lib/imports/schema";
+import { genderFromTitle, reviewIssues, splitIssuedName, tripType, type Draft, type DraftSegment, type Field as F } from "@/lib/imports/schema";
 import { offsetLabel } from "@/lib/flight-time";
-import { fdate } from "@/lib/format";
+import { fdate, inr } from "@/lib/format";
+import { amount, parseMoney } from "@/lib/money";
 
 export type ImportRow = {
   id: string; status: string; channel: string; file_name: string; mime: string; pages: number | null;
@@ -28,7 +29,7 @@ export type ImportRow = {
 };
 
 type Picked = { id: string; label: string; sub?: string };
-type Match = { kind: "existing"; id: string; label: string } | { kind: "new"; first_name: string; last_name: string; mobile: string } | null;
+type Match = { kind: "existing"; id: string; label: string } | { kind: "new"; first_name: string; last_name: string; mobile: string; title: string; gender: string } | null;
 const SEG_FIELDS: [keyof DraftSegment, string, string][] = [
   ["from", "From", "w-16 uppercase"], ["to", "To", "w-16 uppercase"], ["dep_date", "Departs", "w-36"], ["dep_time", "Time", "w-20"],
   ["arr_date", "Arrives", "w-36"], ["arr_time", "Time", "w-20"], ["airline", "Airline", "w-32"], ["flight_no", "Flight", "w-24 uppercase"],
@@ -36,7 +37,7 @@ const SEG_FIELDS: [keyof DraftSegment, string, string][] = [
 ];
 const STAGES = [{ v: "enquiry", l: "Enquiry" }, { v: "quoted", l: "Quoted" }, { v: "confirmed", l: "Confirmed" }, { v: "booked", l: "Booked" }];
 
-export function ReviewScreen({ row, initialDraft, isBoss, providerHint }: { row: ImportRow; initialDraft: Draft; isBoss: boolean; providerHint: string | null }) {
+export function ReviewScreen({ row, initialDraft, isBoss, canSeeProfit, providerHint }: { row: ImportRow; initialDraft: Draft; isBoss: boolean; canSeeProfit: boolean; providerHint: string | null }) {
   const router = useRouter();
   const { run, pending } = useAction();
   const [draft, setDraft] = useState<Draft>(initialDraft);
@@ -117,7 +118,7 @@ export function ReviewScreen({ row, initialDraft, isBoss, providerHint }: { row:
           )}
           <Issues issues={issues} />
           <DraftEditor draft={draft} upd={upd} readOnly={!editable} issueAt={issueAt} />
-          {editable && <MatchAndConfirm row={row} draft={draft} version={version} dirty={dirty} isBoss={isBoss} saveFirst={async () => {
+          {editable && <MatchAndConfirm row={row} draft={draft} version={version} dirty={dirty} isBoss={isBoss} canSeeProfit={canSeeProfit} saveFirst={async () => {
             const r = await saveImportDraft(row.id, version, draft);
             if (r.ok && r.data) { setVersion(r.data.version); setDirty(false); return r.data.version; }
             throw new Error(r.ok ? "Could not save" : r.error);
@@ -251,7 +252,20 @@ function DraftEditor({ draft: d, upd, readOnly, issueAt }: { draft: Draft; upd: 
                   {!readOnly && <button type="button" aria-label="Remove ticket" className="p-1 text-muted hover:text-red-600" onClick={() => upd((n) => { n.passengers[i].tickets.splice(j, 1); })}><X className="h-3.5 w-3.5" /></button>}
                 </div>
               ))}
-              {!readOnly && <button type="button" className="ml-3 text-xs link" onClick={() => upd((n) => { n.passengers[i].tickets.push({ number: { value: "" }, segments: n.segments.map((s) => s.key) }); })}>+ ticket number</button>}
+              {(p.ff ?? []).map((ff, j) => (
+                <div key={`ff${j}`} className="flex flex-wrap items-center gap-2 pl-3 text-[13px]">
+                  <span className="text-xs text-muted">Frequent flyer</span>
+                  <input className="field !h-8 w-24 !px-2 text-[13px] uppercase" aria-label={`Passenger ${i + 1} frequent flyer ${j + 1} airline`} placeholder="Airline" readOnly={readOnly} value={ff.airline}
+                    onChange={(e) => upd((n) => { n.passengers[i].ff![j].airline = e.target.value.toUpperCase(); })} />
+                  <input className="field !h-8 w-40 !px-2 font-mono text-[13px] uppercase" aria-label={`Passenger ${i + 1} frequent flyer ${j + 1} number`} placeholder="Number" readOnly={readOnly} value={ff.number}
+                    onChange={(e) => upd((n) => { n.passengers[i].ff![j].number = e.target.value.toUpperCase().replace(/\s+/g, ""); })} />
+                  {!readOnly && <button type="button" aria-label="Remove frequent flyer number" className="p-1 text-muted hover:text-red-600" onClick={() => upd((n) => { n.passengers[i].ff!.splice(j, 1); })}><X className="h-3.5 w-3.5" /></button>}
+                </div>
+              ))}
+              {!readOnly && <div className="flex gap-3 pl-3">
+                <button type="button" className="text-xs link" onClick={() => upd((n) => { n.passengers[i].tickets.push({ number: { value: "" }, segments: n.segments.map((s) => s.key) }); })}>+ ticket number</button>
+                <button type="button" className="text-xs link" onClick={() => upd((n) => { n.passengers[i].ff = [...(n.passengers[i].ff ?? []), { airline: "", number: "" }]; })}>+ frequent flyer</button>
+              </div>}
             </li>
           ))}
         </ul>
@@ -266,8 +280,7 @@ function DraftEditor({ draft: d, upd, readOnly, issueAt }: { draft: Draft; upd: 
             onChange={(list) => upd((n) => { n.airline_pnrs = list; })} upper />
           <RefList title="Supplier / GDS references" hint="Agency, consolidator or GDS references (kept separate from the airline PNR)" items={d.supplier_refs} readOnly={readOnly}
             onChange={(list) => upd((n) => { n.supplier_refs = list; })} />
-        </div>
-      </Card>
+        </div>      </Card>
 
       <Card title="Amounts on the document" sub="Evidence only. These never become a selling price, cost, GST, commission, receipt or refund.">
         {d.amounts.length === 0 ? <p className="text-sm text-muted">None read.</p> : (
@@ -308,7 +321,7 @@ function RefList({ title, hint, items, onChange, readOnly, upper }: { title: str
 }
 
 // ---------------------------------------------------------------- matching and confirmation
-function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { row: ImportRow; draft: Draft; version: number; dirty: boolean; isBoss: boolean; saveFirst: () => Promise<number> }) {
+function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, saveFirst }: { row: ImportRow; draft: Draft; version: number; dirty: boolean; isBoss: boolean; canSeeProfit: boolean; saveFirst: () => Promise<number> }) {
   const router = useRouter();
   const { run, pending } = useAction();
   const [key] = useState(() => crypto.randomUUID());   // one confirmation per screen: retries and double clicks reuse it
@@ -335,8 +348,20 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   const [newPayer, setNewPayer] = useState<string | null>(null);
   // set by the comparison once the booking is loaded: false when a reissue brings no new ticket number
   const [reissueHasNewTicket, setReissueHasNewTicket] = useState<boolean | null>(null);
+  // a new client: one of the travellers is the customer on the MAX ID
+  const [payerPax, setPayerPax] = useState<number | null>(null);
+  const [supplier, setSupplier] = useState<Picked | null>(null);
+  const [supplierSugs, setSupplierSugs] = useState<Awaited<ReturnType<typeof recentFlightSuppliers>>>([]);
+  const [price, setPrice] = useState({ cost: "", sale: "" });
 
   useEffect(() => { setMatches((m) => draft.passengers.map((_, i) => m[i] ?? null)); }, [draft.passengers.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (payerPax !== null && payerPax >= draft.passengers.length) setPayerPax(null); }, [draft.passengers.length, payerPax]);
+  // tickets carry the agency's own name, so the supplier is never guessed: recent flight suppliers are offered as shortcuts
+  useEffect(() => { recentFlightSuppliers().then(setSupplierSugs).catch(() => setSupplierSugs([])); }, []);
+  // a payer picked after travellers were set up as new people: their empty mobiles take the payer's
+  useEffect(() => {
+    if (payerMobile) setMatches((all) => all.map((x) => (x?.kind === "new" && !x.mobile.trim() ? { ...x, mobile: payerMobile } : x)));
+  }, [payerMobile]);
   useEffect(() => { if (payer) suggestCases(payer.id).then(setSuggest); else setSuggest([]); }, [payer]);
   useEffect(() => { if (caseMode === "existing" && kase) flightLinesOnCase(kase.id).then(setLines); else setLines([]); }, [caseMode, kase]);
   useEffect(() => { probableDuplicates(draft).then(setDups).catch(() => setDups([])); }, [row.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -346,11 +371,13 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   // a matching booking must be resolved: update it, or say why this is a separate trip (the database checks this too)
   const openDups = dups.filter((x) => x.status !== "cancelled" && !(bMode !== "new" && x.line_id === lineId));
   const hasTicketNo = draft.passengers.some((p) => p.tickets.some((t) => t.number.value.trim()));
+  // supplier and prices: our own booking, entered as a new booking (an update or reissue keeps the booking's prices)
+  const pricingShown = bookedBy === "agency" && bMode === "new";
   const missing = [
     blocking.length && "fix the highlighted fields",
     openDups.length > 0 && !dupReason.trim() && "resolve the possible duplicate (use that booking, or give a reason)",
     lineStatus === "confirmed" && !hasTicketNo && !noTicketAck && "tick that the ticket is issued without a ticket number",
-    caseMode === "new" && !payer && "who pays",
+    caseMode === "new" && !payer && payerPax === null && "who pays",
     caseMode === "existing" && !kase && "the MAX ID",
     caseMode === "new" && !stage && "the stage for the new MAX ID",
     bMode !== "new" && !lineId && "the booking to update",
@@ -358,19 +385,24 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
     bMode === "reissue" && lineId && reissueHasNewTicket === false && "a new ticket number for the reissue (or choose Update)",
     !bookedBy && "who booked it",
     !lineStatus && "the booking status",
-    matches.some((m) => !m || (m.kind === "new" && (!m.first_name.trim() || !m.mobile.trim()))) && "match every passenger",
+    matches.some((m) => !m) && "match every passenger",
+    matches.some((m) => m?.kind === "new" && (!m.first_name.trim() || !m.mobile.trim())) && "a first name and mobile for each new customer",
     bookedBy === "customer" && charge.confirmed && !charge.amount.trim() && "the agency charge",
+    pricingShown && canSeeProfit && price.sale.trim() && !price.cost.trim() && "the incoming price (0 if there is none)",
+    pricingShown && [price.cost, price.sale].some((v) => v.trim() && parseMoney(v).kind === "invalid") && "prices as numbers",
   ].filter(Boolean) as string[];
 
   async function confirm() {
     setError(null);
     const payload: ConfirmPayload = {
       payer_customer_id: payer?.id ?? null,
+      payer_passenger: payer ? null : payerPax,
+      pricing: pricingShown ? { supplier_id: supplier?.id ?? null, supplier_cost: canSeeProfit ? price.cost : "", selling_price: price.sale } : null,
       case: caseMode === "existing" ? { mode: "existing", id: kase!.id, stage: existingStage || null } : { mode: "new", title: newTitle, stage },
       booking: bMode === "new" ? { mode: "new" } : { mode: bMode, line_id: lineId, comparison_reviewed: compared },
       booked_by: bookedBy as "agency" | "customer",
       line_status: lineStatus as "pending" | "confirmed",
-      passengers: matches.map((m) => (m!.kind === "existing" ? { customer_id: m!.id } : { create: { first_name: m!.first_name, last_name: m!.last_name, mobile: m!.mobile } })),
+      passengers: matches.map((m) => (m!.kind === "existing" ? { customer_id: m!.id } : { create: { first_name: m!.first_name, last_name: m!.last_name, mobile: m!.mobile, title: m!.title, gender: m!.gender } })),
       agency_charge: bookedBy === "customer" && charge.confirmed ? charge : null,
       duplicate_override_reason: openDups.length ? dupReason.trim() : null,
       no_ticket_number_ack: lineStatus === "confirmed" && !hasTicketNo ? noTicketAck : false,
@@ -400,7 +432,12 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Who pays (the customer on the MAX ID)" hint="Matched on its own: the payer doesn't have to travel.">
-            {newPayer !== null ? (
+            {!payer && payerPax !== null ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Badge tone="blue">Traveller {payerPax + 1}: {matches[payerPax]?.kind === "existing" ? (matches[payerPax] as { label: string }).label : draft.passengers[payerPax]?.name_as_issued.value || "?"}</Badge>
+                <button type="button" className="text-xs link" onClick={() => setPayerPax(null)}>change</button>
+              </div>
+            ) : newPayer !== null ? (
               <CustomerInline initialName={newPayer} onCancel={() => setNewPayer(null)}
                 onCreated={(c) => { setPayer({ id: c.id, label: c.full_name }); setPayerMobile(c.mobile); setNewPayer(null); }} />
             ) : (
@@ -410,6 +447,16 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
                     + New customer{q ? ` “${q}”` : ""}
                   </button>
                 )} />
+            )}
+            {!payer && payerPax === null && newPayer === null && draft.passengers.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-muted">Or a traveller pays:</span>
+                {draft.passengers.map((p, i) => (
+                  <button key={p.key} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setPayerPax(i)}>
+                    {splitIssuedName(p.name_as_issued.value).first || `Traveller ${i + 1}`} {splitIssuedName(p.name_as_issued.value).last}
+                  </button>
+                ))}
+              </div>
             )}
           </Field>
           <Field label="MAX ID">
@@ -492,13 +539,17 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
             <p className="mt-1 text-xs text-muted">Only this charge is billed. The fare on the ticket is the customer&apos;s own purchase and is kept as evidence only.</p>
           </div>
         )}
-        {bookedBy === "agency" && <p className="text-xs text-muted">Prices, supplier cost and commission are not taken from the ticket. The booking is marked “not priced” until someone enters them on the Bookings tab.</p>}
+        {bookedBy === "agency" && bMode !== "new" && <p className="text-xs text-muted">Updating a booking keeps its supplier and prices. Change them on the Bookings tab if needed.</p>}
+        {pricingShown && (
+          <Pricing canSeeProfit={canSeeProfit} supplier={supplier} setSupplier={setSupplier} sugs={supplierSugs} price={price} setPrice={setPrice} />
+        )}
 
         <div>
           <div className="mb-1 text-[13px] font-medium">Travellers</div>
           <ul className="divide-y divide-line rounded-lg border border-line">
             {draft.passengers.map((p, i) => (
-              <PassengerMatch key={p.key} name={p.name_as_issued.value} match={matches[i] ?? null} payerMobile={payerMobile} taken={matches.filter((_, j) => j !== i)}
+              <PassengerMatch key={p.key} name={p.name_as_issued.value} ff={(p.ff ?? []).filter((x) => x.number.trim())} pays={!payer && payerPax === i}
+                match={matches[i] ?? null} payerMobile={payerMobile} taken={matches.filter((_, j) => j !== i)}
                 onChange={(m) => setMatches((all) => all.map((x, j) => (j === i ? m : x)))} />
             ))}
           </ul>
@@ -515,22 +566,31 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, saveFirst }: { ro
   );
 }
 
-function PassengerMatch({ name, match, onChange, payerMobile, taken }: { name: string; match: Match; onChange: (m: Match) => void; payerMobile: string; taken: Match[] }) {
+function PassengerMatch({ name, ff, pays, match, onChange, payerMobile, taken }: { name: string; ff: { airline: string; number: string }[]; pays: boolean; match: Match; onChange: (m: Match) => void; payerMobile: string; taken: Match[] }) {
   const [cands, setCands] = useState<Awaited<ReturnType<typeof personCandidates>> | null>(null);
+  const split = splitIssuedName(name);
+  const asNew = (): Match => ({ kind: "new", first_name: split.first, last_name: split.last, mobile: payerMobile, title: split.title, gender: genderFromTitle(split.title) });
   useEffect(() => {
     if (name.trim().length < 2) { setCands([]); return; }
-    const h = setTimeout(() => personCandidates(name).then(setCands).catch(() => setCands([])), 300);
+    const h = setTimeout(() => personCandidates(name).then((c) => {
+      setCands(c);
+      // nobody on file with a similar name: set them up as a new customer from the ticket (the reviewer can still change it)
+      if (c.length === 0 && !match) onChange(asNew());
+    }).catch(() => setCands([])), 300);
     return () => clearTimeout(h);
-  }, [name]);
+  }, [name]); // eslint-disable-line react-hooks/exhaustive-deps
   const used = (id: string) => taken.some((t) => t?.kind === "existing" && t.id === id);
-  const split = splitIssuedName(name);
   return (
     <li className="space-y-2 px-3 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2"><span className="font-mono font-semibold">{name || "(no name yet)"}</span>
         {match?.kind === "existing" && <Badge tone="green">Matched: {match.label}</Badge>}
-        {match?.kind === "new" && <Badge tone="blue">New person</Badge>}
+        {match?.kind === "new" && <Badge tone="blue">New customer</Badge>}
+        {pays && <Badge tone="grey">Pays</Badge>}
         {match && <button type="button" className="text-xs link" onClick={() => onChange(null)}>change</button>}
       </div>
+      {ff.length > 0 && (
+        <p className="text-xs text-muted">Frequent flyer {ff.map((x) => `${x.airline} ${x.number}`.trim()).join(", ")}: {match?.kind === "existing" ? "added to their profile if it isn't there yet" : "saved on the profile"}.</p>
+      )}
       {!match && (
         <div className="space-y-2">
           {cands === null ? <p className="text-xs text-muted">Looking for people on file…</p> : cands.length > 0 && (
@@ -547,20 +607,74 @@ function PassengerMatch({ name, match, onChange, payerMobile, taken }: { name: s
           <p className="text-xs text-muted">Pick only if it is the same person (check date of birth or passport). A shared surname or phone number is not enough.</p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-56 flex-1"><CustomerPicker value={null} onChange={(o) => o && !used(o.id) && onChange({ kind: "existing", id: o.id, label: o.label })} /></div>
-            <Button size="sm" onClick={() => onChange({ kind: "new", first_name: [split.first].filter(Boolean).join(" "), last_name: split.last, mobile: payerMobile })}>New person</Button>
+            <Button size="sm" onClick={() => onChange(asNew())}>New customer</Button>
           </div>
         </div>
       )}
       {match?.kind === "new" && (
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-[6rem_1fr_1fr_1fr]">
+          <Field label="Title">
+            <select className="field" value={match.title} onChange={(e) => onChange({ ...match, title: e.target.value, gender: genderFromTitle(e.target.value) || match.gender })}>
+              <option value=""></option>{["Mr", "Mrs", "Ms", "Miss", "Mstr", "Dr"].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Field>
           <Field label="First name" required><input className="field" value={match.first_name} onChange={(e) => onChange({ ...match, first_name: e.target.value })} /></Field>
           <Field label="Last name"><input className="field" value={match.last_name} onChange={(e) => onChange({ ...match, last_name: e.target.value })} /></Field>
-          <Field label="Mobile" required hint={payerMobile && match.mobile === payerMobile ? "Filled from the payer; change it if they have their own." : undefined}>
+          <Field label="Mobile" required hint={payerMobile && match.mobile === payerMobile ? "Filled from the payer; change it if they have their own." : !match.mobile.trim() ? "Tickets show the agency's number; type the traveller's own." : undefined}>
             <input className="field" inputMode="tel" value={match.mobile} onChange={(e) => onChange({ ...match, mobile: e.target.value })} />
           </Field>
         </div>
       )}
     </li>
+  );
+}
+
+/** Supplier, incoming price and client price for our own booking, with the profit or loss as you type.
+ *  Staff who may not see profit enter only the supplier and the client price; the boss adds the cost later. */
+function Pricing({ canSeeProfit, supplier, setSupplier, sugs, price, setPrice }: {
+  canSeeProfit: boolean; supplier: Picked | null; setSupplier: (s: Picked | null) => void;
+  sugs: { id: string; name: string }[]; price: { cost: string; sale: string }; setPrice: (p: { cost: string; sale: string }) => void;
+}) {
+  const both = parseMoney(price.cost).kind === "value" && parseMoney(price.sale).kind === "value";
+  const profit = amount(price.sale) - amount(price.cost);
+  const bad = (v: string) => v.trim() !== "" && parseMoney(v).kind === "invalid";
+  return (
+    <div className="space-y-3 rounded-lg border border-line p-3">
+      <div className="text-[13px] font-medium">Supplier and price</div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Supplier" hint="Where you booked it. The ticket carries our name, so choose it yourself.">
+          <SupplierPicker value={supplier} service="flight" onChange={(o) => setSupplier(o ? { id: o.id, label: o.label } : null)} />
+          {!supplier && sugs.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-muted">Recent:</span>
+              {sugs.map((s) => (
+                <button key={s.id} type="button" className="rounded-full border border-line px-2 py-0.5 hover:bg-gray-50" onClick={() => setSupplier({ id: s.id, label: s.name })}>{s.name}</button>
+              ))}
+            </div>
+          )}
+        </Field>
+        <div className={cx("grid gap-3", canSeeProfit ? "grid-cols-2" : "grid-cols-1")}>
+          {canSeeProfit && (
+            <Field label="Incoming (₹)" hint="What the supplier charges us">
+              <input className={cx("field tabular", bad(price.cost) && "!border-red-400 !bg-red-50")} inputMode="decimal" value={price.cost} placeholder="0" onChange={(e) => setPrice({ ...price, cost: e.target.value })} />
+            </Field>
+          )}
+          <Field label="Client price (₹)" hint="What the client pays">
+            <input className={cx("field tabular", bad(price.sale) && "!border-red-400 !bg-red-50")} inputMode="decimal" value={price.sale} placeholder="0" onChange={(e) => setPrice({ ...price, sale: e.target.value })} />
+          </Field>
+        </div>
+      </div>
+      {canSeeProfit && both && (
+        <p role="status" className={cx("rounded-lg px-3 py-2 text-sm font-medium tabular",
+          profit > 0 ? "bg-emerald-50 text-emerald-900" : profit < 0 ? "bg-red-50 text-red-800" : "bg-gray-50 text-muted")}>
+          {profit > 0 ? `Profit ${inr(profit)}` : profit < 0 ? `Loss ${inr(-profit)}` : "No profit, no loss"}
+          {amount(price.sale) > 0 && profit !== 0 ? <span className="ml-1 font-normal">({Math.round((profit / amount(price.sale)) * 1000) / 10}% of the client price)</span> : null}
+        </p>
+      )}
+      <p className="text-xs text-muted">
+        {canSeeProfit ? "Typed by you, never read from the ticket. Leave both empty to price it later on the Bookings tab." : "The incoming price is added by the boss. Until then the booking shows as not fully priced."}
+      </p>
+    </div>
   );
 }
 

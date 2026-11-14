@@ -69,7 +69,7 @@ export function TicketUploadDialog({ open, onClose, scope = {}, portal, replaces
           <p className="text-[13px] text-muted">
             {portal
               ? "Send a ticket you booked yourself (PDF, JPG or PNG, up to 10 MB and 10 pages). Nothing changes on your trip until the office has checked it."
-              : "PDF, JPG or PNG, up to 10 MB and 10 pages. The file stays private. You review what was read before anything is saved, and no prices or payments are created from it."}
+              : "PDF, JPG or PNG, up to 10 MB and 10 pages. The file stays private. You check what was read, pick the supplier and type the prices before anything is saved; amounts printed on the ticket are never used as prices."}
           </p>
           <div
             role="button" tabIndex={0} aria-busy={busy}

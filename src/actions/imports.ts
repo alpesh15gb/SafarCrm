@@ -10,8 +10,12 @@ export type ConfirmPayload = {
   booking: { mode: "new" } | { mode: "update" | "reissue"; line_id: string; comparison_reviewed: boolean };
   booked_by: "agency" | "customer";
   line_status: "pending" | "confirmed";
-  passengers: ({ customer_id: string } | { create: { first_name: string; last_name?: string; mobile: string; gender?: string; dob?: string; passport_surname?: string; passport_given_name?: string } })[];
+  /** When nobody else pays: the index of the traveller (in the passenger list) who is the customer on the MAX ID. */
+  payer_passenger?: number | null;
+  passengers: ({ customer_id: string } | { create: { first_name: string; last_name?: string; mobile: string; title?: string; gender?: string; dob?: string; passport_surname?: string; passport_given_name?: string } })[];
   agency_charge?: { amount: string; confirmed: boolean } | null;
+  /** Agency-booked, new booking only: the supplier, what they charge us (incoming) and what the client pays. */
+  pricing?: { supplier_id: string | null; supplier_cost: string; selling_price: string } | null;
   duplicate_override_reason?: string | null;
   no_ticket_number_ack?: boolean;
 };
@@ -70,6 +74,10 @@ export async function confirmImport(id: string, version: number, key: string, dr
       const bad = moneyProblem("Agency charge", p.agency_charge.amount, { required: true });
       if (bad) return { ok: false, error: bad };
     }
+    if (p.pricing) {
+      const bad = moneyProblem("Incoming (supplier) price", p.pricing.supplier_cost) ?? moneyProblem("Client price", p.pricing.selling_price);
+      if (bad) return { ok: false, error: bad };
+    }
     const sb = await createClient();
     const { data, error } = await sb.rpc("confirm_ticket_import", { p_id: id, p_expected_version: version, p_key: key, p });
     if (error) throw error;
@@ -102,6 +110,21 @@ export async function personCandidates(issuedName: string) {
     const why = pass && letters(pass).startsWith(letters(`${last}/${first}`).slice(0, Math.max(3, last.length + 2))) ? "passport name matches" : "similar name";
     return { id: c.id, code: c.code, full_name: c.full_name, dob: c.dob, mobile_last4: c.mobile.slice(-4), family: c.family?.name ?? null, passport_name: pass, why };
   });
+}
+
+/** Shortcuts for the supplier field: the flight suppliers used most recently. Tickets usually carry the agency's own
+ *  name, so nothing is guessed from the document and nothing is pre-selected: the reviewer picks. */
+export async function recentFlightSuppliers(): Promise<{ id: string; name: string }[]> {
+  await team();
+  const sb = await createClient();
+  const { data } = await sb.from("booking_lines").select("supplier:suppliers(id, name, status)")
+    .eq("service", "flight").not("supplier_id", "is", null).order("created_at", { ascending: false }).limit(60);
+  const out: { id: string; name: string }[] = [];
+  for (const l of (data ?? []) as unknown as { supplier: { id: string; name: string; status: string } | null }[]) {
+    if (l.supplier && l.supplier.status === "active" && !out.some((o) => o.id === l.supplier!.id)) out.push({ id: l.supplier.id, name: l.supplier.name });
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 /** Existing bookings that are probably this ticket, within what the reviewer may see. */

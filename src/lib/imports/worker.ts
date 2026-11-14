@@ -8,7 +8,6 @@ import { inspect } from "./inspect";
 import { getProvider } from "./provider";
 import { redactForModel } from "./redact";
 import { PARSER_VERSION, SCHEMA_VERSION, toDraft } from "./schema";
-
 export type WorkerRun = { claimed: number; reviewed: number; retried: number; failed: number };
 
 export async function runImportWorker(opts: { limit?: number } = {}): Promise<WorkerRun> {
@@ -38,8 +37,7 @@ export async function runImportWorker(opts: { limit?: number } = {}): Promise<Wo
       const masked = ins.text ? redactForModel(ins.text) : null;
       const r = await provider.extract({ bytes, mime: ins.mime, text: masked ? masked.text : null });
       if (!r.ok) { await finish({ p_ok: false, p_pages: ins.pages, p_error_code: r.code, p_error_summary: r.message, p_retryable: r.retryable }); continue; }
-      const draft = toDraft(r.output);
-      await finish({
+      const draft = toDraft(r.output);      await finish({
         p_ok: true, p_pages: ins.pages, p_extraction: {
           ...draft, read_from: r.mode === "text" ? "pdf text layer" : "document image (OCR)",
           // what was masked before reading (numbers only, never the values); an image is sent as it is

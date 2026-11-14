@@ -18,7 +18,9 @@ export type DraftSegment = {
   airline: Field; flight_no: Field; cabin: Field; baggage: Field; fare_basis: Field;
 };
 export type DraftTicket = { number: Field; segments: string[] };
-export type DraftPassenger = { key: string; name_as_issued: Field; pax_type: Field; tickets: DraftTicket[] };
+/** A frequent flyer number printed for the passenger: airline code or name as printed, number as printed. */
+export type DraftFF = { airline: string; number: string };
+export type DraftPassenger = { key: string; name_as_issued: Field; pax_type: Field; tickets: DraftTicket[]; ff?: DraftFF[] };
 export type DraftAmount = { label: string; amount: Field; currency: Field; scope: "document" | "passenger" | "unknown"; passenger_key?: string };
 export type DraftRef = { value: string; kind?: string; airline?: string; page?: number | null };
 
@@ -48,6 +50,7 @@ export const PROVIDER_SCHEMA = obj({
     items: obj({
       name_as_issued: str, pax_type: str, page, evidence: str,
       tickets: { type: "array", items: obj({ number: str, segment_refs: { type: "array", items: { type: "integer" } }, page }) },
+      frequent_flyer: { type: "array", items: obj({ airline: str, number: str }) },
     }),
   },
   airline_pnrs: { type: "array", items: obj({ value: str, airline: str, page }) },
@@ -69,7 +72,7 @@ export const PROVIDER_SCHEMA = obj({
 
 export type ProviderOutput = {
   document_kind: string; issue_date: string;
-  passengers: { name_as_issued: string; pax_type: string; page: number; evidence: string; tickets: { number: string; segment_refs: number[]; page: number }[] }[];
+  passengers: { name_as_issued: string; pax_type: string; page: number; evidence: string; tickets: { number: string; segment_refs: number[]; page: number }[]; frequent_flyer?: { airline: string; number: string }[] }[];
   airline_pnrs: { value: string; airline: string; page: number }[];
   supplier_refs: { value: string; kind: string; page: number }[];
   segments: { ref: number; from: string; to: string; dep_date: string; dep_time: string; arr_date: string; arr_time: string; airline: string; flight_no: string; cabin: string; baggage: string; fare_basis: string; page: number; evidence: string }[];
@@ -99,8 +102,12 @@ export function validateProviderOutput(x: unknown): { ok: true; value: ProviderO
     for (const t of p.tickets as unknown[]) {
       if (!isObj(t) || !isStr(t.number) || !isInt(t.page) || !Array.isArray(t.segment_refs) || !(t.segment_refs as unknown[]).every(isInt)) return bad("bad ticket");
     }
-  }
-  for (const s of segs) {
+    // newer fields: checked when present, so an older reply without them still reads
+    if (p.frequent_flyer !== undefined) {
+      if (!Array.isArray(p.frequent_flyer) || (p.frequent_flyer as unknown[]).length > 10) return bad("bad frequent flyer list");
+      for (const ff of p.frequent_flyer as unknown[]) if (!isObj(ff) || !isStr(ff.airline) || !isStr(ff.number)) return bad("bad frequent flyer");
+    }
+  }  for (const s of segs) {
     if (!isObj(s) || !isInt(s.ref) || !isInt(s.page)) return bad("bad segment");
     for (const k of ["from", "to", "dep_date", "dep_time", "arr_date", "arr_time", "airline", "flight_no", "cabin", "baggage", "fare_basis", "evidence"]) if (!isStr(s[k])) return bad(`bad segment ${k}`);
   }
@@ -165,7 +172,23 @@ export function normFlightNo(no: string, airline = ""): string {
   return n;
 }
 
-const paxCode = (s: string) => { const t = clip(s, 10).toUpperCase(); return PAX[t] ?? t; };
+const paxCode = (s: string) => { const t = clip(s, 10).toUpperCase().replace(/[().\s]/g, ""); return PAX[t] ?? (t === "A" ? "ADT" : t === "C" ? "CHD" : t === "I" ? "INF" : t); };
+
+/** Frequent flyer numbers as printed. "AI 100555503" in the number with no airline → airline AI, number 100555503.
+ *  "FF: 252816900" with no airline at all → the designator of the first flight (the programme it was printed under). */
+export function normFF(list: { airline: string; number: string }[], firstFlight = ""): DraftFF[] {
+  const out: DraftFF[] = [];
+  for (const x of list) {
+    let airline = clip(x.airline, 40), num = clip(x.number, 30).replace(/^(FF|FFN|FQTV)\s*(NO\.?|#)?\s*[:\-]?\s*/i, "");
+    const lead = /^([A-Z][A-Z0-9]|\d[A-Z])[\s-]+([A-Z0-9]{5,20})$/i.exec(num);
+    if (lead && (!airline || airline.toUpperCase() === lead[1].toUpperCase())) { airline = lead[1].toUpperCase(); num = lead[2]; }
+    num = num.replace(/\s+/g, "").toUpperCase();
+    if (!/^[A-Z0-9]{4,20}$/.test(num)) continue;
+    if (!airline) airline = /^([A-Z][A-Z0-9]|\d[A-Z])/i.exec(clip(firstFlight, 8).toUpperCase())?.[1] ?? "";
+    if (!out.some((o) => o.number === num)) out.push({ airline, number: num });
+  }
+  return out;
+}
 
 export function toDraft(p: ProviderOutput): Draft {
   const segKey = new Map<number, string>();
@@ -193,6 +216,7 @@ export function toDraft(p: ProviderOutput): Draft {
       // a ticket with no segment references covers every segment on the document
       segments: t.segment_refs.length ? t.segment_refs.map((r) => segKey.get(r)).filter((k): k is string => !!k) : segments.map((s) => s.key),
     })),
+    ff: normFF(x.frequent_flyer ?? [], p.segments[0]?.flight_no ?? ""),
   }));
   const draft: Draft = {
     schema_version: SCHEMA_VERSION, source: "provider", document_kind: clip(p.document_kind, 20), issue_date: dateField(p.issue_date),
@@ -204,8 +228,7 @@ export function toDraft(p: ProviderOutput): Draft {
       label: clip(a.label, 60), amount: f(a.amount, a.page, a.evidence), currency: f(clip(a.currency, 3).toUpperCase(), a.page),
       scope: a.scope, ...(a.scope === "passenger" && passengers[a.passenger_index] ? { passenger_key: passengers[a.passenger_index].key } : {}),
     })),
-    provider_notes: clip(p.notes, 600),
-  };
+    provider_notes: clip(p.notes, 600),  };
   for (const u of p.uncertain) markUncertain(draft, u.path, clip(u.reason, 200));
   return draft;
 }
@@ -309,10 +332,17 @@ export function tripType(d: Draft): "one-way" | "return" | "multi-city" {
   return "multi-city";
 }
 
+/** Gender only where the title says it (Mr, Mrs, Ms, Miss, Master); Dr and no title say nothing. */
+export function genderFromTitle(title: string): "Male" | "Female" | "" {
+  const t = title.toUpperCase();
+  return t === "MR" || t === "MSTR" || t === "MASTER" ? "Male" : t === "MRS" || t === "MS" || t === "MISS" ? "Female" : "";
+}
+
 /** "SHARMA/RAHUL MR" → { last: "Sharma", first: "Rahul", title: "Mr" } for pre-filling a new person (the issued name itself is kept as is). */
 export function splitIssuedName(name: string): { first: string; last: string; title: string } {
   const cap = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
-  const t = name.trim().replace(/\s+/g, " ");
+  // portal styles: "MR NAME SURNAME ( A )", "Ms .GITA BAHIRWANI (ADT)", "Mr. ANIL KUMAR"
+  const t = name.replace(/\(\s*(A|C|I|ADT|CHD|CNN|INF|ADULT|CHILD|INFANT)\s*\)/gi, " ").replace(/(^|\s)\.(?=\S)/g, "$1").trim().replace(/\s+/g, " ");
   // titles come last on airline-style names (SHARMA/RAHUL MR) and first on others (Mr Rahul Sharma)
   const titles = /\s(MR|MRS|MS|MISS|MSTR|DR|CHD|INF)\.?$/i;
   const lead = /^(MR|MRS|MS|MISS|MSTR|MASTER|DR)\.?\s+/i;
