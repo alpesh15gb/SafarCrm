@@ -259,7 +259,13 @@ function DraftEditor({ draft: d, upd, readOnly, issueAt }: { draft: Draft; upd: 
                   <input className="field !h-8 w-24 !px-2 text-[13px] uppercase" aria-label={`Passenger ${i + 1} frequent flyer ${j + 1} airline`} placeholder="Airline" readOnly={readOnly} value={ff.airline}
                     onChange={(e) => upd((n) => { n.passengers[i].ff![j].airline = e.target.value.toUpperCase(); })} />
                   <input className="field !h-8 w-40 !px-2 font-mono text-[13px] uppercase" aria-label={`Passenger ${i + 1} frequent flyer ${j + 1} number`} placeholder="Number" readOnly={readOnly} value={ff.number}
-                    onChange={(e) => upd((n) => { n.passengers[i].ff![j].number = e.target.value.toUpperCase().replace(/\s+/g, ""); })} />
+                    onChange={(e) => upd((n) => {
+                      const x = n.passengers[i].ff![j], al = x.airline.trim().toUpperCase();
+                      let v = e.target.value.toUpperCase().replace(/\s+/g, "");
+                      // "6E12345678" typed with airline 6E: the code belongs in the airline box, not twice
+                      if (al && /^([A-Z][A-Z0-9]|\d[A-Z])$/.test(al) && v.startsWith(al) && v.length > al.length + 3) v = v.slice(al.length);
+                      x.number = v;
+                    })} />
                   {!readOnly && <button type="button" aria-label="Remove frequent flyer number" className="p-1 text-muted hover:text-red-600" onClick={() => upd((n) => { n.passengers[i].ff!.splice(j, 1); })}><X className="h-3.5 w-3.5" /></button>}
                 </div>
               ))}
