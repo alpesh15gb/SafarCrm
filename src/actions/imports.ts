@@ -107,11 +107,16 @@ export async function personCandidates(issuedName: string) {
     .or(`last_name.ilike.${term}%,passport_surname.ilike.${term}%,full_name.ilike.%${term}%`)
     .neq("customer_type", "corporate").limit(12);
   type Row = { id: string; code: string; full_name: string; dob: string | null; mobile: string; passport_surname: string | null; passport_given_name: string | null; family: { name: string } | null };
+  // the same words in any order ("KUMAR/ANIL" = "Anil Kumar") is the same name; listed first so it isn't missed
+  const words = (s: string) => letters(s).replace(/\//g, " ").split(" ").filter(Boolean).sort().join(" ");
+  const issuedWords = words(n);
+  const rank = { "passport name matches": 0, "same name": 1, "similar name": 2 } as const;
   return ((data ?? []) as unknown as Row[]).map((c) => {
     const pass = c.passport_surname ? `${c.passport_surname}/${c.passport_given_name ?? ""}`.toUpperCase() : null;
-    const why = pass && letters(pass).startsWith(letters(`${last}/${first}`).slice(0, Math.max(3, last.length + 2))) ? "passport name matches" : "similar name";
+    const why: keyof typeof rank = pass && letters(pass).startsWith(letters(`${last}/${first}`).slice(0, Math.max(3, last.length + 2))) ? "passport name matches"
+      : words(c.full_name) === issuedWords ? "same name" : "similar name";
     return { id: c.id, code: c.code, full_name: c.full_name, dob: c.dob, mobile_last4: c.mobile.slice(-4), family: c.family?.name ?? null, passport_name: pass, why };
-  });
+  }).sort((a, b) => rank[a.why] - rank[b.why]);
 }
 
 /** Shortcuts for the supplier field: the flight suppliers used most recently. Tickets usually carry the agency's own

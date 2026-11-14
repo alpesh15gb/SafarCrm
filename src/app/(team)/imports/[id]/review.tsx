@@ -527,7 +527,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
         <div className="rounded-lg border border-line bg-gray-50 px-3 py-2.5 text-[13px]">
           <p>
             {caseMode === "new" ? <>A new MAX ID <b>“{titleText}”</b> at <b>{stageLabel}</b></> : kase ? <>Added to <b className="font-mono">{kase.label}</b></> : <>Added to an existing MAX ID</>}
-            {payerName && <>, paid by <b>{payerName}</b></>}
+            {caseMode === "new" && payerName && <>, paid by <b>{payerName}</b></>}
             {". "}{bMode === "new" ? (bookedBy === "agency" ? "Booked by us" : "Booked by the customer") : bMode === "update" ? "Updates a booking on it" : "Reissue of a booking on it"}
             {lineStatus === "confirmed" ? ", ticket issued." : lineStatus === "pending" ? ", itinerary only." : "."}
           </p>
@@ -535,7 +535,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
           {showMore && (
             <div className="mt-3 space-y-4 border-t border-line pt-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Who pays" hint="The customer on the MAX ID. They don't have to travel.">
+                {caseMode === "new" && <Field label="Who pays" hint="The customer on the MAX ID. They don't have to travel.">
                   {!payer && payerPax !== null ? (
                     <div className="flex flex-wrap items-center gap-2 text-sm">
                       <Badge tone="blue">Traveller {payerPax + 1}: {payerName}</Badge>
@@ -562,7 +562,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
                       ))}
                     </span>
                   )}
-                </Field>
+                </Field>}
                 <Field label="MAX ID">
                   <span className="flex gap-3 text-sm">
                     {radio(caseMode === "new", () => { setCaseMode("new"); setBMode("new"); }, "New MAX ID")}
@@ -791,16 +791,20 @@ function Comparison({ lineId, draft, compared, setCompared, reissue, onReissueCh
   const hasNew = line ? freshTickets.length > 0 : null;
   useEffect(() => { onReissueCheck(hasNew); }, [hasNew]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => onReissueCheck(null), []); // eslint-disable-line react-hooks/exhaustive-deps
-  if (line === undefined) return <p className="text-xs text-muted">Loading the booking…</p>;
-  if (line === null) return <p role="alert" className="text-xs text-red-700">That booking could not be loaded.</p>;
-  const old = (line.details.sectors as Record<string, string>[] | undefined) ?? [];
-  const oldT = (line.details.tickets as Record<string, string>[] | undefined) ?? [];
+  const old = (line?.details.sectors as Record<string, string>[] | undefined) ?? [];
+  const oldT = (line?.details.tickets as Record<string, string>[] | undefined) ?? [];
   const n = Math.max(old.length, draft.segments.length);
   const KEYS: [string, (s: DraftSegment) => string, string][] = [
     ["Route", (s) => `${s.from.value}→${s.to.value}`, "route"], ["Departs", (s) => `${s.dep_date.value} ${s.dep_time.value}`.trim(), "dep"],
     ["Arrives", (s) => `${s.arr_date.value} ${s.arr_time.value}`.trim(), "arr"], ["Flight", (s) => s.flight_no.value, "flight_no"],
   ];
   const oldVal = (s: Record<string, string> | undefined, k: string) => !s ? "" : k === "route" ? `${s.from}→${s.to}` : k === "dep" ? `${s.date ?? ""} ${s.dep ?? ""}`.trim() : k === "arr" ? `${s.arr_date ?? ""} ${s.arr ?? ""}`.trim() : s[k] ?? "";
+  // an update that changes nothing (same flights, no new ticket number) needs no comparison tick
+  const nothingDiffers = !!line && !reissue && freshTickets.length === 0
+    && Array.from({ length: n }).every((_, i) => KEYS.every(([, get, k]) => oldVal(old[i], k) === (draft.segments[i] ? get(draft.segments[i]) : "")));
+  useEffect(() => { if (nothingDiffers) setCompared(true); }, [nothingDiffers]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (line === undefined) return <p className="text-xs text-muted">Loading the booking…</p>;
+  if (line === null) return <p role="alert" className="text-xs text-red-700">That booking could not be loaded.</p>;
   const newTickets = draft.passengers.flatMap((p) => p.tickets.map((t) => `${p.name_as_issued.value}: ${t.number.value}`));
   return (
     <div className="space-y-2 rounded-lg border border-line p-3 text-[13px]">
@@ -821,7 +825,9 @@ function Comparison({ lineId, draft, compared, setCompared, reissue, onReissueCh
         <p role="alert" className="rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-800">No new ticket number on this document, so it isn&apos;t evidence of a reissue. Choose Update if the tickets are unchanged.</p>
       )}
       <p className="text-xs text-muted">{reissue ? "The old tickets and flights are kept in the booking's history. No new sale is created; prices stay as they are." : "Changed flights are kept in history. Prices stay as they are."}</p>
-      <label className="flex items-center gap-2"><input type="checkbox" checked={compared} onChange={(e) => setCompared(e.target.checked)} />I compared every highlighted difference with the original</label>
+      {nothingDiffers
+        ? <p className="flex items-center gap-1.5 text-xs text-emerald-800"><Check className="h-3.5 w-3.5" />The ticket matches this booking: nothing to compare.</p>
+        : <label className="flex items-center gap-2"><input type="checkbox" checked={compared} onChange={(e) => setCompared(e.target.checked)} />I compared every highlighted difference with the original</label>}
     </div>
   );
 }
