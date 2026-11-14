@@ -69,7 +69,8 @@ export function ReviewScreen({ row, initialDraft, isBoss, canSeeProfit, provider
   }, [dirty]);
 
   const upd = (fn: (d: Draft) => void) => { setDraft((d) => { const n = structuredClone(d); fn(n); return n; }); setDirty(true); };
-  const issues = useMemo(() => reviewIssues(draft), [draft]);
+  // nothing is flagged while the ticket is still being read: empty fields then are not mistakes
+  const issues = useMemo(() => (reading ? [] : reviewIssues(draft)), [draft, reading]);
   const issueAt = (path: string) => issues.filter((i) => i.path === path || i.path.startsWith(path + "."));
 
   const save = () => run(() => saveImportDraft(row.id, version, draft), { refresh: false, then: (r) => { if (r.data) setVersion(r.data.version); setDirty(false); } });
@@ -117,7 +118,7 @@ export function ReviewScreen({ row, initialDraft, isBoss, canSeeProfit, provider
               <span className="text-xs text-muted">Version {version}{dirty && " · unsaved changes"}</span>
             </div>
           )}
-          <Issues issues={issues} />
+          {!reading && <Issues issues={issues} />}
           <DraftEditor draft={draft} upd={upd} readOnly={!editable} issueAt={issueAt} />
           {editable && <MatchAndConfirm row={row} draft={draft} version={version} dirty={dirty} isBoss={isBoss} canSeeProfit={canSeeProfit} saveFirst={async () => {
             const r = await saveImportDraft(row.id, version, draft);
@@ -351,7 +352,11 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
   const [compared, setCompared] = useState(false);
   const [bookedBy, setBookedBy] = useState<"agency" | "customer">("agency");
   // with a ticket number it is issued; without one, the reviewer says which (some airlines use the booking reference)
-  const [lineStatus, setLineStatus] = useState<"" | "pending" | "confirmed">(hasTicketNo ? "confirmed" : "");
+  const [lineStatus, setLineStatusRaw] = useState<"" | "pending" | "confirmed">(hasTicketNo ? "confirmed" : "");
+  const [statusTouched, setStatusTouched] = useState(false);
+  const setLineStatus = (v: "pending" | "confirmed") => { setStatusTouched(true); setLineStatusRaw(v); };
+  // the ticket may still be reading when the screen opens: until someone chooses, follow what the ticket shows
+  useEffect(() => { if (!statusTouched) setLineStatusRaw(hasTicketNo ? "confirmed" : ""); }, [hasTicketNo, statusTouched]);
   const [charge, setCharge] = useState({ amount: "", confirmed: false });
   const [matches, setMatches] = useState<Match[]>(() => draft.passengers.map(() => null));
   const [dups, setDups] = useState<Awaited<ReturnType<typeof probableDuplicates>>>([]);
@@ -759,7 +764,13 @@ function Pricing({ canSeeProfit, supplier, setSupplier, sugs, price, setPrice }:
         <p role="status" className={cx("rounded-lg px-3 py-2 text-sm font-medium tabular",
           profit > 0 ? "bg-emerald-50 text-emerald-900" : profit < 0 ? "bg-red-50 text-red-800" : "bg-gray-50 text-muted")}>
           {profit > 0 ? `Profit ${inr(profit)}` : profit < 0 ? `Loss ${inr(-profit)}` : "No profit, no loss"}
-          {amount(price.sale) > 0 && profit !== 0 ? <span className="ml-1 font-normal">({Math.round((profit / amount(price.sale)) * 1000) / 10}% of the client price)</span> : null}
+          {amount(price.sale) > 0 && profit !== 0 && Math.abs(profit) < amount(price.sale) * 10 ? <span className="ml-1 font-normal">({Math.round((profit / amount(price.sale)) * 1000) / 10}% of the client price)</span> : null}
+        </p>
+      )}
+      {/* "48,50048,500" typed twice is still a number: say so when the two prices are far apart */}
+      {both && amount(price.cost) > 0 && amount(price.sale) > 0 && Math.max(amount(price.cost), amount(price.sale)) > 3 * Math.min(amount(price.cost), amount(price.sale)) && (
+        <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+          The two prices are very far apart ({inr(amount(price.cost))} and {inr(amount(price.sale))}). Check for a typo before confirming.
         </p>
       )}
       <p className="text-xs text-muted">
