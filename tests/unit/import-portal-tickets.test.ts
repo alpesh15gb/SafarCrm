@@ -3,7 +3,7 @@
 // Synthetic values only (no real person or booking).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { genderFromTitle, normFF, splitIssuedName, toDraft, validateProviderOutput, type ProviderOutput } from "../../src/lib/imports/schema.ts";
+import { genderFromTitle, normFF, splitIssuedName, toDraft, tripDestination, validateProviderOutput, type ProviderOutput } from "../../src/lib/imports/schema.ts";
 
 test("portal-style names: type markers, dotted titles and middle names", () => {
   assert.deepEqual(splitIssuedName("MR ASHA KUMAR TESTER ( A )"), { first: "Asha Kumar", last: "Tester", title: "Mr" });
@@ -49,3 +49,12 @@ test("an older reply without frequent flyer numbers still reads", () => {
   assert.equal(validateProviderOutput({ ...base, passengers: [{ ...base.passengers[0], frequent_flyer: [{ airline: 1 }] }] }).ok, false);
 });
 
+
+test("the trip's destination: a round trip or open jaw is named after the first arrival, not home", () => {
+  const leg = (from: string, to: string) => ({ ...base.segments[0], from, to });
+  const d = (...legs: [string, string][]) => toDraft({ ...base, segments: legs.map(([a, b], i) => ({ ...leg(a, b), ref: i + 1 })) });
+  assert.equal(tripDestination(d(["HYD", "DXB"])), "DXB");
+  assert.equal(tripDestination(d(["HYD", "DXB"], ["DXB", "HYD"])), "DXB");
+  assert.equal(tripDestination(d(["HYD", "DXB"], ["AUH", "HYD"])), "DXB");          // open jaw home
+  assert.equal(tripDestination(d(["HYD", "DXB"], ["DXB", "LHR"])), "LHR");          // onward trip
+});

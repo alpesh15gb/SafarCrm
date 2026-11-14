@@ -332,6 +332,15 @@ export function tripType(d: Draft): "one-way" | "return" | "multi-city" {
   return "multi-city";
 }
 
+/** Where the trip goes: the last arrival, or on a trip that ends where it started (return, open jaw) the first
+ *  flight's arrival. Same rule as the MAX ID title in confirm_ticket_import. */
+export function tripDestination(d: Draft): string {
+  const s = d.segments;
+  if (!s.length) return "";
+  const last = s[s.length - 1].to.value, first = s[0];
+  return s.length > 1 && last && last === first.from.value ? first.to.value : last;
+}
+
 /** Gender only where the title says it (Mr, Mrs, Ms, Miss, Master); Dr and no title say nothing. */
 export function genderFromTitle(title: string): "Male" | "Female" | "" {
   const t = title.toUpperCase();

@@ -14,7 +14,7 @@ import {
   type ConfirmPayload,
 } from "@/actions/imports";
 import { suggestCases } from "@/actions/tasks";
-import { genderFromTitle, reviewIssues, splitIssuedName, tripType, type Draft, type DraftSegment, type Field as F } from "@/lib/imports/schema";
+import { genderFromTitle, reviewIssues, splitIssuedName, tripDestination, tripType, type Draft, type DraftSegment, type Field as F } from "@/lib/imports/schema";
 import { offsetLabel } from "@/lib/flight-time";
 import { fdate, inr } from "@/lib/format";
 import { amount, parseMoney } from "@/lib/money";
@@ -494,7 +494,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {suggest.length > 0 && <p className="sm:col-span-2 rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">{payer?.label} already has {suggest.length} trip{suggest.length === 1 ? "" : "s"}. Check them under “Existing” before making another MAX ID.</p>}
-            <Field label="Title"><input className="field" value={newTitle} placeholder={`Flight ${draft.segments[0]?.from.value || ""} → ${draft.segments.at(-1)?.to.value || ""}`} onChange={(e) => setNewTitle(e.target.value)} /></Field>
+            <Field label="Title"><input className="field" value={newTitle} placeholder={`Flight ${draft.segments[0]?.from.value || ""} → ${tripDestination(draft)}`} onChange={(e) => setNewTitle(e.target.value)} /></Field>
             <Field label="Stage" required hint="Choose it yourself; nothing is assumed from the ticket.">
               <select className="field" value={stage} onChange={(e) => setStage(e.target.value)}>
                 <option value="">Choose…</option>{STAGES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
