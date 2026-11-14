@@ -480,7 +480,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
           <div className="mb-1 text-[13px] font-medium">Travellers</div>
           <ul className="divide-y divide-line rounded-lg border border-line">
             {draft.passengers.map((p, i) => (
-              <PassengerMatch key={p.key} name={p.name_as_issued.value} ff={(p.ff ?? []).filter((x) => x.number.trim())} pays={!payer && payerPax === i}
+              <PassengerMatch key={p.key} name={p.name_as_issued.value} ff={(p.ff ?? []).filter((x) => x.number.trim())} pays={caseMode === "new" && !payer && payerPax === i}
                 match={matches[i] ?? null} payerMobile={payerMobile} taken={matches.filter((_, j) => j !== i)}
                 onChange={(m) => setMatches((all) => all.map((x, j) => (j === i ? m : x)))} />
             ))}
