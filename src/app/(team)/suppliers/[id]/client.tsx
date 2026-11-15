@@ -8,7 +8,7 @@ import { DropZone } from "@/components/files";
 import { useApp } from "@/components/shell/shell";
 import { deleteSupplier, saveSupplier, saveSupplierNotes } from "@/actions/suppliers";
 import { addSupplierPayment, deletePayment } from "@/actions/money";
-import { amount } from "@/lib/money";
+import { amount, moneyProblem } from "@/lib/money";
 import { deleteFile } from "@/actions/files";
 import { PAY_MODES, SERVICES, SERVICE_LABEL, SUPPLIER_TERMS, SUPPLIER_TYPES } from "@/lib/constants";
 import { fdate, fdatetime, inr, todayIST } from "@/lib/format";
@@ -83,15 +83,23 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [advance, setAdvance] = useState("");
   const [opening, setOpening] = useState(false);
+  const advanceProblem = moneyProblem(opening ? "Opening balance" : "Advance or top-up amount", advance, { allowNegative: !opening });
+  const allocationProblem = opening ? null : Object.entries(alloc)
+    .map(([id, value]) => moneyProblem(`${open.find((o) => o.case_id === id)?.max_id ?? "MAX ID"} amount`, value, { allowNegative: true }))
+    .find(Boolean);
+  const problem = advanceProblem ?? allocationProblem;
   const total = opening ? amount(advance) : Object.values(alloc).reduce((s, a) => s + amount(a), 0) + amount(advance);
-  const save = () => opening
-    ? addSupplierPayment({ supplier_id: supplier.id, ...v, mode: "opening", amount: total, allocations: [] })
-    : addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, a]) => ({ case_id, amount: amount(a) })) });
+  const save = () => {
+    if (problem) return Promise.resolve({ ok: false as const, error: problem });
+    return opening
+      ? addSupplierPayment({ supplier_id: supplier.id, ...v, mode: "opening", amount: advance, allocations: [] })
+      : addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, value]) => ({ case_id, amount: value })) });
+  };
   return (
     <>
       <Button variant="primary" onClick={() => { setAlloc({}); setAdvance(""); setOpening(false); setShow(true); }}>{wallet ? "Top up wallet" : "Record payment"}</Button>
       <Dialog open={show} onClose={() => setShow(false)} title={wallet ? `Top up ${supplier.name} wallet` : `Payment to ${supplier.name}`} wide
-        footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !total || (opening && total < 0)}
+        footer={<><Button onClick={() => setShow(false)}>Cancel</Button><Button variant="primary" disabled={pending || !!problem || !total || (opening && total < 0)}
           onClick={() => run(save, { then: () => setShow(false) })}>
           {opening ? `Save opening balance of ${inr(total)}` : `Save payment of ${inr(total)}`}</Button></>}>
         <div className="space-y-4">
@@ -135,6 +143,7 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
           <Field label={opening ? "Balance in the wallet (₹)" : wallet ? "Top-up amount (₹)" : "Advance or wallet top-up (₹)"} hint={wallet ? undefined : "Money paid ahead, not for a particular MAX ID. It shows as an advance with this supplier."}>
             <input className="field !w-40 tabular" inputMode="decimal" value={advance} onChange={(e) => setAdvance(e.target.value)} />
           </Field>
+          {problem && <p role="alert" className="text-sm text-red-700">{problem}</p>}
         </div>
       </Dialog>
     </>

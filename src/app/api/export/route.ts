@@ -5,6 +5,7 @@ import { listCases, listCustomers, listSuppliers } from "@/lib/queries";
 import { REPORTS, runReport, type Col } from "@/lib/reports";
 import { SERVICE_LABEL, STATUS_LABEL, SUPPLIER_TYPE_LABEL, supplierTermsText, type Service } from "@/lib/constants";
 import { fdate, todayIST } from "@/lib/format";
+import { RangeValidationError } from "@/lib/range";
 
 // Indian digit grouping (₹1,25,000)
 const INR = '[>=10000000]"₹"##\\,##\\,##\\,##0;[>=100000]"₹"##\\,##\\,##0;"₹"#,##0;-"₹"#,##0';
@@ -147,6 +148,6 @@ export async function GET(req: Request) {
     return new Response("Unknown export", { status: 400 });
   } catch (e) {
     const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "Export failed";
-    return new Response(msg, { status: 500 });
+    return new Response(msg, { status: e instanceof RangeValidationError ? 400 : 500 });
   }
 }

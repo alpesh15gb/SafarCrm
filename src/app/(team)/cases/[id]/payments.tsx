@@ -6,8 +6,8 @@ import { Badge, Button, Card, Field, Money, ServiceIcon, Table, cx } from "@/com
 import { Confirm, Dialog, useAction } from "@/components/client";
 import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
-import { amount } from "@/lib/money";
-import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment, useSupplierAdvance } from "@/actions/money";
+import { amount, moneyProblem } from "@/lib/money";
+import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment, useSupplierAdvance as applySupplierAdvance } from "@/actions/money";
 import { PAY_MODES, PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
 import { fdate, todayIST, inr } from "@/lib/format";
 import type { Line } from "./bookings";
@@ -42,7 +42,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
   return (
     <div className="space-y-4">
       {/* taking and making payments is the everyday job here; the profit breakdown follows */}
-      <div className={me.can_see_profit ? "grid gap-4 lg:grid-cols-2" : "grid gap-4"}>
+      <div className="grid min-w-0 gap-4">
         <Card title="From client" action={<Button size="sm" variant="primary" onClick={() => setPayOpen(true)}><Plus className="h-3.5 w-3.5" />Record payment</Button>} pad={false}>
           <div className="grid grid-cols-3 gap-2 border-b border-line p-4 text-center">
             <div><div className="text-xs text-muted">Billed (incl. GST)</div><Money value={money?.billed as number} className="font-semibold" /></div>
@@ -50,15 +50,18 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
             <div><div className="text-xs text-muted">{Number(money?.due) < 0 ? "Client credit" : "Due"}</div><Money value={Math.abs(Number(money?.due ?? 0))} className={Number(money?.due) > 0 ? "font-semibold text-amber-700" : "font-semibold"} /></div>
           </div>
           {payments.length === 0 ? <p className="p-4 text-sm text-muted">No payments received yet.</p> : (
-            <Table head={["Date", "Amount", "Mode", "Reference", "Received by", ""]}>
+            <Table head={["Date", "Amount", "Payment details", ""]}
+              className="md:[&_table]:table-fixed md:[&_th:first-child]:w-32 md:[&_th:nth-child(2)]:w-28 md:[&_th:last-child]:w-40">
               {payments.map((p) => (
                 <tr key={p.id}>
-                  <td data-label="Date">{fdate(p.pay_date)}</td>
+                  <td data-label="Date" className="whitespace-nowrap">{fdate(p.pay_date)}</td>
                   <td data-label="Amount"><Money value={p.amount} />{Number(p.amount) < 0 && <Badge className="ml-1">Refund</Badge>}</td>
-                  <td data-label="Mode">{PAY_MODE_LABEL[p.mode]}</td>
-                  <td data-label="Reference">{p.reference ?? "—"}</td>
-                  <td data-label="Received by">{p.receiver?.full_name ?? "—"}</td>
-                  <td data-label=""><span className="flex items-center justify-end gap-2">{p.receipt_no && Number(p.amount) > 0 && <Link className="inline-flex items-center gap-1 text-xs link" href={`/cases/${caseId}/receipt/${p.id}`}><Printer className="h-3.5 w-3.5" />Receipt R-{p.receipt_no}</Link>}{me.role === "boss" && <button type="button" aria-label="Delete payment" className="text-muted hover:text-red-600" onClick={() => setDel({ kind: "payment", id: p.id, text: `${fdate(p.pay_date)} · ${inr(Math.abs(p.amount))} ${Number(p.amount) < 0 ? "refund" : "received"} by ${PAY_MODE_LABEL[p.mode]}${p.reference ? ` · ${p.reference}` : ""}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span></td>
+                  <td data-label="Payment details"><div className="min-w-0">
+                    <div>{PAY_MODE_LABEL[p.mode]}</div>
+                    {p.reference && <div className="break-all text-xs text-muted">Reference {p.reference}</div>}
+                    <div className="break-words text-xs text-muted">Received by {p.receiver?.full_name ?? "—"}</div>
+                  </div></td>
+                  <td data-label=""><span className="flex items-center justify-end gap-2 whitespace-nowrap">{p.receipt_no && Number(p.amount) > 0 && <Link className="inline-flex items-center gap-1 text-xs link" href={`/cases/${caseId}/receipt/${p.id}`}><Printer className="h-3.5 w-3.5" />Receipt R-{p.receipt_no}</Link>}{me.role === "boss" && <button type="button" aria-label="Delete payment" className="text-muted hover:text-red-600" onClick={() => setDel({ kind: "payment", id: p.id, text: `${fdate(p.pay_date)} · ${inr(Math.abs(p.amount))} ${Number(p.amount) < 0 ? "refund" : "received"} by ${PAY_MODE_LABEL[p.mode]}${p.reference ? ` · ${p.reference}` : ""}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span></td>
                 </tr>
               ))}
             </Table>
@@ -101,7 +104,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
                       {due > 0 && <Button size="sm" onClick={() => setSupPay(s)}>Pay</Button>}
                       {due > 0 && Number(advances[s.supplier_id] ?? 0) > 0.009 && (
                         <Button size="sm" className="ml-1.5" disabled={pending} title={`${s.supplier_name} holds ${inr(advances[s.supplier_id])} paid in advance`}
-                          onClick={() => run(() => useSupplierAdvance(s.supplier_id, caseId, due))}>Use advance {inr(Math.min(due, advances[s.supplier_id]))}</Button>
+                          onClick={() => run(() => applySupplierAdvance(s.supplier_id, caseId, due))}>Use advance {inr(Math.min(due, advances[s.supplier_id]))}</Button>
                       )}
                       {due < 0 && <Button size="sm" onClick={() => setSupRefund(s)} title="The supplier owes this money back: record it when they pay">Record refund</Button>}
                     </td>
@@ -169,7 +172,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
             <div className="mt-2 flex flex-wrap gap-2">
               <input className="field !w-56" placeholder="Expense name" value={exp.name} onChange={(e) => setExp({ ...exp, name: e.target.value })} />
               <input className="field !w-32 tabular" placeholder="₹" inputMode="decimal" value={exp.amount} onChange={(e) => setExp({ ...exp, amount: e.target.value })} />
-              <Button disabled={pending || !exp.name || !exp.amount} onClick={() => run(() => addExpense(caseId, exp.name, amount(exp.amount)), { then: () => setExp({ name: "", amount: "" }) })}>Add expense</Button>
+              <Button disabled={pending || !exp.name || !exp.amount} onClick={() => run(() => addExpense(caseId, exp.name, exp.amount), { then: () => setExp({ name: "", amount: "" }) })}>Add expense</Button>
             </div>
           </div>
         </Card>
@@ -191,6 +194,7 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
   const { run, pending } = useAction();
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "upi", reference: "", received_by: me.id, notes: "", refund: false });
   const amt = amount(v.amount);
+  const amountError = v.amount.trim() ? moneyProblem("Amount", v.amount, { allowNegative: true }) : null;
   // typing a minus sign is the same as ticking "refund"
   const isRefund = v.refund || amt < 0;
   const abs = Math.abs(amt) || 0;
@@ -199,11 +203,12 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
   const tooMuchRefund = isRefund && abs > refundable;
   return (
     <Dialog open={open} onClose={onClose} title={isRefund ? "Record refund to client" : "Record payment from client"}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !abs || tooMuchRefund}
-        onClick={() => run(() => addClientPayment({ ...v, case_id: caseId, amount: (isRefund ? -1 : 1) * abs }), { then: () => { onClose(); setV({ ...v, amount: "", reference: "", notes: "", refund: false }); } })}>{isRefund ? "Save refund" : "Save payment"}</Button></>}>
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !abs || !!amountError || tooMuchRefund}
+        onClick={() => run(() => addClientPayment({ ...v, case_id: caseId, amount: v.amount, refund: isRefund }), { then: () => { onClose(); setV({ ...v, amount: "", reference: "", notes: "", refund: false }); } })}>{isRefund ? "Save refund" : "Save payment"}</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Amount (₹)" required hint={due > 0 ? `Balance due ${inr(due)}` : undefined}>
-          <input className="field tabular" autoFocus inputMode="decimal" value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} />
+          <input className="field tabular" autoFocus inputMode="decimal" value={v.amount} aria-invalid={!!amountError} aria-describedby={amountError ? "client-payment-amount-error" : undefined} onChange={(e) => setV({ ...v, amount: e.target.value })} />
+          {amountError && <p id="client-payment-amount-error" role="alert" className="mt-1 text-xs text-red-700">{amountError}</p>}
           {due > 0 && !isRefund && amt !== due && (
             <button type="button" className="mt-1 text-xs link" onClick={() => setV({ ...v, amount: String(due) })}>Full balance {inr(due)}</button>
           )}
@@ -241,18 +246,20 @@ function SupplierPaymentDialog({ sup, onClose, caseId, refund }: { sup: SupMoney
   const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" });
   if (!sup) return null;
   const amt = Math.abs(v.amount.trim() ? amount(v.amount) : due);
+  const amountError = v.amount.trim() ? moneyProblem("Amount", v.amount, { allowNegative: true }) : null;
   const extra = Math.round((amt - Math.max(due, 0)) * 100) / 100;
   const save = () => run(() => addSupplierPayment({
     supplier_id: sup.supplier_id, pay_date: v.pay_date, mode: v.mode, reference: v.reference,
-    amount: refund ? -amt : amt,
+    amount: v.amount.trim() || due, refund: !!refund,
     allocations: [{ case_id: caseId, amount: refund ? -Math.min(amt, due) : Math.min(amt, Math.max(due, 0)) }],
   }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } });
   return (
     <Dialog open={!!sup} onClose={onClose} title={refund ? `Refund from ${sup.supplier_name}` : `Pay ${sup.supplier_name}`}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !amt} onClick={save}>{refund ? "Save refund" : "Save payment"}</Button></>}>
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !amt || !!amountError} onClick={save}>{refund ? "Save refund" : "Save payment"}</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={refund ? "Amount received back (₹)" : "Amount (₹)"} hint={refund ? `${sup.supplier_name} owes ${inr(due)} back on this case` : `Due on this case ${inr(due)}`}>
-          <input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} onChange={(e) => setV({ ...v, amount: e.target.value })} />
+          <input className="field tabular" inputMode="decimal" placeholder={String(due)} value={v.amount} aria-invalid={!!amountError} aria-describedby={amountError ? "supplier-payment-amount-error" : undefined} onChange={(e) => setV({ ...v, amount: e.target.value })} />
+          {amountError && <p id="supplier-payment-amount-error" role="alert" className="mt-1 text-xs text-red-700">{amountError}</p>}
         </Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
         <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>

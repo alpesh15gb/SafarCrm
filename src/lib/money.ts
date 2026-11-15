@@ -8,8 +8,6 @@ export type MoneyParse =
   | { kind: "invalid"; raw: string }    // typed, but not a number
   | { kind: "value"; paise: number };   // a number (zero included)
 
-const CLEAN = /[,\s₹]/g;
-
 /** Reads what staff typed: "11,000", "₹ 11000", "1,25,000.50", "Rs. 500" and plain numbers. Never guesses. */
 export function parseMoney(x: unknown): MoneyParse {
   if (x === null || x === undefined) return { kind: "missing" };
@@ -18,12 +16,13 @@ export function parseMoney(x: unknown): MoneyParse {
     return parseMoney(numberToPlain(x));
   }
   const raw = String(x);
-  const s = raw.replace(CLEAN, "").replace(/^rs\.?/i, "");
+  const s = raw.trim().replace(/^(-?)\s*(?:₹|rs\.?)\s*/i, "$1");
   if (s === "") return { kind: "missing" };
-  const m = /^(-?)(\d*)(?:\.(\d*))?$/.exec(s);
+  // Commas must form complete Indian or international groups before they are removed.
+  const m = /^(-?)(\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d*)(?:\.(\d*))?$/.exec(s);
   if (!m || (m[2] === "" && (m[3] ?? "") === "")) return { kind: "invalid", raw };
   const neg = m[1] === "-";
-  const whole = m[2] === "" ? 0 : Number(m[2]);
+  const whole = m[2] === "" ? 0 : Number(m[2].replaceAll(",", ""));
   const frac = (m[3] ?? "").padEnd(3, "0");
   // round to paise, half away from zero, from the decimal digits (no floating point involved)
   let paise = whole * 100 + Number(frac.slice(0, 2));

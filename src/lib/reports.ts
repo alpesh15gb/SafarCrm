@@ -2,7 +2,8 @@ import "server-only";
 import { createClient } from "./supabase/server";
 import { resolveRange } from "./range";
 import { SERVICE_LABEL, STATUS_LABEL, type Service } from "./constants";
-import { fdate, todayIST } from "./format";
+import { fdate } from "./format";
+import { clientDueTiming, reportParams } from "./report-filters";
 
 export type Col = { key: string; label: string; money?: boolean; profit?: boolean; date?: boolean; pct?: boolean };
 export type Report = { title: string; sub: string; cols: Col[]; rows: Record<string, unknown>[]; totals?: Record<string, unknown>; link?: (r: Record<string, unknown>) => string | null; sections?: { title: string; cols: Col[]; rows: Record<string, unknown>[] }[] };
@@ -19,7 +20,8 @@ export const REPORTS = [
 
 const sum = (rows: Record<string, unknown>[], k: string) => rows.reduce((s, r) => s + Number(r[k] ?? 0), 0);
 
-export async function runReport(key: string, sp: Record<string, string | undefined>): Promise<Report> {
+export async function runReport(key: string, input: Record<string, string | undefined>): Promise<Report> {
+  const sp = reportParams(key, input);
   const sb = await createClient();
   const range = resolveRange(sp);
   const f = { p_service: sp.service || null, p_staff: sp.staff || null, p_supplier: sp.supplier || null, p_customer: sp.customer || null };
@@ -42,12 +44,12 @@ export async function runReport(key: string, sp: Record<string, string | undefin
   if (key === "client_dues") {
     const { data, error } = await sb.rpc("report_client_dues", { p_staff: f.p_staff, p_customer: f.p_customer });
     throwIf(error);
-    const rows = data ?? [];
+    const rows = (data ?? []).map((r: Record<string, unknown>) => ({ ...r, due_timing: clientDueTiming(r.days) }));
     return {
       title: "Client dues", sub: "Who owes us, oldest first. Includes confirmed cases, and enquiries or quotes once the client has paid an advance.",
       cols: [{ key: "max_id", label: "MAX ID" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" }, { key: "staff", label: "Staff" },
         { key: "billed", label: "Billed", money: true }, { key: "received", label: "Received", money: true }, { key: "due", label: "Due", money: true },
-        { key: "due_since", label: "Due since", date: true }, { key: "days", label: "Days" }],
+        { key: "due_since", label: "Due date", date: true }, { key: "due_timing", label: "Payment status" }],
       rows, link: (r) => `/cases/${r.case_id}?tab=payments`,
       totals: { max_id: `Total (${rows.length})`, billed: sum(rows, "billed"), received: sum(rows, "received"), due: sum(rows, "due") },
     };
@@ -96,8 +98,7 @@ export async function runReport(key: string, sp: Record<string, string | undefin
     };
   }
   if (key === "upcoming") {
-    const from = sp.range ? range.from : todayIST();
-    const to = sp.range ? range.to : todayIST(30);
+    const { from, to } = range;
     const { data, error } = await sb.rpc("report_upcoming", { p_from: from, p_to: to, ...f });
     throwIf(error);
     return {

@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { REPORTS, runReport, type Col, type Report } from "@/lib/reports";
 import { Card, Chips, Empty, Money, PageHeader, Table, btnClass, cx } from "@/components/ui";
 import { DateRange } from "@/components/date-range";
-import { PrintButton, ReportCustomerFilter } from "./client";
+import { PrintButton, ReportCustomerFilter, ReportSupplierFilter } from "./client";
+import { reportParams, reportUses } from "@/lib/report-filters";
 import { SERVICES, SERVICE_LABEL } from "@/lib/constants";
 import { fdate } from "@/lib/format";
 
@@ -14,9 +15,10 @@ type SP = Record<string, string | undefined>;
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const me = await requireTeam();
-  const sp = await searchParams;
+  const input = await searchParams;
   const allowed = REPORTS.filter((r) => !("profit" in r && r.profit) || me.can_see_profit);
-  const key = allowed.some((r) => r.key === sp.r) ? sp.r! : allowed[0].key;
+  const key = allowed.some((r) => r.key === input.r) ? input.r! : allowed[0].key;
+  const sp = reportParams(key, input);
   const sb = await createClient();
   const [{ data: staff }, { data: suppliers }] = await Promise.all([
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
@@ -26,12 +28,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   let error = "";
   try { report = await runReport(key, sp); } catch (e) { error = e instanceof Error ? e.message : "Could not run report"; }
   const qs = new URLSearchParams(Object.entries({ ...sp, r: key }).filter(([, v]) => v) as [string, string][]).toString();
-  const uses = { date: ["pnl", "sales", "upcoming"].includes(key), service: ["pnl", "sales", "upcoming"].includes(key), staff: ["pnl", "sales", "upcoming", "client_dues", "client_credits"].includes(key), supplier: ["pnl", "sales", "upcoming", "supplier_dues"].includes(key), customer: ["pnl", "sales", "upcoming", "client_dues", "client_credits"].includes(key) };
+  const uses = reportUses(key);
 
   return (
     <>
       <PageHeader title="Reports" sub={!me.can_see_profit ? "Profit reports are visible to the boss and to staff the boss allows." : undefined}
-        action={<><PrintButton /><a className={btnClass("primary")} href={`/api/export?export=report&${qs}`}><Download className="h-4 w-4" />Export to Excel</a></>} />
+        action={report && <><PrintButton /><a className={btnClass("primary")} href={`/api/export?export=report&${qs}`}><Download className="h-4 w-4" />Export to Excel</a></>} />
       <div className="no-print mb-3 space-y-2">
         <div className="flex flex-wrap gap-1.5">
           {allowed.map((r) => (
@@ -47,7 +49,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           {uses.staff && <Chips param="staff" current={sp.staff} base={{ ...sp, r: key }} allLabel="All staff" items={(staff ?? []).map((s) => ({ value: s.id, label: s.full_name }))} />}
         </div>
         <div className="flex flex-wrap gap-3">
-          {uses.supplier && <SupplierSelect suppliers={suppliers ?? []} current={sp.supplier} sp={{ ...sp, r: key }} />}
+          {uses.supplier && <ReportSupplierFilter suppliers={suppliers ?? []} />}
           {uses.customer && <ReportCustomerFilter />}
         </div>
       </div>
@@ -91,16 +93,3 @@ function ReportTable({ cols, rows, totals, link }: { cols: Col[]; rows: Record<s
     </Table>
   );
 }
-
-function SupplierSelect({ suppliers, current, sp }: { suppliers: { id: string; name: string }[]; current?: string; sp: SP }) {
-  return (
-    <form className="flex items-center gap-2" action="">
-      {Object.entries(sp).filter(([k, v]) => v && k !== "supplier").map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-      <select name="supplier" defaultValue={current ?? ""} className="field !w-56">
-        <option value="">All suppliers</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
-      <button className={btnClass("secondary", "sm")}>Apply</button>
-    </form>
-  );
-}
-

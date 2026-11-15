@@ -15,7 +15,7 @@ import { NewButton } from "@/components/list-tools";
 import { TicketUploadButton } from "@/components/ticket-upload";
 import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, VISA_STATUS_TONE } from "@/lib/constants";
 import { fdate, inr, inrShort, todayIST } from "@/lib/format";
-import { resolveRange, type RangeSP as SP } from "@/lib/range";
+import { RangeValidationError, resolveRange, type RangeSP as SP } from "@/lib/range";
 
 export const metadata = { title: "Dashboard" };
 
@@ -44,7 +44,17 @@ function greeting() {
 export default async function Dashboard({ searchParams }: { searchParams: Promise<SP> }) {
   const me = await requireTeam();
   const sp = await searchParams;
-  const range = resolveRange(sp);
+  let range;
+  try {
+    range = resolveRange(sp);
+  } catch (error) {
+    if (!(error instanceof RangeValidationError)) throw error;
+    return (
+      <Card title="Dashboard" action={<DateRange />}>
+        <p role="alert" className="text-sm text-red-700">{error.message}</p>
+      </Card>
+    );
+  }
   const prev = prevRange(range.from, range.to);
   const sb = await createClient();
   const boss = me.role === "boss";
