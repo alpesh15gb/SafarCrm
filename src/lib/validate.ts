@@ -1,6 +1,7 @@
 // Checks shared by the booking form (browser) and saveLine (server), so a half-filled booking is never saved.
-import { SERVICE_FIELDS, SERVICE_LABEL, type Service } from "./constants";
-import { fdate } from "./format";
+import { SERVICE_FIELDS, SERVICE_LABEL, type Service } from "./constants.ts";
+import { fdate } from "./format.ts";
+import { sectorTimeIssues } from "./flight-time.ts";
 
 const DATE_PAIRS: [string, string, string, boolean][] = [
   // [first, second, message, must be strictly after]
@@ -23,6 +24,8 @@ export function lineProblem(service: Service, d: Record<string, unknown>): strin
       const cap = (t: string) => (n ? t : t[0].toUpperCase() + t.slice(1));
       if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) return n + cap("enter the From and To airport codes (3 letters, like BOM and DXB).");
       if (from === to) return n + cap("from and To are the same airport.");
+      const timeProblem = sectorTimeIssues(s, `Sector ${i + 1}`).find((issue) => issue.tone === "red");
+      if (timeProblem) return timeProblem.text;
       if (s.date && prev && s.date < prev) return n + cap(`the date ${fdate(s.date)} is before the previous sector.`);
       if (s.date) prev = s.date;
     }

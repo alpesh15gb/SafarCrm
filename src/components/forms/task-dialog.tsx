@@ -162,7 +162,7 @@ export function TaskDialog({ open, onClose, preset }: { open: boolean; onClose: 
         </Field>
         {taskId ? (
           <Field label="Case">
-            <TaskCasePanel taskId={taskId} taskTitle={title} linked={kase} customer={cust} onChanged={(c) => setKase(c)} />
+            <TaskCasePanel taskId={taskId} taskTitle={title} linked={kase} customer={cust} onChanged={(c) => setKase(c)} onOpenCase={onClose} />
           </Field>
         ) : kase ? (
           // started from a case, or a case picked by its number

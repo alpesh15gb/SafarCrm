@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(19);
+select plan(20);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -63,7 +63,9 @@ select is(pg_temp.bal(), 8000.00, 'the wallet balance goes back up');
 
 -- ---------------------------------------------------------------- 6. the quote is confirmed
 update public.cases set status = 'confirmed' where id = '00000000-0000-0000-0000-0000007ca5e3';
-select is(pg_temp.drawn('00000000-0000-0000-0000-0000007ca5e3'), 1000.00, 'confirming the case draws its bookings from the wallet');
+select is(pg_temp.drawn('00000000-0000-0000-0000-0000007ca5e3'), 0.00, 'confirming a case leaves pending bookings on hold');
+update public.booking_lines set status = 'confirmed' where id = '00000000-0000-0000-0000-0000007b0003';
+select is(pg_temp.drawn('00000000-0000-0000-0000-0000007ca5e3'), 1000.00, 'confirming the booking draws its cost from the wallet');
 
 -- ---------------------------------------------------------------- 7. low-balance reminder
 update public.suppliers set wallet_alert_below = 9000 where id = '00000000-0000-0000-0000-00000007d001';

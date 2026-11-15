@@ -32,11 +32,14 @@ export async function runReport(key: string, input: Record<string, string | unde
     throwIf(error);
     const rows = (data ?? []).map((r: Record<string, unknown>) => ({ ...r, status: STATUS_LABEL[String(r.status)] }));
     const sale = sum(rows, "sale"), profit = sum(rows, "profit");
+    const bookingFilter = !!(sp.service || sp.supplier);
     return {
-      title: "Profit and loss", sub: `Cases booked ${range.label.toLowerCase()} (confirmed onwards)`,
+      title: "Profit and loss", sub: `Cases booked ${range.label.toLowerCase()} (confirmed onwards)`
+        + (bookingFilter ? ". Sales, cost and commission cover matching bookings. Full case expenses are deducted once per case. Totals from separate filters can overlap." : ""),
       cols: [{ key: "max_id", label: "MAX ID" }, { key: "booked_on", label: "Booked", date: true }, { key: "customer", label: "Customer" }, { key: "staff", label: "Staff" }, { key: "status", label: "Status" },
         { key: "sale", label: "Sale", money: true }, { key: "cost", label: "Cost", money: true }, { key: "commission", label: "Commission", money: true },
-        { key: "expenses", label: "Expenses", money: true }, { key: "profit", label: "Profit", money: true, profit: true }, { key: "margin", label: "Margin %", pct: true }],
+        { key: "expenses", label: bookingFilter ? "Full case expenses" : "Expenses", money: true },
+        { key: "profit", label: bookingFilter ? "Profit after case expenses" : "Profit", money: true, profit: true }, { key: "margin", label: "Margin %", pct: true }],
       rows, link: (r) => `/cases/${r.case_id}?tab=payments`,
       totals: { max_id: `Total (${rows.length})`, sale, cost: sum(rows, "cost"), commission: sum(rows, "commission"), expenses: sum(rows, "expenses"), profit, margin: sale ? Math.round((profit / sale) * 1000) / 10 : null },
     };

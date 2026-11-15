@@ -19,7 +19,7 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const dayNo = (d: string) => Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))) / 86400000;
 
-export const isDate = (d?: string | null): d is string => !!d && DATE.test(d) && !Number.isNaN(dayNo(d));
+export const isDate = (d?: string | null): d is string => !!d && DATE.test(d) && new Date(dayNo(d) * 86400000).toISOString().slice(0, 10) === d;
 export const isTime = (t?: string | null): t is string => !!t && TIME.test(t);
 
 /** Days between departure and arrival dates (−1 across the date line, 0, +1, +2 …), or null when either is unknown. */
@@ -82,7 +82,7 @@ export function sectorTimeIssues(s: SectorTime, label = ""): TimeIssue[] {
   if (off !== null && (off < -1 || off > 3)) out.push({ tone: "red", text: `${at}arrives ${off > 0 ? off + " days after" : -off + " days before"} it departs. Check the dates.` });
   const mins = durationMinutes(s);
   if (mins !== null) {
-    if (mins <= 0) out.push({ tone: "red", text: `${at}with these dates, times and time zones it lands before it takes off. One of them is wrong.` });
+    if (mins <= 0) out.push({ tone: "red", text: `${at}arrival must be after departure. Check the dates, times and time zones.` });
     else if (mins > 20 * 60) out.push({ tone: "amber", text: `${at}about ${Math.round(mins / 60)} hours in the air. Check the arrival date.` });
   } else if (off === 0 && isTime(s.dep) && isTime(s.arr) && s.arr < s.dep && (!s.dep_tz || !s.arr_tz || s.dep_tz === s.arr_tz)) {
     out.push({ tone: "amber", text: `${at}arrives earlier in the day than it departs on the same date. If it lands the next day, change the arrival date.` });

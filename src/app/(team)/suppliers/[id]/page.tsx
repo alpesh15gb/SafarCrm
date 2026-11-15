@@ -75,10 +75,13 @@ async function Ledger({ id, wallet, isBoss, canDelete }: { id: string; wallet: b
             {((lines ?? []) as unknown as L[]).map((l) => (
               <tr key={l.id}>
                 <td data-label="MAX ID" className="font-mono text-[13px] font-semibold"><Link className="hover:underline" href={`/cases/${l.case.id}?tab=payments`}>{l.case.max_id}</Link></td>
-                <td data-label="Booking"><span className="inline-flex items-center gap-1.5"><ServiceIcon service={l.service} />{l.summary ?? SERVICE_LABEL[l.service]}</span></td>
+                <td data-label="Booking">
+                  <span className="inline-flex items-center gap-1.5"><ServiceIcon service={l.service} />{l.summary ?? SERVICE_LABEL[l.service]}</span>
+                  {l.status === "pending" && <span className="mt-0.5 block text-xs text-muted">Quoted cost {inr(l.supplier_cost)}</span>}
+                </td>
                 <td data-label="Date">{fdate(l.service_date) || "—"}</td>
-                <td data-label="Payable"><Money value={l.status === "cancelled" ? l.supplier_cost - l.refund_from_supplier : l.supplier_cost} /></td>
-                <td data-label="Due by">{fdate(l.supplier_due_date) || "—"}</td>
+                <td data-label="Payable"><Money value={l.status === "pending" ? 0 : l.status === "cancelled" ? l.supplier_cost - l.refund_from_supplier : l.supplier_cost} /></td>
+                <td data-label="Due by">{l.status === "pending" ? "—" : fdate(l.supplier_due_date) || "—"}</td>
                 <td data-label="Status"><StatusBadge status={l.status} /></td>
               </tr>
             ))}

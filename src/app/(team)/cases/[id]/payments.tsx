@@ -80,7 +80,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
           </div>
           {(() => {
             // cost on bookings that have no supplier can't be paid from here; say so plainly
-            const orphan = lines.filter((l) => !l.supplier_id && l.status !== "cancelled" && Number(l.supplier_cost) > 0);
+            const orphan = lines.filter((l) => !l.supplier_id && l.status === "confirmed" && Number(l.supplier_cost) > 0);
             const amt = orphan.reduce((a, l) => a + Number(l.supplier_cost), 0);
             return orphan.length > 0 ? (
               <p className="mx-4 mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-900">

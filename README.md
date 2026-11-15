@@ -82,6 +82,8 @@ All permissions live in Postgres, so hiding a button is never the only protectio
 - Commission entered as % is taken on the flight's base fare when entered (airlines pay commission on base fare, not taxes), otherwise on supplier cost.
 - After cancellation: (selling price − refund to client) − (supplier cost − refund from supplier).
 - Case profit = sum of line profits − case expenses.
+- Service/supplier-filtered P&L uses matching booking profit minus the full expenses of each matching case, once per case. Expenses are not allocated to individual bookings, so totals from separate filters can overlap.
+- Pending bookings retain estimated costs and profit but create no supplier payable or wallet draw. Confirmation creates the obligation. Cancellation retains the cost less the supplier refund, and recorded payments remain accounted for as payments or advances.
 - Billed to client = selling price + GST (after cancellation: selling price − refund to client).
 
 ## Automatic reminders

@@ -106,7 +106,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
 
       <div className={cx("mb-5 grid gap-3", me.can_see_profit ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
         <Strip label="Sale" icon={IndianRupee} tone="blue" value={<Money value={money?.sale} />} />
-        {me.can_see_profit && <Strip label="Cost" icon={Layers} tone="violet" value={<Money value={money?.supplier_payable} />} />}
+        {me.can_see_profit && <Strip label="Cost" icon={Layers} tone="violet" value={<Money value={linesWithMoney.reduce((sum, line) => sum + Number(line.money?.cost ?? 0), 0)} />} />}
         {me.can_see_profit && (
           <Strip
             label="Profit"

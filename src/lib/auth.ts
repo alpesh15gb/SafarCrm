@@ -77,6 +77,7 @@ function friendly(msg: string) {
   if (msg.includes("traveller_not_on_case")) return "Add the person to the case's travellers first, then to the booking.";
   if (msg.includes("sector_arrival_date")) return `Check the flight dates: ${msg.split("sector_arrival_date:")[1]?.trim() ?? "the arrival date doesn't fit the departure date"}.`;
   if (msg.includes("sector_timezone")) return "One of the airports has an unknown time zone. Clear it or pick the airport again.";
+  if (msg.includes("sector_chronology")) return `Check the flight times. ${msg.split("sector_chronology:")[1]?.trim() ?? "Arrival must be after departure."}`;
   if (msg.includes("invalid_amount")) return `That amount isn't a number${msg.match(/"([^"]*)"/) ? `: “${msg.match(/"([^"]*)"/)![1]}”` : ""}. Use digits, e.g. 12500.`;
   if (msg.includes("cancel_blocked_confirmed")) return "This case has confirmed bookings. Cancel each one on the Bookings tab first, so refunds and supplier charges are recorded. Then cancel the case.";
   if (msg.includes("cancel_blocked_supplier_paid")) return "A supplier has already been paid on this case. Cancel each booking on the Bookings tab first and enter what the supplier refunds. Then cancel the case.";

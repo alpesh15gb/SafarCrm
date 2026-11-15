@@ -14,9 +14,10 @@ type Suggestion = Awaited<ReturnType<typeof suggestCases>>[number];
 const REL: Record<string, string> = { payer: "pays", traveller: "travels", payer_and_traveller: "pays and travels" };
 
 /** For a saved task: open its case, link it to an existing case (suggested first), create a case from it, or move it. */
-export function TaskCasePanel({ taskId, taskTitle, linked, customer, onChanged }: {
+export function TaskCasePanel({ taskId, taskTitle, linked, customer, onChanged, onOpenCase }: {
   taskId: string; taskTitle: string; linked: Picked | null; customer: { id: string; full_name: string; corporate?: boolean } | null;
   onChanged: (c: Picked) => void;
+  onOpenCase: () => void;
 }) {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
@@ -55,7 +56,7 @@ export function TaskCasePanel({ taskId, taskTitle, linked, customer, onChanged }
     return (
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/cases/${linked.id}`} className="inline-flex items-center gap-1 rounded-lg bg-gray-50 px-3 py-1.5 font-mono text-sm font-semibold hover:bg-gray-100">
+          <Link href={`/cases/${linked.id}`} onNavigate={onOpenCase} className="inline-flex items-center gap-1 rounded-lg bg-gray-50 px-3 py-1.5 font-mono text-sm font-semibold hover:bg-gray-100">
             {linked.label}<ArrowRight className="h-3.5 w-3.5" />
           </Link>
           <span className="text-xs text-muted">Open linked case</span>
