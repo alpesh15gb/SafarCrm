@@ -73,3 +73,40 @@ export async function attachDocument(caseId: string, docId: string): Promise<Act
     return fail(e);
   }
 }
+
+/** Sends a file straight to the client: the PDF itself on WhatsApp (Evolution API) or as an email attachment.
+ *  `to` defaults to the case customer's WhatsApp/mobile or email. Not configured → code "not_configured", and the
+ *  screen falls back to sharing a link. */
+export async function sendFileToClient(fileId: string, channel: "whatsapp" | "email", to?: string): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    // read through row-level security: only someone who may see the file can send it
+    const { data: f } = await sb.from("files")
+      .select("id, file_name, original_name, mime, kind, storage_path, case_id, case:cases(max_id, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email))")
+      .eq("id", fileId).maybeSingle();
+    if (!f) return { ok: false, error: "File not found." };
+    const kase = f.case as unknown as { max_id: string; customer: { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null } | null } | null;
+    const cust = kase?.customer ?? null;
+    const dest = (to ?? (channel === "whatsapp" ? cust?.whatsapp || cust?.mobile : cust?.email) ?? "").trim();
+    if (!dest) return { ok: false, error: channel === "whatsapp" ? "The client has no mobile number." : "The client has no email address. Add it on their profile." };
+    const { whatsappConfigured, emailConfigured, sendWhatsAppDocument, sendEmailWithAttachment } = await import("@/lib/send");
+    if (channel === "whatsapp" ? !whatsappConfigured() : !emailConfigured()) return { ok: false, error: "not_configured" };
+    const { data: blob, error: de } = await createAdmin().storage.from("files").download(f.storage_path);
+    if (de || !blob) return { ok: false, error: "The file could not be read from storage." };
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const what = f.kind === "other" || f.kind === "document" ? "document" : f.kind;
+    const first = cust?.full_name.split(" ")[0] ?? "";
+    const { data: st } = await sb.from("settings").select("agency_name, agency_phone").eq("id", 1).single();
+    const agency = st?.agency_name || "your travel agent";
+    const r = channel === "whatsapp"
+      ? await sendWhatsAppDocument(dest, { bytes, mime: f.mime, name: f.file_name }, `Namaste ${first}, here is your ${what}${kase ? ` for ${kase.max_id}` : ""}.\n${agency}${st?.agency_phone ? ` · ${st.agency_phone}` : ""}`)
+      : await sendEmailWithAttachment(dest, `${kase ? `${kase.max_id}: ` : ""}your ${what} from ${agency}`,
+          `<p>Namaste ${first},</p><p>Please find your ${what}${kase ? ` for ${kase.max_id}` : ""} attached.</p><p>${agency}${st?.agency_phone ? `<br>${st.agency_phone}` : ""}</p>`,
+          { bytes, name: f.file_name });
+    if (!r.ok) return { ok: false, error: r.code === "not_configured" ? "not_configured" : r.message };
+    if (f.case_id) await sb.rpc("log_file_sent", { p_file: f.id, p_channel: channel, p_to: dest }).then(() => {}, () => {});
+    return { ok: true, message: channel === "whatsapp" ? `Sent on WhatsApp to ${first || dest}` : `Emailed to ${dest}` };
+  } catch (e) {
+    return fail(e);
+  }
+}

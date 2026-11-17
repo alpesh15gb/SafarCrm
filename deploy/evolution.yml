@@ -1,0 +1,46 @@
+# WhatsApp sending for Safar CRM through Evolution API (self-hosted, https://doc.evolution-api.com).
+# The CRM sends ticket PDFs straight to the client's WhatsApp through it (Files → WhatsApp).
+#
+# Start (once):   cd /opt/safar-crm/deploy && EVOLUTION_API_KEY=$(openssl rand -hex 24) && \
+#                 echo "EVOLUTION_API_KEY=$EVOLUTION_API_KEY" > .evolution.env && \
+#                 echo "EVOLUTION_DB_PASSWORD=$(openssl rand -hex 16)" >> .evolution.env && \
+#                 docker compose --env-file .evolution.env -f evolution.yml up -d
+# Then link the office WhatsApp number by scanning a QR code (deploy/DEPLOY.md, "WhatsApp sending").
+#
+# Evolution API talks to WhatsApp the way WhatsApp Web does. It is not Meta's official Business API, so use a
+# number the office can afford to have restricted, and don't send bulk or unsolicited messages from it.
+# Only reachable from this server (127.0.0.1); the CRM reaches it at http://host.docker.internal:8090.
+name: safar-evolution
+services:
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    container_name: safar-evolution-api
+    restart: unless-stopped
+    depends_on: [evolution-postgres]
+    ports:
+      - "127.0.0.1:8090:8080"
+    environment:
+      SERVER_URL: http://localhost:8090
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?set EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD:?set EVOLUTION_DB_PASSWORD}@evolution-postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: safar_crm
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      LOG_LEVEL: ERROR
+    volumes:
+      - evolution_instances:/evolution/instances
+  evolution-postgres:
+    image: postgres:16-alpine
+    container_name: safar-evolution-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD:?set EVOLUTION_DB_PASSWORD}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_db:/var/lib/postgresql/data
+volumes:
+  evolution_instances:
+  evolution_db:

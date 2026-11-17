@@ -36,7 +36,7 @@ export default async function PortalHome() {
           </ul>
         )}
       </Card>
-      {p.allow_uploads && (
+      {/* sending tickets from the portal is off: ticket reading was removed (owner, 2026-11-18) */ false && p.allow_uploads && (
         <Card title="Booked a flight yourself?" sub="Send us the ticket and we'll add it to your trip after checking it." className="mt-4">
           <PortalTicketUpload me={{ id: "", full_name: p.full_name ?? "Me" }} family={family} />
           {sent.length > 0 && (

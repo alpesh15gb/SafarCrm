@@ -5,7 +5,7 @@ import { Download, FileText, Link2, Mail, MessageCircle, RefreshCw, Trash2, Uplo
 import { Badge, cx } from "./ui";
 import { Confirm, Toggle, useAction, useToast } from "./client";
 import { useApp } from "./shell/shell";
-import { createShareLink, deleteFile, setFileVisible } from "@/actions/files";
+import { createShareLink, deleteFile, sendFileToClient, setFileVisible } from "@/actions/files";
 import { fdatetime, waLink } from "@/lib/format";
 
 const OK_TYPES = ["application/pdf", "image/jpeg", "image/png"];
@@ -85,6 +85,22 @@ export function FileItem({ f, maxId, customer, history }: {
   const reissueRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  const [sending, setSending] = useState<"" | "whatsapp" | "email">("");
+  /** One click: the file itself goes to the client on WhatsApp or by email. Until sending is set up on the server,
+   *  the old way (a 7-day link in WhatsApp or the email app) is used instead. */
+  async function send(channel: "whatsapp" | "email") {
+    if (sending) return;
+    setSending(channel);
+    try {
+      const r = await sendFileToClient(f.id, channel);
+      if (r.ok) { toast(r.message ?? "Sent"); router.refresh(); return; }
+      if (r.error === "not_configured") return share(channel === "whatsapp" ? "wa" : "email");
+      toast(r.error, "error");
+    } finally {
+      setSending("");
+    }
+  }
+
   async function share(how: "wa" | "copy" | "email") {
     const r = await createShareLink(f.id);
     if (!r.ok) return toast(r.error, "error");
@@ -131,9 +147,14 @@ export function FileItem({ f, maxId, customer, history }: {
         <a className={btn} href={`/api/files/${f.id}?dl=1`}><Download className="h-3.5 w-3.5" />Download</a>
         {!f.superseded_at && (
           <>
-            <button type="button" className={btn} onClick={() => share("wa")}><MessageCircle className="h-3.5 w-3.5" />Share</button>
+            <button type="button" className={cx(btn, "!text-emerald-700 hover:!bg-emerald-50")} disabled={!!sending} onClick={() => send("whatsapp")}
+              title={customer ? `Send to ${customer.full_name} on WhatsApp` : "Send on WhatsApp"}>
+              <MessageCircle className="h-3.5 w-3.5" />{sending === "whatsapp" ? "Sending…" : "WhatsApp"}
+            </button>
+            <button type="button" className={btn} disabled={!!sending} onClick={() => send("email")} title={customer?.email ? `Email to ${customer.email}` : "Email"}>
+              <Mail className="h-3.5 w-3.5" />{sending === "email" ? "Sending…" : "Email"}
+            </button>
             <button type="button" className={btn} onClick={() => share("copy")}><Link2 className="h-3.5 w-3.5" />Copy link</button>
-            <button type="button" className={btn} onClick={() => share("email")}><Mail className="h-3.5 w-3.5" />Email</button>
             <button type="button" className={btn} onClick={() => reissueRef.current?.click()}><RefreshCw className="h-3.5 w-3.5" />Re-issue</button>
             <input ref={reissueRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => e.target.files?.[0] && reissue(e.target.files[0])} />
           </>

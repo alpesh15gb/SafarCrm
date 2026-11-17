@@ -46,3 +46,4 @@ deploy/.secrets
 deploy/instance.env
 deploy/supabase-docker/
 dist/
+deploy/.evolution.env

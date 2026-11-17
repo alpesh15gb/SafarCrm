@@ -160,3 +160,40 @@ docker logs --tail 50 supabase-envoy     # API gateway
 curl -sI https://crm.maxtravel.in/login  # should be 200
 curl -s https://crm.maxtravel.in/auth/v1/health -H "apikey: $(grep ^ANON_KEY deploy/.secrets | cut -d= -f2)"
 ```
+
+## WhatsApp and email sending (Files → WhatsApp / Email)
+
+The WhatsApp and Email buttons on every file send the PDF itself to the client. Until these are set up, the
+buttons fall back to sharing a 7-day link (WhatsApp opens with the link; the email app opens with it).
+
+**WhatsApp (Evolution API, self-hosted).** Uses the office WhatsApp number the way WhatsApp Web does. It isn't
+Meta's official Business API: use a dedicated office number and never send bulk messages from it.
+
+1. Start it (once), from `/opt/safar-crm/deploy`:
+   ```bash
+   printf 'EVOLUTION_API_KEY=%s\nEVOLUTION_DB_PASSWORD=%s\n' "$(openssl rand -hex 24)" "$(openssl rand -hex 16)" > .evolution.env
+   docker compose --env-file .evolution.env -f evolution.yml up -d
+   ```
+2. Create the instance and show its QR code (replace KEY with the EVOLUTION_API_KEY from `.evolution.env`):
+   ```bash
+   curl -s -X POST http://127.0.0.1:8090/instance/create -H "apikey: KEY" -H 'content-type: application/json' \
+     -d '{"instanceName":"maxtravel","integration":"WHATSAPP-BAILEYS","qrcode":true}'
+   ```
+   Open the QR from the reply (or the manager at `http://127.0.0.1:8090/manager` through an SSH tunnel:
+   `ssh -L 8090:127.0.0.1:8090 root@server`) and scan it from the office phone: WhatsApp → Linked devices.
+3. Tell the CRM, in `deploy/.env.production`, then `bash deploy/deploy.sh`:
+   ```
+   EVOLUTION_API_URL=http://host.docker.internal:8090
+   EVOLUTION_API_KEY=<the same key>
+   EVOLUTION_INSTANCE=maxtravel
+   ```
+
+**Email (Brevo or Resend).** Create an account, add and verify the sending domain (they show the DNS records to
+add for maxtravel.us), create an API key, then in `deploy/.env.production`:
+```
+EMAIL_PROVIDER=brevo            # or resend
+EMAIL_API_KEY=<api key>
+EMAIL_FROM=tickets@maxtravel.us # an address on the verified domain
+EMAIL_FROM_NAME=Max Travel
+```
+and `bash deploy/deploy.sh`. Every file sent is recorded in the case's Activity tab (who, how, to whom).
