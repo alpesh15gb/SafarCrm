@@ -5,6 +5,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC = ["/login", "/s/", "/api/imports/worker"];
 
 export async function proxy(request: NextRequest) {
+  // This one receiver authenticates its bounded raw body with an HMAC signature.
+  // Do not make other integration paths or the staff enquiry inbox public.
+  if (request.nextUrl.pathname === '/api/integrations/max-ai/enquiries') return NextResponse.next({ request });
   let response = NextResponse.next({ request });
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
