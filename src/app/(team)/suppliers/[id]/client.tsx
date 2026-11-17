@@ -10,7 +10,8 @@ import { deleteSupplier, saveSupplier, saveSupplierNotes } from "@/actions/suppl
 import { addSupplierPayment, deletePayment } from "@/actions/money";
 import { amount, moneyProblem } from "@/lib/money";
 import { deleteFile } from "@/actions/files";
-import { PAY_MODES, SERVICES, SERVICE_LABEL, SUPPLIER_TERMS, SUPPLIER_TYPES } from "@/lib/constants";
+import { AccountSelect } from "@/components/account-select";
+import { SERVICES, SERVICE_LABEL, SUPPLIER_TERMS, SUPPLIER_TYPES } from "@/lib/constants";
 import { fdate, fdatetime, inr, todayIST } from "@/lib/format";
 
 type F = { key: string; label: string; type?: "select" | "number" | "url"; options?: { value: string; label: string }[]; hint?: string; upper?: boolean; only?: string };
@@ -79,7 +80,7 @@ type Open = { case_id: string; max_id: string; title: string; due: number; due_d
 export function SupplierPayButton({ supplier, open, wallet = false }: { supplier: { id: string; name: string }; open: Open[]; wallet?: boolean }) {
   const { run, pending } = useAction();
   const [show, setShow] = useState(false);
-  const [v, setV] = useState({ pay_date: todayIST(), mode: "bank", reference: "", notes: "" });
+  const [v, setV] = useState({ pay_date: todayIST(), mode: "bank", account_id: "", reference: "", notes: "" });
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [advance, setAdvance] = useState("");
   const [opening, setOpening] = useState(false);
@@ -92,7 +93,7 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
   const save = () => {
     if (problem) return Promise.resolve({ ok: false as const, error: problem });
     return opening
-      ? addSupplierPayment({ supplier_id: supplier.id, ...v, mode: "opening", amount: advance, allocations: [] })
+      ? addSupplierPayment({ supplier_id: supplier.id, ...v, mode: "opening", account_id: null, amount: advance, allocations: [] })
       : addSupplierPayment({ supplier_id: supplier.id, ...v, amount: total, allocations: Object.entries(alloc).map(([case_id, value]) => ({ case_id, amount: value })) });
   };
   return (
@@ -111,7 +112,7 @@ export function SupplierPayButton({ supplier, open, wallet = false }: { supplier
           )}
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label={opening ? "Balance as on" : "Date"}><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
-            {!opening && <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>}
+            {!opening && <AccountSelect label="Paid from" value={{ account_id: v.account_id, mode: v.mode }} onChange={(x) => setV({ ...v, ...x })} />}
             <Field label={opening ? "Note" : "Reference no."}><input className="field" value={v.reference} placeholder={opening ? "Optional" : undefined} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
           </div>
           {wallet && !opening && open.length > 0 && (

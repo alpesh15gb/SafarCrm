@@ -1,13 +1,14 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Download, X } from "lucide-react";
+import { Download, Plus, X } from "lucide-react";
 import { Badge, Button, Card, Field, Table, btnClass, cx } from "@/components/ui";
 import { Confirm, CopyButton, Dialog, Toggle, useAction } from "@/components/client";
 import {
   addLookup, createStaff, deactivateStaff, reactivateStaff, removeLookup, resetStaffPassword, runRemindersNow, saveSettings, setMaxStart, updateStaff,
 } from "@/actions/settings";
-import { fdatetime } from "@/lib/format";
+import { fdatetime, inr } from "@/lib/format";
+import { saveMoneyAccount, setMoneyAccountActive } from "@/actions/money";
 
 type S = Record<string, unknown> & { auto_reminders: Record<string, boolean>; portal_defaults: Record<string, boolean> };
 
@@ -238,5 +239,56 @@ export function DataTab({ backups, stale }: { backups: { at: string; db_size: st
         <p className="mt-3 text-xs text-muted">Backups stay on the server for 30 days. Copy them to another place every week, so a server failure can&apos;t take them too.</p>
       </Card>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- money accounts (owner, 2026-11-18)
+export type AccountRow = { id: string; name: string; kind: string; last4: string | null; active: boolean; opening_balance: number; money_in: number; money_out: number; balance: number; payments: number };
+const KIND_LABEL: Record<string, string> = { bank: "Bank account", card: "Credit card", cash: "Cash", upi: "UPI" };
+
+export function MoneyAccountsTab({ accounts }: { accounts: AccountRow[] }) {
+  const { run, pending } = useAction();
+  const blank = { id: "", name: "", kind: "bank", last4: "", opening_balance: "", opening_date: "" };
+  const [edit, setEdit] = useState<typeof blank | null>(null);
+  return (
+    <Card title="Money accounts" className="max-w-3xl" sub="The bank accounts, credit cards, cash and UPI the agency's money moves through. Staff pick one when recording a payment."
+      action={<Button size="sm" variant="primary" onClick={() => setEdit(blank)}><Plus className="h-3.5 w-3.5" />Add account</Button>} pad={false}>
+      <ul className="divide-y divide-line">
+        {accounts.map((a) => (
+          <li key={a.id} className={cx("flex flex-wrap items-center gap-3 px-4 py-3", !a.active && "opacity-60")}>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">{a.name}{a.last4 && <span className="ml-1 font-mono text-muted">••{a.last4}</span>}</div>
+              <div className="text-xs text-muted">{KIND_LABEL[a.kind] ?? a.kind}{!a.active && " · hidden"} · {a.payments} payment{a.payments === 1 ? "" : "s"} · in {inr(a.money_in)} · out {inr(a.money_out)}</div>
+            </div>
+            <div className="text-right">
+              <div className={cx("text-sm font-semibold tabular", Number(a.balance) < 0 && "text-red-700")}>{inr(Math.abs(Number(a.balance)))}</div>
+              <div className="text-[11px] text-muted">{a.kind === "card" ? (Number(a.balance) < 0 ? "spent on the card" : "credit on the card") : Number(a.balance) < 0 ? "overdrawn" : "balance"}</div>
+            </div>
+            <Button size="sm" onClick={() => setEdit({ id: a.id, name: a.name, kind: a.kind, last4: a.last4 ?? "", opening_balance: String(a.opening_balance ?? ""), opening_date: "" })}>Edit</Button>
+            <Button size="sm" disabled={pending} onClick={() => run(() => setMoneyAccountActive(a.id, !a.active))}>{a.active ? "Hide" : "Use again"}</Button>
+          </li>
+        ))}
+      </ul>
+      <p className="border-t border-line px-4 py-2.5 text-xs text-muted">Balance = opening balance + money received into it − money paid from it (payments since the opening date). For a credit card it shows what was spent on it.</p>
+      <Dialog open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? "Edit account" : "Add account"}
+        footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" disabled={pending || !edit?.name.trim()}
+          onClick={() => edit && run(() => saveMoneyAccount(edit), { then: () => setEdit(null) })}>Save</Button></>}>
+        {edit && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Name" required className="sm:col-span-2"><input className="field" autoFocus value={edit.name} placeholder="HDFC current account / ICICI credit card / Office cash" onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
+            <Field label="Kind">
+              <select className="field" value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>
+                {Object.entries(KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </Field>
+            <Field label="Last 4 digits" hint="Optional: tells two cards or accounts apart"><input className="field font-mono" inputMode="numeric" maxLength={4} value={edit.last4} onChange={(e) => setEdit({ ...edit, last4: e.target.value.replace(/\D/g, "") })} /></Field>
+            <Field label={edit.kind === "card" ? "Amount owed on the card now (₹)" : "Opening balance (₹)"} hint={edit.kind === "card" ? "Type it as a minus, e.g. -25000" : "What is in it today"}>
+              <input className="field tabular" inputMode="decimal" value={edit.opening_balance} onChange={(e) => setEdit({ ...edit, opening_balance: e.target.value })} />
+            </Field>
+            <Field label="As on" hint="Payments from this date count towards the balance"><input type="date" className="field" value={edit.opening_date} onChange={(e) => setEdit({ ...edit, opening_date: e.target.value })} /></Field>
+          </div>
+        )}
+      </Dialog>
+    </Card>
   );
 }

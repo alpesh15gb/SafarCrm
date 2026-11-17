@@ -8,11 +8,12 @@ import { StaffSelect } from "@/components/pickers";
 import { useApp } from "@/components/shell/shell";
 import { amount, moneyProblem } from "@/lib/money";
 import { addClientPayment, addExpense, addSupplierPayment, deleteExpense, deletePayment, useSupplierAdvance as applySupplierAdvance } from "@/actions/money";
-import { PAY_MODES, PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
+import { PAY_MODE_LABEL, SERVICE_LABEL } from "@/lib/constants";
+import { AccountSelect } from "@/components/account-select";
 import { fdate, todayIST, inr } from "@/lib/format";
 import type { Line } from "./bookings";
 
-type Pay = { id: string; receipt_no: number | null; pay_date: string; amount: number; mode: string; reference: string | null; notes: string | null; receiver: { full_name: string } | null };
+type Pay = { id: string; receipt_no: number | null; pay_date: string; amount: number; mode: string; reference: string | null; notes: string | null; receiver: { full_name: string } | null; account?: { name: string; last4: string | null } | null };
 type Exp = { id: string; name: string; amount: number; exp_date: string };
 type SupMoney = { supplier_id: string; supplier_name: string; payable: number; paid: number; due_date: string | null };
 type SupPay = { amount: number; payment: { id: string; pay_date: string; mode: string; reference: string | null; supplier: { name: string; terms?: string } | null } };
@@ -57,7 +58,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
                   <td data-label="Date" className="whitespace-nowrap">{fdate(p.pay_date)}</td>
                   <td data-label="Amount"><Money value={p.amount} />{Number(p.amount) < 0 && <Badge className="ml-1">Refund</Badge>}</td>
                   <td data-label="Payment details"><div className="min-w-0">
-                    <div>{PAY_MODE_LABEL[p.mode]}</div>
+                    <div>{p.account ? <>{p.account.name}{p.account.last4 ? ` ••${p.account.last4}` : ""}{p.mode === "cheque" ? " (cheque)" : ""}</> : PAY_MODE_LABEL[p.mode]}</div>
                     {p.reference && <div className="break-all text-xs text-muted">Reference {p.reference}</div>}
                     <div className="break-words text-xs text-muted">Received by {p.receiver?.full_name ?? "—"}</div>
                   </div></td>
@@ -192,7 +193,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
 function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: { open: boolean; onClose: () => void; caseId: string; due: number; received: number; status: string }) {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
-  const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "upi", reference: "", received_by: me.id, notes: "", refund: false });
+  const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "upi", account_id: "", reference: "", received_by: me.id, notes: "", refund: false });
   const amt = amount(v.amount);
   const amountError = v.amount.trim() ? moneyProblem("Amount", v.amount, { allowNegative: true }) : null;
   // typing a minus sign is the same as ticking "refund"
@@ -214,7 +215,7 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
           )}
         </Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
-        <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
+        <AccountSelect label={isRefund ? "Paid from" : "Received into"} value={{ account_id: v.account_id, mode: v.mode }} onChange={(x) => setV({ ...v, ...x })} />
         <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} placeholder="UTR / cheque no." /></Field>
         <Field label="Received by"><StaffSelect staff={staff} value={v.received_by} onChange={(x) => setV({ ...v, received_by: x })} /></Field>
         <Field label="Notes"><input className="field" value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
@@ -243,16 +244,16 @@ function SupplierPaymentDialog({ sup, onClose, caseId, refund }: { sup: SupMoney
   const balance = sup ? Number(sup.payable) - Number(sup.paid) : 0;
   // a refund is money the supplier pays back (we paid more than the booking now costs, e.g. after a cancellation)
   const due = refund ? Math.max(-balance, 0) : balance;
-  const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" });
+  const [v, setV] = useState({ pay_date: todayIST(), amount: "", mode: "bank", account_id: "", reference: "" });
   if (!sup) return null;
   const amt = Math.abs(v.amount.trim() ? amount(v.amount) : due);
   const amountError = v.amount.trim() ? moneyProblem("Amount", v.amount, { allowNegative: true }) : null;
   const extra = Math.round((amt - Math.max(due, 0)) * 100) / 100;
   const save = () => run(() => addSupplierPayment({
-    supplier_id: sup.supplier_id, pay_date: v.pay_date, mode: v.mode, reference: v.reference,
+    supplier_id: sup.supplier_id, pay_date: v.pay_date, mode: v.mode, account_id: v.account_id, reference: v.reference,
     amount: v.amount.trim() || due, refund: !!refund,
     allocations: [{ case_id: caseId, amount: refund ? -Math.min(amt, due) : Math.min(amt, Math.max(due, 0)) }],
-  }), { then: () => { setV({ pay_date: todayIST(), amount: "", mode: "bank", reference: "" }); onClose(); } });
+  }), { then: () => { setV({ ...v, pay_date: todayIST(), amount: "", reference: "" }); onClose(); } });
   return (
     <Dialog open={!!sup} onClose={onClose} title={refund ? `Refund from ${sup.supplier_name}` : `Pay ${sup.supplier_name}`}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={pending || !amt || !!amountError} onClick={save}>{refund ? "Save refund" : "Save payment"}</Button></>}>
@@ -262,7 +263,7 @@ function SupplierPaymentDialog({ sup, onClose, caseId, refund }: { sup: SupMoney
           {amountError && <p id="supplier-payment-amount-error" role="alert" className="mt-1 text-xs text-red-700">{amountError}</p>}
         </Field>
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
-        <Field label="Mode"><select className="field" value={v.mode} onChange={(e) => setV({ ...v, mode: e.target.value })}>{PAY_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select></Field>
+        <AccountSelect label={refund ? "Received into" : "Paid from"} value={{ account_id: v.account_id, mode: v.mode }} onChange={(x) => setV({ ...v, ...x })} />
         <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} /></Field>
       </div>
       {!refund && extra > 0 && (

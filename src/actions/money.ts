@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
 import { moneyProblem, strictAmount } from "@/lib/money";
 
-type PayIn = { case_id: string; pay_date: string; amount: number | string; refund?: boolean; mode: string; reference?: string; received_by?: string; notes?: string };
+type PayIn = { case_id: string; pay_date: string; amount: number | string; refund?: boolean; mode: string; account_id?: string | null; reference?: string; received_by?: string; notes?: string };
 
 export async function addClientPayment(p: PayIn): Promise<ActionResult> {
   try {
@@ -16,7 +16,7 @@ export async function addClientPayment(p: PayIn): Promise<ActionResult> {
     const sb = await createClient();
     const { data: before } = await sb.from("cases").select("status").eq("id", p.case_id).maybeSingle();
     const { error } = await sb.from("payments").insert({
-      direction: "in", case_id: p.case_id, pay_date: p.pay_date, amount: paid, mode: p.mode,
+      direction: "in", case_id: p.case_id, pay_date: p.pay_date, amount: paid, mode: p.mode, account_id: p.account_id || null,
       reference: p.reference?.trim() || null, received_by: p.received_by || me?.id, notes: p.notes?.trim() || null,
     });
     if (error) throw error;
@@ -31,7 +31,7 @@ export async function addClientPayment(p: PayIn): Promise<ActionResult> {
   }
 }
 
-type PayOut = { supplier_id: string; pay_date: string; amount: number | string; refund?: boolean; mode: string; reference?: string; notes?: string; allocations: { case_id: string; amount: number | string }[] };
+type PayOut = { supplier_id: string; pay_date: string; amount: number | string; refund?: boolean; mode: string; account_id?: string | null; reference?: string; notes?: string; allocations: { case_id: string; amount: number | string }[] };
 
 export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
   try {
@@ -51,12 +51,16 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
     if (Math.abs(sum) - Math.abs(paid) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, more than the payment of ₹${paid}.` };
     const sb = await createClient();
     // payment + allocations in one database transaction (all or nothing)
-    const { error } = await sb.rpc("record_supplier_payment", {
+    const { data: pid, error } = await sb.rpc("record_supplier_payment", {
       p_supplier: p.supplier_id, p_date: p.pay_date || null, p_amount: paid, p_mode: p.mode,
       p_reference: p.reference ?? null, p_notes: p.notes ?? null,
       p_allocations: alloc,
     });
     if (error) throw error;
+    if (p.account_id && pid) {
+      const { error: ae } = await sb.rpc("set_payment_account", { p_payment: pid, p_account: p.account_id });
+      if (ae) return { ok: true, message: "Supplier payment recorded, but the account could not be set on it. Set it on the payment." };
+    }
     return { ok: true, message: "Supplier payment recorded" };
   } catch (e) {
     return fail(e);
@@ -110,6 +114,52 @@ export async function deleteExpense(id: string): Promise<ActionResult> {
     if (error) throw error;
     if (!data?.length) return { ok: false, error: "Only the boss can delete expenses." };
     return { ok: true, message: "Expense deleted" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------------------------------------------------------- money accounts (owner, 2026-11-18)
+export type MoneyAccount = { id: string; name: string; kind: "bank" | "card" | "cash" | "upi"; last4: string | null; active: boolean };
+
+/** Active accounts for the "Received into" / "Paid from" pickers. */
+export async function listMoneyAccounts(): Promise<MoneyAccount[]> {
+  const sb = await createClient();
+  const { data } = await sb.from("money_accounts").select("id, name, kind, last4, active").eq("active", true).order("sort").order("name");
+  return (data ?? []) as MoneyAccount[];
+}
+
+/** Add or change a bank account, credit card, cash or UPI account. Boss only (checked in the database too). */
+export async function saveMoneyAccount(a: { id?: string; name: string; kind: string; last4?: string; opening_balance?: string; opening_date?: string }): Promise<ActionResult> {
+  try {
+    const me = await getMe();
+    if (me?.role !== "boss") return { ok: false, error: "Only the boss can set up accounts." };
+    if (!a.name.trim()) return { ok: false, error: "Give the account a name, e.g. HDFC current account." };
+    if (!["bank", "card", "cash", "upi"].includes(a.kind)) return { ok: false, error: "Choose what kind of account it is." };
+    const last4 = (a.last4 ?? "").replace(/\D/g, "");
+    if (last4 && last4.length !== 4) return { ok: false, error: "Last 4 digits: exactly 4 numbers, or leave it empty." };
+    const bad = moneyProblem("Opening balance", a.opening_balance, { allowNegative: true });
+    if (bad) return { ok: false, error: bad };
+    const row = {
+      name: a.name.trim(), kind: a.kind, last4: last4 || null, opening_balance: strictAmount(a.opening_balance),
+      ...(a.opening_date ? { opening_date: a.opening_date } : {}),
+    };
+    const sb = await createClient();
+    const { error } = a.id ? await sb.from("money_accounts").update(row).eq("id", a.id) : await sb.from("money_accounts").insert(row);
+    if (error) throw error;
+    return { ok: true, message: a.id ? "Account saved" : "Account added" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setMoneyAccountActive(id: string, active: boolean): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { data, error } = await sb.from("money_accounts").update({ active }).eq("id", id).select("id");
+    if (error) throw error;
+    if (!data?.length) return { ok: false, error: "Only the boss can change accounts." };
+    return { ok: true, message: active ? "Account in use again" : "Account hidden from the pickers; its history stays" };
   } catch (e) {
     return fail(e);
   }

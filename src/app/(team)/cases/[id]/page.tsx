@@ -180,7 +180,7 @@ async function BookingsLoader(p: { caseId: string; lines: Line[]; travellers: Pa
 async function PaymentsLoader({ caseId, lines, money, status }: { caseId: string; lines: Line[]; money: Record<string, unknown> | null; status: string }) {
   const sb = await createClient();
   const [{ data: payments }, { data: expenses }, { data: suppliers }, { data: allocs }] = await Promise.all([
-    sb.from("payments").select("*, receiver:profiles!payments_received_by_fkey(full_name)").eq("case_id", caseId).eq("direction", "in").order("pay_date", { ascending: false }),
+    sb.from("payments").select("*, receiver:profiles!payments_received_by_fkey(full_name), account:money_accounts(name, last4)").eq("case_id", caseId).eq("direction", "in").order("pay_date", { ascending: false }),
     sb.from("expenses").select("*").eq("case_id", caseId).order("exp_date"),
     sb.from("v_case_supplier_money").select("*").eq("case_id", caseId),
     sb.from("payment_allocations").select("amount, payment:payments(id, pay_date, mode, reference, supplier:suppliers(name, terms))").eq("case_id", caseId),

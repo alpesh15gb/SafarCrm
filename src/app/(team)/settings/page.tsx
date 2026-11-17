@@ -1,7 +1,7 @@
 import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader, Tabs } from "@/components/ui";
-import { DataTab, GeneralTab, LookupsTab, PortalTab, RemindersTab, UsersTab } from "./client";
+import { DataTab, GeneralTab, LookupsTab, MoneyAccountsTab, PortalTab, RemindersTab, UsersTab, type AccountRow } from "./client";
 
 export const metadata = { title: "Settings" };
 
@@ -15,10 +15,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader title="Settings" sub="Sensible defaults are already in place. Change only what you need." />
       <Tabs active={tab} base="/settings" tabs={[
-        { key: "general", label: "Agency and MAX ID" }, { key: "users", label: "Users" }, { key: "portal", label: "Client portal" },
+        { key: "general", label: "Agency and MAX ID" }, { key: "accounts", label: "Money accounts" }, { key: "users", label: "Users" }, { key: "portal", label: "Client portal" },
         { key: "reminders", label: "Automatic reminders" }, { key: "lookups", label: "Lookup lists" }, { key: "data", label: "Data" },
       ]} />
       {tab === "general" && <GeneralTab settings={s} nextMax={Number(next)} />}
+      {tab === "accounts" && <AccountsLoader />}
       {tab === "users" && <UsersLoader meId={me.id} />}
       {tab === "portal" && <PortalTab settings={s} />}
       {tab === "reminders" && <RemindersTab settings={s} />}
@@ -26,6 +27,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "data" && <DataLoader />}
     </>
   );
+}
+
+async function AccountsLoader() {
+  const sb = await createClient();
+  const { data } = await sb.rpc("money_account_balances");
+  return <MoneyAccountsTab accounts={(data ?? []) as AccountRow[]} />;
 }
 
 async function UsersLoader({ meId }: { meId: string }) {
