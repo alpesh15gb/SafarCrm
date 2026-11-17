@@ -5,10 +5,5 @@ backups
 deploy/supabase-docker
 .env*
 !.env.example
-deploy/.env.production*
-deploy/.secrets*
-.artifacts
-test-results
-playwright-report
 supabase/.temp
 *.log

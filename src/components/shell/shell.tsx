@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   LayoutDashboard, Briefcase, CheckSquare, Users, Truck, BarChart3, Settings, Search, Plus, Bell, Menu as MenuIcon,
-  ChevronsLeft, ChevronsRight, LogOut, UserCircle, X, CornerDownLeft, FileText, Building2, Ticket, Inbox, type LucideIcon,
+  ChevronsLeft, ChevronsRight, LogOut, UserCircle, X, CornerDownLeft, FileText, Building2, Ticket, type LucideIcon,
 } from "lucide-react";
 import { cx, Button, Avatar } from "@/components/ui";
 import { Menu } from "@/components/client";
@@ -32,7 +32,6 @@ export const useApp = () => useContext(AppCtx)!;
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/enquiries", label: "Website enquiries", icon: Inbox },
   { href: "/cases", label: "Cases", icon: Briefcase, count: "cases" as const },
   { href: "/tasks", label: "Tasks", icon: CheckSquare, count: "tasks" as const },
   { href: "/imports", label: "Ticket imports", icon: Ticket },
