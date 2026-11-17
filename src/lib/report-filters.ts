@@ -2,9 +2,11 @@ export type ReportParams = Record<string, string | undefined>;
 
 export function reportUses(key: string) {
   const bookings = ["pnl", "sales", "upcoming"].includes(key);
+  const cashbook = key === "cashbook";
   const clients = ["client_dues", "client_credits"].includes(key);
   return {
-    date: bookings,
+    date: bookings || cashbook,
+    account: cashbook,
     service: bookings,
     staff: bookings || clients,
     supplier: bookings || key === "supplier_dues",
@@ -28,6 +30,7 @@ export function reportParams(key: string, input: ReportParams): ReportParams {
     }
   }
   if (key === "expiry" && input.months) result.months = input.months;
+  if (uses.account && input.account) result.account = input.account;
   return result;
 }
 

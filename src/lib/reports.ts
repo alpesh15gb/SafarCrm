@@ -13,6 +13,7 @@ export const REPORTS = [
   { key: "client_dues", label: "Client dues" },
   { key: "client_credits", label: "Client credits" },
   { key: "supplier_dues", label: "Supplier dues", profit: true },
+  { key: "cashbook", label: "Cash and bank book", profit: true },
   { key: "sales", label: "Sales by service and staff", profit: true },
   { key: "upcoming", label: "Upcoming travel" },
   { key: "expiry", label: "Document expiry" },
@@ -85,6 +86,37 @@ export async function runReport(key: string, input: Record<string, string | unde
       sections: [
         { title: "By service", cols: [{ ...cols[0], label: "Service" }, ...cols.slice(1)], rows: svc },
         { title: "By staff", cols: [{ ...cols[0], label: "Staff" }, ...cols.slice(1)], rows: staff },
+      ],
+    };
+  }
+  if (key === "cashbook") {
+    // each money account for the period, then every entry; one account chosen = a passbook with a running balance
+    const [{ data: s, error: se }, { data: l, error: le }] = await Promise.all([
+      sb.rpc("report_cashbook_summary", { p_from: range.from, p_to: range.to }),
+      sb.rpc("report_cashbook_lines", { p_from: range.from, p_to: range.to, p_account: sp.account || null }),
+    ]);
+    throwIf(se); throwIf(le);
+    const summary: Record<string, unknown>[] = ((s ?? []) as Record<string, unknown>[]).map((r) => ({ ...r, name: `${r.name}${r.last4 ? ` ••${r.last4}` : ""}` }));
+    const one = sp.account ? summary.find((r) => r.account_id === sp.account) : null;
+    let running = Number(one?.opening ?? 0);
+    const lines = ((l ?? []) as Record<string, unknown>[]).map((r) => {
+      running += Number(r.received ?? 0) - Number(r.paid ?? 0);
+      return { ...r, balance: one ? Math.round(running * 100) / 100 : null };
+    });
+    const sumCols: Col[] = [{ key: "name", label: "Account" }, { key: "opening", label: "Opening", money: true }, { key: "money_in", label: "Money in", money: true },
+      { key: "money_out", label: "Money out", money: true }, { key: "closing", label: "Closing", money: true }, { key: "entries", label: "Entries" }];
+    const lineCols: Col[] = [{ key: "pay_date", label: "Date", date: true }, ...(one ? [] : [{ key: "account", label: "Account" }]), { key: "kind", label: "What" },
+      { key: "party", label: "Client / supplier" }, { key: "max_id", label: "MAX ID" }, { key: "reference", label: "Reference" },
+      { key: "received", label: "Received", money: true }, { key: "paid", label: "Paid", money: true }, ...(one ? [{ key: "balance", label: "Balance", money: true }] : [])];
+    const withTotals = (rows: Record<string, unknown>[], cols: Col[], label: string) =>
+      rows.length ? [...rows, Object.fromEntries(cols.map((c, i) => [c.key, i === 0 ? label : ["money_in", "money_out", "received", "paid", "entries"].includes(c.key) ? sum(rows, c.key) : null]))] : rows;
+    return {
+      title: one ? `Cash and bank book · ${one.name}` : "Cash and bank book",
+      sub: `${range.label}. Money in and out of each account${one ? `, with the running balance from ${fdate(range.from)}` : ". Pick an account for its running balance"}. Payments saved without an account are listed by mode.`,
+      cols: lineCols, rows: [],
+      sections: [
+        ...(one ? [] : [{ title: "Accounts", cols: sumCols, rows: withTotals(summary, sumCols, "Total") }]),
+        { title: one ? `${one.name}: opening ${fdate(range.from)} ₹${Number(one.opening ?? 0).toLocaleString("en-IN")} · closing ₹${Number(one.closing ?? 0).toLocaleString("en-IN")}` : "Entries", cols: lineCols, rows: withTotals(lines, lineCols, "Total") },
       ],
     };
   }

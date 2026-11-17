@@ -2,7 +2,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(7);
+select plan(10);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -41,6 +41,8 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000ab01","r
 insert into r select 'pid', public.record_supplier_payment('00000000-0000-0000-0000-00000000ae01', current_date, 8000, 'bank', null, null, '[]'::jsonb)::text;
 select public.set_payment_account((select v from r where k = 'pid')::uuid, '00000000-0000-0000-0000-00000000af02');
 create temp table bal as select * from public.money_account_balances();
+create temp table cb as select * from public.report_cashbook_summary(current_date, current_date);
+create temp table cbl as select * from public.report_cashbook_lines(current_date, current_date, '00000000-0000-0000-0000-00000000af01');
 reset role; reset request.jwt.claims;
 
 select is((select v from r where k = 'staff_add'), 'refused', 'only the boss can add an account');
@@ -56,5 +58,10 @@ insert into r select 'staff_bal', count(*)::text from public.money_account_balan
 reset role; reset request.jwt.claims;
 select is((select v from r where k = 'staff_bal'), '0', 'staff without profit rights see no balances');
 
+select results_eq($ select opening, money_in, money_out, closing from cb where account_id = '00000000-0000-0000-0000-00000000af01' $,
+  $ values (100000.00, 20000.00, 0.00, 120000.00) $, 'cash and bank book: the bank account opens, takes the receipt and closes');
+select is((select closing from cb where account_id = '00000000-0000-0000-0000-00000000af02'), -13000.00, 'the card closes at what is owed on it');
+select results_eq($ select received, paid, party, kind from cbl $, $ values (20000.00, 0.00, 'Acc Client'::text, 'Client payment'::text) $,
+  'one account chosen: its entries, with the client and what it was');
 select * from finish();
 rollback;

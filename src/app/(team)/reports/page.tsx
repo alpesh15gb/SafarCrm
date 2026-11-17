@@ -20,9 +20,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const key = allowed.some((r) => r.key === input.r) ? input.r! : allowed[0].key;
   const sp = reportParams(key, input);
   const sb = await createClient();
-  const [{ data: staff }, { data: suppliers }] = await Promise.all([
+  const [{ data: staff }, { data: suppliers }, { data: accounts }] = await Promise.all([
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
     sb.from("suppliers").select("id, name").order("name"),
+    sb.from("money_accounts").select("id, name, last4").order("active", { ascending: false }).order("sort").order("name"),
   ]);
   let report: Report | null = null;
   let error = "";
@@ -42,6 +43,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {uses.date && <DateRange />}
+          {uses.account && <Chips param="account" current={sp.account} base={{ ...sp, r: key }} allLabel="All accounts" items={(accounts ?? []).map((a) => ({ value: a.id as string, label: `${a.name}${a.last4 ? " ••" + a.last4 : ""}` }))} />}
           {key === "expiry" && <Chips param="months" current={sp.months} base={sp} allLabel="6 months" items={[{ value: "1", label: "1 month" }, { value: "3", label: "3 months" }, { value: "12", label: "12 months" }]} />}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
