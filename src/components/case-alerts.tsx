@@ -54,3 +54,9 @@ export function CaseAlerts({ alerts }: { alerts: AlertRow[] }) {
     </section>
   );
 }
+
+/** Done button for one alert where the full box isn't shown (an office reminder on the dashboard with no case). */
+export function AlertDoneButton({ id }: { id: string }) {
+  const { run, pending } = useAction();
+  return <Button size="sm" disabled={pending} onClick={() => run(() => markAlertDone(id))}><Check className="h-3.5 w-3.5" />Done</Button>;
+}

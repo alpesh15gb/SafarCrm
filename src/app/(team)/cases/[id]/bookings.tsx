@@ -111,7 +111,7 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
     <Card pad={false} className={cx(cancelled && "bg-gray-50")}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
         <span className={cx("flex h-8 w-8 items-center justify-center rounded-lg", cancelled ? "bg-gray-100 text-muted" : "bg-coral-soft text-coral-dark")}><ServiceIcon service={l.service} /></span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[14rem]">
           <div className={cx("font-medium", cancelled && "line-through decoration-gray-400")}>{SERVICE_LABEL[l.service]}{l.summary && ` · ${l.summary}`}</div>
           <div className="text-xs text-muted">
             {[fdate(l.service_date), l.supplier?.name, l.reference && `Ref ${l.reference}`].filter(Boolean).join(" · ")}
@@ -419,11 +419,6 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
         {service === "flight" && <IssueList issues={[checkPnr(String(d.pnr ?? ""))]} />}
         {service === "hotel" && nights !== null && <p className="text-[13px] text-muted">{nights} night{nights === 1 ? "" : "s"}</p>}
 
-        {isVisa && Array.isArray(d.checklist) && (d.checklist as unknown[]).length > 0 && (
-          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-900">
-            Checklist ready: {(d.checklist as unknown[]).length} documents for {String(d.country)}. You can tick them off on the booking card.
-          </p>
-        )}
         <Field label={isVisa ? "Who needs this visa?" : "Travellers on this booking"} hint={visaPerPerson ? `We'll make ${trav.length} visa files, one per person, because each is approved separately.` : undefined}>
           {allTravellers.length === 0 && <p className="text-[13px] text-amber-800">This case has no travellers yet. Add one below; what you typed here stays.</p>}
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">

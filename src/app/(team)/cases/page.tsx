@@ -52,18 +52,18 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       />
       <div className="mb-4 space-y-2.5">
         <SearchBox placeholder="Search by MAX ID, customer, mobile or place" />
-        {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
         {/* the questions asked most of a long list, one tap each (owner, 2026-11-18) */}
-        <Chips param="quick" current={sp.quick} base={sp} allLabel="Everything" items={[
+        <Chips param="quick" current={sp.quick} base={sp} allLabel={sp.status && sp.status !== "open" ? "Everything" : "All open"} items={[
           { value: "starred", label: "⭐ Starred" }, { value: "attention", label: "Needs attention" },
           { value: "week", label: "Travelling this week" }, { value: "payment", label: "Payment due" }, { value: "visa", label: "Visa pending" },
         ]} />
         {/* the filters used now and then stay folded away until one of them is in use */}
-        <details open={!!(sp.service || sp.date || sp.staff)} className="group">
+        <details open={!!(sp.service || sp.date || sp.staff || (sp.status && sp.status !== "open"))} className="group">
           <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-[13px] font-medium text-muted hover:text-ink">
             <span className="inline-block transition-transform group-open:rotate-90">›</span> More filters
           </summary>
           <div className="mt-2.5 space-y-2.5">
+          {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
             <Chips param="service" current={sp.service} base={sp} allLabel="All services" items={SERVICES.map((s) => ({ value: s, label: SERVICE_LABEL[s] }))} />
             <Chips param="date" current={sp.date} base={sp} allLabel="Any date" items={[
               { value: "travelling", label: "Travelling now" }, { value: "upcoming", label: "Travel in next 30 days" },

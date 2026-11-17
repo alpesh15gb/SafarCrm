@@ -10,6 +10,7 @@ import { DateRange } from "@/components/date-range";
 import { TrendChart } from "@/components/charts";
 import { ActivityList } from "@/components/activity";
 import { NewButton } from "@/components/list-tools";
+import { AlertDoneButton } from "@/components/case-alerts";
 import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, VISA_STATUS_TONE } from "@/lib/constants";
 import { fdate, inr, inrShort, todayIST } from "@/lib/format";
 import { RangeValidationError, resolveRange, type RangeSP as SP } from "@/lib/range";
@@ -283,7 +284,7 @@ function NeedsAttention({ alerts }: { alerts: AlertDue[] }) {
               {list.length > 1 && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold">{list.length}</span>}
             </span>
           );
-          return <li key={k}>{first.case_id ? <Link href={`/cases/${first.case_id}`} className="block hover:bg-[#fafbfc]">{body}</Link> : body}</li>;
+          return <li key={k}>{first.case_id ? <Link href={`/cases/${first.case_id}`} className="block hover:bg-[#fafbfc]">{body}</Link> : <span className="flex items-center gap-2 pr-3"><span className="min-w-0 flex-1">{body}</span><AlertDoneButton id={first.id} /></span>}</li>;
         })}
       </ul>
       {byCase.size > 12 && <Link href="/cases?quick=attention" className="block border-t border-line px-4 py-2 text-xs link">{byCase.size - 12} more cases</Link>}

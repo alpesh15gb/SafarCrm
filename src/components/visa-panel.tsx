@@ -26,7 +26,8 @@ export function visaWarnings(d: Record<string, unknown>, travellers: VisaTravell
   const out: { tone: "red" | "amber"; text: string; fixId?: string }[] = [];
   const st = String(d.application_status || "Documents pending");
   const back = trip.end || trip.start;
-  for (const t of travellers) {
+  // passport checks matter only until the decision; afterwards they are noise (owner, 2026-11-18)
+  for (const t of ["Approved", "Rejected", "Passport collected"].includes(st) ? [] : travellers) {
     if (!t.passport_expiry) out.push({ tone: "amber", text: `${t.full_name}'s passport expiry date is not saved, so we can't check it.`, fixId: t.id });
     else if (back && t.passport_expiry < addMonths(back, 3)) {
       out.push({ tone: "red", text: `${t.full_name}'s passport expires on ${fdate(t.passport_expiry)}, less than 3 months after the trip. Almost every country refuses this. Renew the passport first.` });
@@ -49,7 +50,7 @@ export function visaWarnings(d: Record<string, unknown>, travellers: VisaTravell
 
 // Simple visa flow (owner, after a client visit, 2026-11-18): attach the visa form, submit, then approved or refused.
 // No application number, appointment or document checklist is asked for. Old visas keep whatever they recorded.
-const STEPS = ["Form attached", "Submitted", "Decision"];
+const STEPS = ["Visa form", "Submitted", "Decision"];
 function stepOf(st: string) {
   if (["Approved", "Rejected", "Passport collected"].includes(st)) return 2;
   if (["Applied", "Appointment booked", "Biometrics done", "Under process"].includes(st)) return 1;
