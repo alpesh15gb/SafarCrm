@@ -92,7 +92,8 @@ export default async function CasePage({ params, searchParams }: { params: Promi
       {!["completed", "cancelled"].includes(c.status) && <FinishLine items={(finishData ?? []) as FinishItem[]} />}
       {(() => {
         // the case dates drive reminders (e.g. the check-in task): flag them when the bookings say otherwise
-        const live = (lines ?? []).filter((l) => l.status !== "cancelled" && l.service_date).map((l) => l.service_date as string).sort();
+        // a visa's date is when it was applied for, not travel, so it is left out
+        const live = (lines ?? []).filter((l) => l.status !== "cancelled" && l.service !== "visa" && l.service_date).map((l) => l.service_date as string).sort();
         const first = live[0];
         if (!c.travel_start || !first || first === c.travel_start || c.status === "cancelled") return null;
         return (
