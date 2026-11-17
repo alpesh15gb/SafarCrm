@@ -6,20 +6,17 @@ import {
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Avatar, Badge, Card, Kpi, Money, Progress, ServiceIcon, StatusBadge, cx } from "@/components/ui";
-import { TaskList } from "@/components/task-list";
-import { dueBucket, type TaskRow } from "@/lib/tasks";
 import { DateRange } from "@/components/date-range";
 import { TrendChart } from "@/components/charts";
 import { ActivityList } from "@/components/activity";
 import { NewButton } from "@/components/list-tools";
-import { TicketUploadButton } from "@/components/ticket-upload";
 import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, VISA_STATUS_TONE } from "@/lib/constants";
 import { fdate, inr, inrShort, todayIST } from "@/lib/format";
 import { RangeValidationError, resolveRange, type RangeSP as SP } from "@/lib/range";
 
 export const metadata = { title: "Dashboard" };
 
-const TASK_SEL = "id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title), customer_id, customer:customers(full_name)";
+const ALERT_SEL = "id, title, due_at, case_id, case:cases(max_id, title, customer:customers!cases_customer_id_fkey(full_name)), customer:customers(full_name)";
 
 type Money = {
   sales: number; cost: number; profit: number; due_from_clients: number;
@@ -60,11 +57,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const boss = me.role === "boss";
   const profitOk = me.can_see_profit;
 
-  const weekAhead = new Date(Date.now() + 8 * 86400e3).toISOString();
-  const tasksQ = sb.from("tasks").select(TASK_SEL).neq("status", "done").lte("due_at", weekAhead).order("due_at");
+  // alerts due by the end of today (IST); staff see the ones on their own cases
+  const endOfToday = new Date(`${todayIST(1)}T00:00:00+05:30`).toISOString();
+  const alertsQ = sb.from("tasks").select(ALERT_SEL).neq("status", "done").lt("due_at", endOfToday).order("due_at");
   const none = Promise.resolve({ data: null });
-  const [{ data: tasks }, { data: travel }, money, moneyPrev, trend, { data: pipe }, activity, { data: other }, imports] = await Promise.all([
-    boss ? tasksQ : tasksQ.eq("assigned_to", me.id),
+  const [{ data: alertRows }, { data: travel }, money, moneyPrev, trend, { data: pipe }, activity, { data: other }] = await Promise.all([
+    boss ? alertsQ : alertsQ.eq("assigned_to", me.id),
     // one row per departing flight leg, rail or bus journey (outbound and return each count; hotels and visas don't)
     sb.rpc("departures", { p_from: todayIST(), p_to: todayIST(7) }),
     profitOk ? sb.rpc("dashboard_money", { p_from: range.from, p_to: range.to }) : none,
@@ -73,24 +71,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     sb.rpc("dashboard_pipeline"),
     boss ? sb.from("activity_log").select("*").not("actor", "is", null).order("created_at", { ascending: false }).limit(7) : none,
     sb.rpc("service_dates", { p_from: todayIST(), p_to: todayIST(7) }),
-    sb.from("ticket_imports").select("id, status, file_name, created_at, channel", { count: "exact" }).in("status", ["received", "processing", "needs_review", "failed"]).order("created_at").limit(5),
   ]);
   const m = money.data as Money | null;
   const mp = moneyPrev.data as Money | null;
   const tr = ((trend.data ?? []) as { month: string; sales: number; profit: number; cases: number }[]).map((r) => ({ ...r, sales: Number(r.sales), profit: Number(r.profit), cases: Number(r.cases) }));
-  const t = (tasks ?? []) as unknown as TaskRow[];
+  const alertsDue = (alertRows ?? []) as unknown as AlertDue[];
   type Dep = { case_id: string; max_id: string; customer: string; line_id: string; service: string; dep_date: string; dep_time: string | null; from_code: string | null; to_code: string | null; carrier: string | null; leg: number; legs: number };
   const trips = ((travel ?? []) as Dep[]).sort((a, b) => (a.dep_date + (a.dep_time ?? "")).localeCompare(b.dep_date + (b.dep_time ?? "")));
   const otherDates = (other ?? []) as { case_id: string; max_id: string; customer: string; line_id: string; service: string; kind: string; on_date: string; label: string | null }[];
-  const pendingImports = (imports.data ?? []) as { id: string; status: string; file_name: string; created_at: string; channel: string }[];
-  const pendingImportCount = imports.count ?? pendingImports.length;
-  // open cases nobody has a task on (the list stops at 150)
-  const { data: noNextData } = await sb.rpc("cases_by_work", { p_kind: "no_next" });
-  const noNext = ((noNextData ?? []) as unknown[]).length;
   const pipeline = (pipe ?? []) as { status: string; cases: number; sale: number; due: number }[];
   const openCases = pipeline.filter((p) => !["completed", "cancelled"].includes(p.status)).reduce((a, p) => a + Number(p.cases), 0);
-  const overdue = t.filter((x) => dueBucket(x) === "overdue").length;
-  const today = t.filter((x) => dueBucket(x) === "today").length;
+  const attentionCases = new Set(alertsDue.map((a) => a.case_id ?? a.id)).size;
   const first = me.full_name.split(" ")[0];
   const dateLine = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
 
@@ -111,18 +102,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="text-[13px] font-medium text-slate-400">{dateLine}</div>
             <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.025em] md:text-[30px]">{greeting()}, {first}</h1>
             <div className="mt-3 flex flex-wrap gap-2 text-[13px]">
-              <HeroChip href="/tasks?due=overdue" icon={AlertCircle} hot={overdue > 0}>{overdue} overdue</HeroChip>
-              <HeroChip href="/tasks?due=today" icon={Clock}>{today} due today</HeroChip>
+              <HeroChip href="/cases?quick=attention" icon={AlertCircle} hot={attentionCases > 0}>{attentionCases} case{attentionCases === 1 ? "" : "s"} need attention</HeroChip>
               <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departure{trips.length === 1 ? "" : "s"} this week</HeroChip>
               <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open cases</HeroChip>
-              {noNext > 0 && <HeroChip href="/cases?work=no_next" icon={AlertCircle} hot>{noNext >= 150 ? "150+" : noNext} case{noNext === 1 ? "" : "s"} with no next step</HeroChip>}
-              {pendingImportCount > 0 && <HeroChip href="/imports" icon={Ticket} hot>{pendingImportCount} ticket{pendingImportCount === 1 ? "" : "s"} to review</HeroChip>}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <TicketUploadButton />
-
-            <NewButton kind="task" label="Task" variant="secondary" className="!border-white/15 !bg-white/10 !text-white !shadow-none hover:!bg-white/20" />
             <NewButton kind="case" label="New case" />
           </div>
         </div>
@@ -132,22 +117,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       <div className="grid gap-5 xl:grid-cols-3">
         {/* left column (2/3) */}
         <div className="min-w-0 space-y-5 xl:col-span-2">
-          {pendingImports.length > 0 && (
-            <Card title="Tickets to review" sub={`${pendingImportCount} waiting · nothing is added to a case until someone confirms`} icon={Ticket} pad={false}
-              action={<Link href="/imports" className="text-xs link">All imports</Link>}>
-              <ul className="divide-y divide-line">
-                {pendingImports.map((i) => (
-                  <li key={i.id}>
-                    <Link href={`/imports/${i.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[#fafbfc]">
-                      <span className="min-w-0 flex-1 truncate">{i.file_name}{i.channel === "portal" && <span className="ml-1 text-xs text-muted">· from the client</span>}</span>
-                      <StatusBadge status={i.status} />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-          {boss ? <TasksByStaff tasks={t} /> : <MyDay tasks={t} />}
+          <NeedsAttention alerts={alertsDue} />
           {boss ? <PaymentsDue /> : <MyOpenCases userId={me.id} />}
         </div>
 
@@ -287,52 +257,36 @@ function Pipeline({ rows }: { rows: { status: string; cases: number; sale: numbe
 // a long list hides what matters: each group shows its first few tasks and links to the rest
 const SHOWN = 6;
 
-function MyDay({ tasks }: { tasks: TaskRow[] }) {
-  const groups = [
-    { key: "overdue", label: "Overdue", cls: "text-red-600 bg-red-50/60" },
-    { key: "today", label: "Today", cls: "bg-gray-50" },
-    { key: "week", label: "Next 7 days", cls: "bg-gray-50" },
-  ] as const;
-  return (
-    <Card title="My day" sub="Tasks and reminders" icon={ListChecks} action={<Link href="/tasks" className="text-xs link">All tasks</Link>} pad={false}>
-      {tasks.length === 0 && <p className="p-4 text-sm text-muted">Nothing due. Enjoy the calm.</p>}
-      {groups.map((g) => {
-        const list = tasks.filter((x) => dueBucket(x) === g.key);
-        if (!list.length) return null;
-        return (
-          <div key={g.key}>
-            <div className={cx("px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.05em]", g.cls)}>{g.label} · {list.length}</div>
-            <TaskList tasks={list.slice(0, SHOWN)} showAssignee={false} />
-            {list.length > SHOWN && <Link href="/tasks" className="block border-t border-line px-4 py-2 text-xs link">{list.length - SHOWN} more in {g.label.toLowerCase()}</Link>}
-          </div>
-        );
-      })}
-    </Card>
-  );
-}
+type AlertDue = { id: string; title: string; due_at: string | null; case_id: string | null; case: { max_id: string; title: string; customer: { full_name: string } | null } | null; customer: { full_name: string } | null };
 
-function TasksByStaff({ tasks }: { tasks: TaskRow[] }) {
-  const urgent = tasks.filter((x) => ["overdue", "today"].includes(dueBucket(x)));
-  const byStaff = new Map<string, TaskRow[]>();
-  urgent.forEach((x) => { const k = x.assignee?.full_name ?? "Unassigned"; byStaff.set(k, [...(byStaff.get(k) ?? []), x]); });
+/** Alerts due today or earlier, one line per case (the Tasks page was removed, owner 2026-11-18). Open the case to act. */
+function NeedsAttention({ alerts }: { alerts: AlertDue[] }) {
+  const byCase = new Map<string, AlertDue[]>();
+  alerts.forEach((a) => { const k = a.case_id ?? `none-${a.id}`; byCase.set(k, [...(byCase.get(k) ?? []), a]); });
+  const now = new Date();
   return (
-    <Card title="Overdue and due today" sub="Across the team" icon={ListChecks} action={<Link href="/tasks" className="text-xs link">All tasks</Link>} pad={false}>
-      {urgent.length === 0 && <p className="p-4 text-sm text-muted">Nothing overdue or due today. 🎉</p>}
-      {[...byStaff.entries()].map(([name, list]) => {
-        const over = list.filter((x) => dueBucket(x) === "overdue").length;
-        return (
-          <div key={name}>
-            <div className="flex items-center justify-between bg-gray-50 px-4 py-1.5 text-xs font-medium">
-              <span className="flex items-center gap-2"><Avatar name={name} size="xs" />{name}</span>
-              {over > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600">{over} overdue</span>}
-            </div>
-            <TaskList tasks={list.slice(0, SHOWN)} showAssignee={false} />
-            {list.length > SHOWN && (
-              <Link href={list[0].assigned_to ? `/tasks?staff=${list[0].assigned_to}` : "/tasks"} className="block border-t border-line px-4 py-2 text-xs link">{list.length - SHOWN} more for {name}</Link>
-            )}
-          </div>
-        );
-      })}
+    <Card title="Needs attention" sub="Alerts due today or earlier, by case" icon={ListChecks} pad={false}
+      action={<Link href="/cases?quick=attention" className="text-xs link">All in Cases</Link>}>
+      {byCase.size === 0 && <p className="p-4 text-sm text-muted">Nothing due today. Enjoy the calm.</p>}
+      <ul className="divide-y divide-line">
+        {[...byCase.entries()].slice(0, 12).map(([k, list]) => {
+          const first = list[0];
+          const late = list.some((a) => a.due_at && new Date(a.due_at) < now);
+          const who = first.case?.customer?.full_name ?? first.customer?.full_name ?? "";
+          const body = (
+            <span className="flex items-start gap-3 px-4 py-2.5 text-sm">
+              <span aria-hidden className={cx("mt-1.5 h-2 w-2 shrink-0 rounded-full", late ? "bg-red-500" : "bg-amber-500")} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{first.case && <b className="font-mono">{first.case.max_id}</b>} {who}</span>
+                <span className="block truncate text-xs text-muted">{list.map((a) => a.title).join(" · ")}</span>
+              </span>
+              {list.length > 1 && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold">{list.length}</span>}
+            </span>
+          );
+          return <li key={k}>{first.case_id ? <Link href={`/cases/${first.case_id}`} className="block hover:bg-[#fafbfc]">{body}</Link> : body}</li>;
+        })}
+      </ul>
+      {byCase.size > 12 && <Link href="/cases?quick=attention" className="block border-t border-line px-4 py-2 text-xs link">{byCase.size - 12} more cases</Link>}
     </Card>
   );
 }
@@ -404,20 +358,19 @@ async function MyOpenCases({ userId }: { userId: string }) {
 function StaffBoard({ rows }: { rows: Money["by_staff"] }) {
   const max = Math.max(1, ...rows.map((r) => Math.abs(Number(r.profit))));
   return (
-    <Card title="Team performance" sub="Cases, tasks and booking profit (before case expenses) in this period" icon={Users2} pad={false}>
+    <Card title="Team performance" sub="Cases and booking profit (before case expenses) in this period" icon={Users2} pad={false}>
       <ul className="divide-y divide-line">
         {[...rows].sort((a, b) => Number(b.profit) - Number(a.profit)).map((s, i) => (
-          <li key={s.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[auto_1fr_90px_90px_1.2fr]">
+          <li key={s.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[auto_1fr_90px_1.2fr]">
             <span className="relative">
               <Avatar name={s.name} size="lg" />
               {i === 0 && Number(s.profit) > 0 && <span className="absolute -right-1 -top-1 text-sm" title="Top performer">🏆</span>}
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium">{s.name}</span>
-              <span className="block text-xs text-muted sm:hidden">{s.cases} cases · {s.tasks_done} tasks done</span>
+              <span className="block text-xs text-muted sm:hidden">{s.cases} cases</span>
             </span>
             <span className="hidden text-center sm:block"><span className="block text-sm font-semibold tabular">{s.cases}</span><span className="text-[11px] text-muted">cases</span></span>
-            <span className="hidden text-center sm:block"><span className="block text-sm font-semibold tabular">{s.tasks_done}</span><span className="text-[11px] text-muted">tasks done</span></span>
             <span className="min-w-0">
               <span className="mb-1 flex justify-end"><Money value={s.profit} profit className="text-sm font-semibold" /></span>
               <Progress value={(Math.abs(Number(s.profit)) / max) * 100} tone={Number(s.profit) < 0 ? "amber" : "green"} className="hidden sm:block" />

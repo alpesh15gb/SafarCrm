@@ -33,8 +33,6 @@ export const useApp = () => useContext(AppCtx)!;
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cases", label: "Cases", icon: Briefcase, count: "cases" as const },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare, count: "tasks" as const },
-  { href: "/imports", label: "Ticket imports", icon: Ticket },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/reports", label: "Reports", icon: BarChart3 },
@@ -81,8 +79,7 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
   }
 
   const nav = NAV.filter((n) => !n.boss || me.role === "boss");
-  const [nextFor, setNextFor] = useState<NextCase | null>(null);
-  const ctx: Ctx = { me, staff, openNew: (kind, preset) => setDlg({ kind, preset }), askNext: setNextFor };
+  const ctx: Ctx = { me, staff, openNew: (kind, preset) => setDlg({ kind, preset }), askNext: () => {} };   // Tasks were removed (owner, 2026-11-18): nothing asks for a next step any more
   const mini = collapsed && !mobileOpen;
 
   const sidebar = (
@@ -102,7 +99,7 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
           const active = path === n.href || path.startsWith(n.href + "/");
           const I = n.icon;
           const c = n.count ? counts[n.count] : 0;
-          const hot = n.count === "tasks" && counts.overdue > 0;
+          const hot = false;
           return (
             <Link
               key={n.href}
@@ -184,7 +181,6 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
             <div className="flex-1 max-md:hidden" />
             <Menu trigger={<Button className="max-sm:px-2.5"><Plus className="h-4 w-4 text-coral" /><span className="max-sm:hidden">New</span></Button>}>
               <button type="button" onClick={() => setDlg({ kind: "case" })}>Case</button>
-              <button type="button" onClick={() => setDlg({ kind: "task" })}>Task or reminder</button>
               <button type="button" onClick={() => setDlg({ kind: "customer" })}>Customer</button>
               <button type="button" onClick={() => setDlg({ kind: "supplier" })}>Supplier</button>
             </Menu>
@@ -203,13 +199,6 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNew={(kind) => { setPaletteOpen(false); setDlg({ kind }); }} nav={nav} />
       <NewCaseDialog open={dlg?.kind === "case"} onClose={() => setDlg(null)} preset={dlg?.preset} />
       <TaskDialog open={dlg?.kind === "task"} onClose={() => setDlg(null)} preset={dlg?.preset} />
-      {nextFor && (
-        <div role="status" className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-xl flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 shadow-lg print:hidden">
-          <span className="min-w-0 flex-1"><span className="font-mono font-semibold">{nextFor.max_id}</span> has no next step now. What happens next?</span>
-          <Button size="sm" variant="primary" onClick={() => { setDlg({ kind: "task", preset: { case: { id: nextFor.id, label: nextFor.max_id, sub: nextFor.title } } }); setNextFor(null); }}>Add next step</Button>
-          <Button size="sm" onClick={() => setNextFor(null)}>Nothing more</Button>
-        </div>
-      )}
       <CustomerQuickDialog open={dlg?.kind === "customer"} onClose={() => setDlg(null)} />
       <SupplierQuickDialog open={dlg?.kind === "supplier"} onClose={() => setDlg(null)} />
     </AppCtx.Provider>
@@ -277,7 +266,6 @@ function CommandPalette({ open, onClose, onNew, nav }: { open: boolean; onClose:
     }
     const create: PItem[] = [
       { key: "n-case", group: "Create", label: "New case", icon: Plus, cls: "bg-coral-soft text-coral-dark", run: () => onNew("case") },
-      { key: "n-task", group: "Create", label: "New task or reminder", icon: CheckSquare, cls: "bg-amber-50 text-amber-600", run: () => onNew("task") },
       { key: "n-cust", group: "Create", label: "New customer", icon: Users, cls: "bg-emerald-50 text-emerald-600", run: () => onNew("customer") },
       { key: "n-sup", group: "Create", label: "New supplier", icon: Building2, cls: "bg-violet-50 text-violet-600", run: () => onNew("supplier") },
     ];

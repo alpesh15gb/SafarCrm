@@ -28,7 +28,7 @@ export function CaseHeaderControls({ kase }: { kase: {
   const [closing, setClosing] = useState<Readiness | null>(null);
   const blocked = !!closing && closing.blockers.length > 0 && me.role !== "boss";
   const [closeWhy, setCloseWhy] = useState("");
-  // "waiting" is the only work status set by hand; everything else is worked out from the case's tasks
+  // "waiting" is the only work status set by hand
   const waiting = !!kase.work_state?.startsWith("waiting");
 
   // the stage is changed by clicking a step in the stage bar under the header (see stage-steps.tsx)
@@ -56,7 +56,7 @@ export function CaseHeaderControls({ kase }: { kase: {
       <label className="flex items-center gap-1.5 text-xs text-muted">
         Owner
         <span className="block w-40 text-ink">
-          <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Owner changed. Their open tasks on this case moved too." })} />
+          <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Owner changed" })} />
         </span>
       </label>
       {/* less common actions live in one menu, so the header stays short */}
@@ -135,7 +135,7 @@ export function CaseHeaderControls({ kase }: { kase: {
           </>
         }
       >
-        <p className="mb-3 text-[13px] text-muted">A follow-up task is created for the time you set; finishing it ends the waiting. Departure dates and cancellation deadlines keep running while you wait.</p>
+        <p className="mb-3 text-[13px] text-muted">An alert appears on the case at the time you set; ticking it off ends the waiting. Departure dates and cancellation deadlines keep running while you wait.</p>
         <div className="space-y-3">
           <Field label="Waiting for what?" required><input className="field" autoFocus value={waitWhy} onChange={(e) => setWaitWhy(e.target.value)} placeholder="Passport copy for the son" /></Field>
           <Field label="Follow up on (IST)" required><input className="field" type="datetime-local" value={waitUntil} onChange={(e) => setWaitUntil(e.target.value)} /></Field>
@@ -145,7 +145,7 @@ export function CaseHeaderControls({ kase }: { kase: {
         open={delOpen}
         onClose={() => setDelOpen(false)}
         title={`Delete ${kase.max_id}?`}
-        text="This removes the case with its bookings, payments, files and tasks. The MAX ID will not be reused. This cannot be undone."
+        text="This removes the case with its bookings, payments, files and alerts. The MAX ID will not be reused. This cannot be undone."
         confirmLabel="Delete for good"
         pending={pending}
         onConfirm={() => run(() => deleteCase(kase.id), { then: () => { setDelOpen(false); router.push("/cases"); } })}

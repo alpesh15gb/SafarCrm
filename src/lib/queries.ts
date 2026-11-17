@@ -38,7 +38,7 @@ export async function byIds<T>(ids: string[], run: (chunk: string[]) => PromiseL
 
 export type CaseRow = {
   id: string; max_id: string; title: string; status: string; travel_start: string | null; travel_end: string | null;
-  destination: string | null; created_at: string; assigned_to: string | null;
+  destination: string | null; created_at: string; assigned_to: string | null; starred: boolean;
   customer: { id: string; full_name: string; mobile: string } | null;
   staff: { full_name: string } | null;
   lines: { service: string; status: string }[];
@@ -48,7 +48,7 @@ export type CaseRow = {
 export async function listCases(sp: SP, all = false) {
   const sb = await createClient();
   const page = Math.max(1, Number(sp.page) || 1);
-  const sel = `id, max_id, title, status, travel_start, travel_end, destination, created_at, assigned_to,
+  const sel = `id, max_id, title, status, travel_start, travel_end, destination, created_at, assigned_to, starred,
     customer:customers!cases_customer_id_fkey(id, full_name, mobile), staff:profiles!cases_assigned_to_fkey(full_name),
     lines:booking_lines${sp.service ? "!inner" : ""}(service, status)`;
   // "what the case needs next" filter: the ids come from the database (open cases only), then the usual filters apply
@@ -58,6 +58,17 @@ export async function listCases(sp: SP, all = false) {
     workIds = ((data ?? []) as unknown as string[]).map(String);
     if (!workIds.length) workIds = ["00000000-0000-0000-0000-000000000000"];
   }
+  // quick chips (owner, 2026-11-18): the few questions the office asks of 50 open cases
+  let quickIds: string[] | null = null;
+  if (sp.quick === "attention") quickIds = await attentionCaseIds();
+  else if (sp.quick === "payment") {
+    const { data } = await sb.from("v_case_money").select("case_id").gt("due", 0.009).limit(1000);
+    quickIds = (data ?? []).map((r) => r.case_id as string);
+  } else if (sp.quick === "visa") {
+    const { data } = await sb.from("booking_lines").select("case_id").eq("service", "visa").eq("status", "pending").limit(1000);
+    quickIds = Array.from(new Set((data ?? []).map((r) => r.case_id as string)));
+  }
+  if (quickIds && !quickIds.length) quickIds = ["00000000-0000-0000-0000-000000000000"];
   // the search also finds cases by the customer's name or mobile (looked up first; the case query then matches their ids)
   const term = (sp.q ?? "").replace(/[,()%]/g, "").trim();
   let custIds: string[] = [];
@@ -70,6 +81,9 @@ export async function listCases(sp: SP, all = false) {
   const make = () => {
   let q = sb.from("cases").select(sel, { count: "exact" });
   if (workIds) q = q.in("id", workIds);
+  if (quickIds) q = q.in("id", quickIds.slice(0, 300));
+  if (sp.quick === "starred") q = q.eq("starred", true);
+  if (sp.quick === "week") q = q.gte("travel_start", todayIST()).lte("travel_start", todayIST(7));
   if (sp.status === "open") q = q.not("status", "in", "(completed,cancelled)");
   else if (sp.status) q = q.eq("status", sp.status);
   if (sp.service) q = q.eq("booking_lines.service", sp.service);
@@ -88,7 +102,11 @@ export async function listCases(sp: SP, all = false) {
     q = q.or([`title.ilike.%${t}%`, `max_id.ilike.%${idLike}%`, `destination.ilike.%${t}%`,
       ...(custIds.length ? [`customer_id.in.(${custIds.join(",")})`] : [])].join(","));
   }
-  q = sp.date === "upcoming" ? q.order("travel_start", { ascending: true }) : q.order("created_at", { ascending: false });
+  // the boss's starred cases always come first; open cases then by nearest travel date (what needs doing soonest),
+  // anything else newest first
+  q = q.order("starred", { ascending: false });
+  const byTravel = sp.date === "upcoming" || sp.quick === "week" || sp.status === "open";
+  q = byTravel ? q.order("travel_start", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }) : q.order("created_at", { ascending: false });
   return q.order("id");
   };
   const { rows, count } = await fetchRows<CaseRow>(make, page, all);
@@ -98,6 +116,29 @@ export async function listCases(sp: SP, all = false) {
     rows.forEach((r) => (r.money = byId.get(r.id) as CaseRow["money"]));
   }
   return { rows, count, page };
+}
+
+/** End of today in IST, as an instant: alerts due before it "need attention". */
+export function endOfTodayIST() {
+  return new Date(`${todayIST(1)}T00:00:00+05:30`).toISOString();
+}
+
+/** Cases with an open alert due today or earlier (alerts replaced tasks, owner 2026-11-18). Row-level security
+ *  keeps it to what this person may see. */
+export async function attentionCaseIds() {
+  const sb = await createClient();
+  const { data } = await sb.from("tasks").select("case_id").neq("status", "done").lt("due_at", endOfTodayIST()).not("case_id", "is", null).limit(1000);
+  return Array.from(new Set((data ?? []).map((r) => r.case_id as string)));
+}
+
+/** The open alerts on these cases, soonest first: the list shows the first one and how many more are due. */
+export async function alertsForCases(ids: string[]) {
+  if (!ids.length) return new Map<string, { title: string; due_at: string | null }[]>();
+  const sb = await createClient();
+  const rows = await byIds(ids, (chunk) => sb.from("tasks").select("case_id, title, due_at").neq("status", "done").in("case_id", chunk).order("due_at", { nullsFirst: true }));
+  const m = new Map<string, { title: string; due_at: string | null }[]>();
+  (rows as { case_id: string; title: string; due_at: string | null }[]).forEach((r) => m.set(r.case_id, [...(m.get(r.case_id) ?? []), r]));
+  return m;
 }
 
 export async function listCustomers(sp: SP, all = false) {

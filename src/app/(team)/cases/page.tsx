@@ -2,13 +2,13 @@ import Link from "next/link";
 import { Download, KanbanSquare, List } from "lucide-react";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { listCases, PER_PAGE, type SP } from "@/lib/queries";
+import { alertsForCases, endOfTodayIST, listCases, PER_PAGE, type SP } from "@/lib/queries";
 import { Card, Chips, Empty, LossDot, Money, PageHeader, Pager, Person, ServiceIcon, StatusBadge, Table, LinkButton, cx } from "@/components/ui";
-import { CaseBoard, WorkCell, type BoardCase, type WorkSummary } from "./board";
+import { CaseBoard, type BoardCase } from "./board";
 import { NewButton, SearchBox } from "@/components/list-tools";
-import { TicketUploadButton } from "@/components/ticket-upload";
+import { CaseStar } from "@/components/case-star";
 import { CASE_STATUSES, SERVICES, SERVICE_LABEL, STATUS_LABEL } from "@/lib/constants";
-import { fdate } from "@/lib/format";
+import { fdate, fdatetime } from "@/lib/format";
 
 export const metadata = { title: "Cases" };
 
@@ -23,9 +23,10 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
     board ? boardCases(sp) : listCases(listSp),
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
   ]);
-  // work summary per case: owner, next action, overdue tasks, pending imports and the main blocker (separate from the booking stage)
-  const { data: wsData } = rows.length ? await sb.rpc("case_work_summary", { p_cases: rows.map((r) => r.id) }) : { data: [] };
-  const work = new Map(((wsData ?? []) as WorkSummary[]).map((w) => [w.case_id, w]));
+  // open alerts per case (automatic reminders; tasks were removed, owner 2026-11-18)
+  const alerts = await alertsForCases(rows.map((r) => r.id));
+  const dueBy = endOfTodayIST();
+  const boss = me.role === "boss";
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "page" && k !== "view") as [string, string][]).toString();
   const viewHref = (v: string) => `/cases?${new URLSearchParams(Object.entries({ ...sp, view: v, page: undefined, ...(v === "board" ? { status: undefined } : {}) }).filter(([, x]) => x) as [string, string][])}`;
   const filtered = Object.keys(sp).some((k) => k !== "page" && sp[k]);
@@ -45,7 +46,6 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                 </Link>
               ))}
             </div>
-            <TicketUploadButton />
             <NewButton kind="case" label="New case" />
           </>
         }
@@ -53,9 +53,10 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       <div className="mb-4 space-y-2.5">
         <SearchBox placeholder="Search by MAX ID, customer, mobile or place" />
         {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
-        <Chips param="work" current={sp.work} base={sp} allLabel="Any next step" items={[
-          { value: "no_next", label: "No next step" }, { value: "overdue", label: "Overdue" },
-          { value: "this_week", label: "Due this week" }, { value: "waiting", label: "Waiting" },
+        {/* the questions asked most of a long list, one tap each (owner, 2026-11-18) */}
+        <Chips param="quick" current={sp.quick} base={sp} allLabel="Everything" items={[
+          { value: "starred", label: "⭐ Starred" }, { value: "attention", label: "Needs attention" },
+          { value: "week", label: "Travelling this week" }, { value: "payment", label: "Payment due" }, { value: "visa", label: "Visa pending" },
         ]} />
         {/* the filters used now and then stay folded away until one of them is in use */}
         <details open={!!(sp.service || sp.date || sp.staff)} className="group">
@@ -81,22 +82,28 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         services: Array.from(new Set(r.lines.filter((l) => l.status !== "cancelled").map((l) => l.service))),
         due: Number(r.money?.due ?? 0), sale: Number(r.money?.sale ?? 0),
         loss: me.can_see_profit && r.money?.profit != null && Number(r.money.profit) < 0,
-        work: work.get(r.id) ?? null,
+        work: null,
       }))} /> : (
       <Card pad={false}>
         {rows.length === 0 ? (
           filtered ? <Empty text="No cases match these filters." action={<LinkButton href="/cases">Clear filters</LinkButton>} />
             : <Empty text="No cases yet. Create your first case." action={<NewButton kind="case" label="New case" />} />
         ) : (
-          <Table head={["MAX ID", "Case", "Travel", "Services", "Owner", "Stage", "Next step", "Due from client", ...(me.can_see_profit ? ["Profit"] : [])]}>
+          <Table head={["MAX ID", "Case", "Travel", "Services", "Owner", "Stage", "Alerts", "Due from client", ...(me.can_see_profit ? ["Profit"] : [])]}>
             {rows.map((r) => {
               const loss = me.can_see_profit && r.money?.profit != null && Number(r.money.profit) < 0;
+              const al = alerts.get(r.id) ?? [];
+              const due = al.filter((a) => !a.due_at || a.due_at < dueBy);
+              const late = due.some((a) => a.due_at && new Date(a.due_at) < new Date());
               return (
-                <tr key={r.id} className="relative">
+                <tr key={r.id} className={cx("relative", r.starred && "bg-amber-50/40")}>
                   <td data-label="MAX ID" className="whitespace-nowrap font-mono text-[13px] font-semibold">
-                    <Link href={`/cases/${r.id}`} className="inline-flex items-center gap-1.5 after:absolute after:inset-0">
-                      <LossDot show={loss} />{r.max_id}
-                    </Link>
+                    <span className="inline-flex items-center gap-1.5">
+                      <CaseStar id={r.id} starred={r.starred} canStar={boss} />
+                      <Link href={`/cases/${r.id}`} className="inline-flex items-center gap-1.5 after:absolute after:inset-0">
+                        <LossDot show={loss} />{r.max_id}
+                      </Link>
+                    </span>
                   </td>
                   <td data-label="Case">
                     <div className="max-w-[320px] truncate font-medium">{r.title}</div>
@@ -112,7 +119,14 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                   </td>
                   <td data-label="Owner" className="whitespace-nowrap"><Person name={r.staff?.full_name} size="xs" /></td>
                   <td data-label="Stage"><StatusBadge status={r.status} /></td>
-                  <td data-label="Next step"><WorkCell w={work.get(r.id)} kase={{ id: r.id, max_id: r.max_id, title: r.title }} /></td>
+                  <td data-label="Alerts" className="max-w-[240px] text-xs">
+                    {due.length ? (
+                      <span className={cx("flex items-start gap-1.5", late ? "text-red-700" : "text-amber-800")}>
+                        <span aria-hidden className={cx("mt-1 h-2 w-2 shrink-0 rounded-full", late ? "bg-red-500" : "bg-amber-500")} />
+                        <span className="min-w-0"><span className="block truncate font-medium">{due[0].title}</span>{due.length > 1 && <span className="text-muted">+{due.length - 1} more</span>}</span>
+                      </span>
+                    ) : al.length ? <span className="text-muted">Next: {al[0].due_at ? fdatetime(al[0].due_at) : al[0].title}</span> : <span className="text-muted">—</span>}
+                  </td>
                   <td data-label="Due from client" className="text-right md:text-left">{Number(r.money?.due) > 0 ? <Money value={r.money?.due} /> : <span className="text-muted">—</span>}</td>
                   {me.can_see_profit && <td data-label="Profit"><Money value={r.money?.profit} profit /></td>}
                 </tr>

@@ -36,11 +36,9 @@ export async function createCase(input: CaseInput, requestKey?: string): Promise
     });
     if (error) throw error;
     const r = data as { id: string; max_id: string; existing: boolean };
-    // say what the case's first task is, so nobody creates one by hand as well
-    const { data: first } = await sb.from("tasks").select("title").eq("case_id", r.id).neq("status", "done").order("due_at").limit(1).maybeSingle();
     return {
       ok: true, data: { id: r.id, max_id: r.max_id },
-      message: r.existing ? `${r.max_id} was already created` : `${r.max_id} created${first ? `. First task on your list: ${first.title}` : ""}`,
+      message: r.existing ? `${r.max_id} was already created` : `${r.max_id} created`,
     };
   } catch (e) {
     return fail(e);
@@ -167,4 +165,18 @@ export async function previewAsClient(caseId: string) {
   const { data, error } = await sb.rpc("portal_preview", { p_case: caseId });
   if (error) return null;
   return data as import("@/components/trip-view").Trip | null;
+}
+
+/** Star a case so it stays at the top of the case list for everyone. Boss only (checked in the database too). */
+export async function setCaseStar(id: string, starred: boolean): Promise<ActionResult> {
+  try {
+    const me = await getMe();
+    if (me?.role !== "boss") return { ok: false, error: "Only the boss can star a case." };
+    const sb = await createClient();
+    const { error } = await sb.from("cases").update({ starred }).eq("id", id);
+    if (error) throw error;
+    return { ok: true, message: starred ? "Starred: it stays at the top of the list" : "Star removed" };
+  } catch (e) {
+    return fail(e);
+  }
 }

@@ -10,15 +10,15 @@ type PaxRow = PaxSource & { id: string; full_name: string; dob: string | null; p
 import { MaxId } from "@/components/client";
 import { fdate, prettyPhone, inr } from "@/lib/format";
 import { CaseHeaderControls } from "./header-controls";
-import { FinishLine, NextStepBar, type FinishItem } from "./next-step";
+import { FinishLine, type FinishItem } from "./next-step";
 import { StageSteps } from "./stage-steps";
 import { CaseDocs, type InvoiceRow } from "./case-docs";
-import type { WorkSummary } from "../board";
 import { OverviewTab } from "./overview";
 import { BookingsTab, type Line } from "./bookings";
 import { PaymentsTab } from "./payments";
 import { FilesTab, type FileRow } from "./files";
-import { TaskList, type TaskRow } from "@/components/task-list";
+import { CaseAlerts, type AlertRow } from "@/components/case-alerts";
+import { CaseStar } from "@/components/case-star";
 import { ActivityList } from "@/components/activity";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -33,7 +33,6 @@ const TABS = [
   { key: "bookings", label: "Bookings" },
   { key: "payments", label: "Payments" },
   { key: "files", label: "Files" },
-  { key: "tasks", label: "Tasks" },
   { key: "activity", label: "Activity" },
 ];
 
@@ -50,13 +49,13 @@ export default async function CasePage({ params, searchParams }: { params: Promi
     .maybeSingle();
   if (!c) notFound();
 
-  const [{ data: money }, { data: travellers }, { data: lines }, { data: lineMoney }, { data: openTasks }, { data: workData }, { data: finishData }] = await Promise.all([
+  const [{ data: money }, { data: travellers }, { data: lines }, { data: lineMoney }, { data: alerts }, { data: finishData }] = await Promise.all([
     sb.from("v_case_money").select("*").eq("case_id", id).single(),
     sb.from("case_travellers").select("customer:customers(id, full_name, title, first_name, middle_name, last_name, passport_surname, passport_given_name, gender, dob, passport_expiry, mobile)").eq("case_id", id),
     sb.from("booking_lines").select("*, supplier:suppliers(id, name)").eq("case_id", id).order("sort").order("service_date", { nullsFirst: false }).order("created_at"),
     sb.from("v_line_money").select("line_id, billed, sale, cost, profit, margin").eq("case_id", id),
-    sb.from("tasks").select("id", { count: "exact", head: true }).eq("case_id", id).neq("status", "done").then((r) => ({ data: r.count })),
-    sb.rpc("case_work_summary", { p_cases: [id] }),
+    // alerts = the open automatic reminders on this case (the Tasks page was removed, owner 2026-11-18)
+    sb.from("tasks").select("id, title, due_at, notes").eq("case_id", id).neq("status", "done").order("due_at", { nullsFirst: true }),
     sb.rpc("case_finish_items", { p_case: id }),
   ]);
   const trav = (travellers ?? []).map((t) => t.customer as unknown as PaxRow);
@@ -69,14 +68,14 @@ export default async function CasePage({ params, searchParams }: { params: Promi
   const profit = money?.profit as number | null;
   const tabs = TABS.map((t) => ({
     ...t,
-    label: t.key === "bookings" ? `Bookings (${lines?.length ?? 0})` : t.key === "tasks" && openTasks ? `Tasks (${openTasks})` : t.label,
+    label: t.key === "bookings" ? `Bookings (${lines?.length ?? 0})` : t.label,
   }));
 
   return (
     <>
       <PageHeader
         back={{ href: "/cases", label: "Cases" }}
-        title={<span className="flex flex-wrap items-center gap-2"><MaxId id={c.max_id} className="!text-xl" /> <span className="font-normal text-muted">·</span> <span>{c.title}</span></span>}
+        title={<span className="flex flex-wrap items-center gap-2"><CaseStar id={c.id} starred={!!c.starred} canStar={me.role === "boss"} size="md" /><MaxId id={c.max_id} className="!text-xl" /> <span className="font-normal text-muted">·</span> <span>{c.title}</span></span>}
         sub={
           <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
             <Avatar name={customer.full_name} size="xs" />
@@ -89,7 +88,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
       />
 
       <StageSteps status={c.status} />
-      <NextStepBar w={((workData ?? []) as WorkSummary[])[0] ?? null} kase={{ id: c.id, max_id: c.max_id, title: c.title }} />
+      {c.status !== "cancelled" && <CaseAlerts alerts={(alerts ?? []) as AlertRow[]} />}
       {!["completed", "cancelled"].includes(c.status) && <FinishLine items={(finishData ?? []) as FinishItem[]} />}
       {(() => {
         // the case dates drive reminders (e.g. the check-in task): flag them when the bookings say otherwise
@@ -99,7 +98,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         return (
           <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-900">
             The case says travel starts <b>{fdate(c.travel_start)}</b>, but the first booking is on <b>{fdate(first)}</b>.
-            Update the case dates (Overview → Edit) so reminders and check-in tasks use the right day, and check any open tasks.
+            Update the case dates (Overview → Edit) so reminders and check-in alerts use the right day.
           </div>
         );
       })()}
@@ -137,7 +136,6 @@ export default async function CasePage({ params, searchParams }: { params: Promi
       {tab === "bookings" && <BookingsLoader caseId={id} lines={linesWithMoney} travellers={trav} maxId={c.max_id} customer={customer} trip={{ start: c.travel_start, end: c.travel_end }} />}
       {tab === "payments" && <PaymentsLoader caseId={id} lines={linesWithMoney} money={money} status={c.status} />}
       {tab === "files" && <FilesLoader caseId={id} maxId={c.max_id} customer={customer} travellers={trav.map((t) => ({ id: t.id, full_name: t.full_name }))} lines={linesWithMoney} />}
-      {tab === "tasks" && <TasksLoader caseId={id} maxId={c.max_id} title={c.title} />}
       {tab === "activity" && <ActivityLoader caseId={id} />}
 
       <div className="mt-6 text-xs text-muted">
@@ -221,22 +219,6 @@ async function DocsLoader({ caseId, caseStatus, lines }: { caseId: string; caseS
   return (
     <CaseDocs caseId={caseId} caseStatus={caseStatus} invoices={(data ?? []) as unknown as InvoiceRow[]}
       lines={lines.map((l) => ({ id: l.id, status: l.status, selling_price: Number(l.selling_price), gst: Number(l.gst) }))} />
-  );
-}
-
-async function TasksLoader({ caseId, maxId, title }: { caseId: string; maxId: string; title: string }) {
-  const sb = await createClient();
-  const { data } = await sb
-    .from("tasks")
-    .select("id, title, due_at, priority, status, alert, assigned_to, case_id, assignee:profiles!tasks_assigned_to_fkey(full_name), case:cases(max_id, title)")
-    .eq("case_id", caseId)
-    // open tasks first (soonest due on top), finished ones after
-    .order("completed_at", { ascending: false, nullsFirst: true })
-    .order("due_at", { nullsFirst: false });
-  return (
-    <Card pad={false}>
-      <TaskList tasks={(data ?? []) as unknown as TaskRow[]} showCase={false} newPreset={{ case: { id: caseId, label: maxId, sub: title } }} emptyText="No tasks on this case yet." />
-    </Card>
   );
 }
 

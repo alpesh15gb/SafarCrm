@@ -210,3 +210,21 @@ export async function deleteTask(id: string): Promise<ActionResult> {
     return fail(e);
   }
 }
+
+/** An alert on a case (an automatic reminder) ticked off. Alerts replaced the Tasks page (owner, 2026-11-18). */
+export async function markAlertDone(id: string): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { data, error } = await sb.from("tasks").update({ status: "done" }).eq("id", id).select("id, case_id");
+    if (error) throw error;
+    if (!data?.length) return { ok: false, error: "You can't change this alert." };
+    const caseId = data[0].case_id as string | null;
+    if (caseId) {
+      const { data: c } = await sb.from("cases").select("status, max_id").eq("id", caseId).maybeSingle();
+      if (c?.status === "completed") return { ok: true, message: `Done. ${c.max_id} is complete: booked and fully paid.` };
+    }
+    return { ok: true, message: "Done" };
+  } catch (e) {
+    return fail(e);
+  }
+}
