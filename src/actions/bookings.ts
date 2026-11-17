@@ -183,6 +183,22 @@ export async function reinstateLine(id: string): Promise<ActionResult> {
   }
 }
 
+/** One click on a Pending booking once it is booked (no need to open the form). Says when the case moves on. */
+export async function confirmLine(id: string): Promise<ActionResult> {
+  try {
+    const sb = await createClient();
+    const { data: l, error } = await sb.from("booking_lines").update({ status: "confirmed" }).eq("id", id).eq("status", "pending")
+      .select("case:cases!inner(id)").maybeSingle();
+    if (error) throw error;
+    if (!l) return { ok: false, error: "This booking is no longer pending. Reload the page." };
+    const { data: c } = await sb.from("cases").select("status, max_id").eq("id", (l.case as unknown as { id: string }).id).maybeSingle();
+    const tail = c?.status === "completed" ? `. ${c.max_id} is complete: booked and fully paid.` : c?.status === "booked" ? `. ${c.max_id} is Booked.` : "";
+    return { ok: true, message: `Booking confirmed${tail}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function setLineVisible(id: string, visible: boolean): Promise<ActionResult> {
   try {
     const sb = await createClient();

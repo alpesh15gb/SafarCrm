@@ -21,7 +21,9 @@ export function fdate(v: string | null | undefined) {
     const [y, m, d] = v.split("-");
     return `${d}-${m}-${y}`;
   }
-  const p = istParts(new Date(v));
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v; // a label such as "Total" in a date column, never a crash
+  const p = istParts(d);
   return `${p.day}-${p.month}-${p.year}`;
 }
 

@@ -57,11 +57,13 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
       p_allocations: alloc,
     });
     if (error) throw error;
+    // say what happened in the words of the form: a refund, money for MAX IDs, or an advance / wallet top-up
+    const what = paid < 0 ? "Refund from the supplier recorded" : alloc.length ? "Supplier payment recorded" : "Advance / wallet top-up recorded";
     if (p.account_id && pid) {
       const { error: ae } = await sb.rpc("set_payment_account", { p_payment: pid, p_account: p.account_id });
-      if (ae) return { ok: true, message: "Supplier payment recorded, but the account could not be set on it. Set it on the payment." };
+      if (ae) return { ok: true, message: `${what}, but the account could not be set on it. Set it on the payment.` };
     }
-    return { ok: true, message: "Supplier payment recorded" };
+    return { ok: true, message: what };
   } catch (e) {
     return fail(e);
   }

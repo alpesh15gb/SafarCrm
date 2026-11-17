@@ -246,6 +246,13 @@ export function DataTab({ backups, stale }: { backups: { at: string; db_size: st
 export type AccountRow = { id: string; name: string; kind: string; last4: string | null; active: boolean; opening_balance: number; money_in: number; money_out: number; balance: number; payments: number };
 const KIND_LABEL: Record<string, string> = { bank: "Bank account", card: "Credit card", cash: "Cash", upi: "UPI" };
 
+/** A card is stored as a minus balance (money owed); the boss types what is owed as a plain amount. */
+function cardOwedAsMinus<T extends { kind: string; opening_balance: string }>(e: T): T {
+  if (e.kind !== "card") return e;
+  const v = e.opening_balance.trim().replace(/^-/, "");
+  return { ...e, opening_balance: v && Number(v.replace(/,/g, "")) ? "-" + v : v };
+}
+
 export function MoneyAccountsTab({ accounts, canEdit = true }: { accounts: AccountRow[]; canEdit?: boolean }) {
   const { run, pending } = useAction();
   const blank = { id: "", name: "", kind: "bank", last4: "", opening_balance: "", opening_date: "" };
@@ -265,7 +272,7 @@ export function MoneyAccountsTab({ accounts, canEdit = true }: { accounts: Accou
               <div className="text-[11px] text-muted">{a.kind === "card" ? (Number(a.balance) < 0 ? "spent on the card" : "credit on the card") : Number(a.balance) < 0 ? "overdrawn" : "balance"}</div>
             </div>
             <Link href={`/reports?r=cashbook&account=${a.id}`} className="text-xs link">Passbook</Link>
-            {canEdit && <Button size="sm" onClick={() => setEdit({ id: a.id, name: a.name, kind: a.kind, last4: a.last4 ?? "", opening_balance: String(a.opening_balance ?? ""), opening_date: "" })}>Edit</Button>}
+            {canEdit && <Button size="sm" onClick={() => setEdit({ id: a.id, name: a.name, kind: a.kind, last4: a.last4 ?? "", opening_balance: a.opening_balance ? String(a.kind === "card" ? -Number(a.opening_balance) : a.opening_balance) : "", opening_date: "" })}>Edit</Button>}
             {canEdit && <Button size="sm" disabled={pending} onClick={() => run(() => setMoneyAccountActive(a.id, !a.active))}>{a.active ? "Hide" : "Use again"}</Button>}
           </li>
         ))}
@@ -273,7 +280,7 @@ export function MoneyAccountsTab({ accounts, canEdit = true }: { accounts: Accou
       <p className="border-t border-line px-4 py-2.5 text-xs text-muted">Balance = opening balance + money received into it − money paid from it (payments since the opening date). For a credit card it shows what was spent on it.</p>
       <Dialog open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? "Edit account" : "Add account"}
         footer={<><Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" disabled={pending || !edit?.name.trim()}
-          onClick={() => edit && run(() => saveMoneyAccount(edit), { then: () => setEdit(null) })}>Save</Button></>}>
+          onClick={() => edit && run(() => saveMoneyAccount(cardOwedAsMinus(edit)), { then: () => setEdit(null) })}>Save</Button></>}>
         {edit && (
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name" required className="sm:col-span-2"><input className="field" autoFocus value={edit.name} placeholder="HDFC current account / ICICI credit card / Office cash" onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
@@ -283,7 +290,7 @@ export function MoneyAccountsTab({ accounts, canEdit = true }: { accounts: Accou
               </select>
             </Field>
             <Field label="Last 4 digits" hint="Optional: tells two cards or accounts apart"><input className="field font-mono" inputMode="numeric" maxLength={4} value={edit.last4} onChange={(e) => setEdit({ ...edit, last4: e.target.value.replace(/\D/g, "") })} /></Field>
-            <Field label={edit.kind === "card" ? "Amount owed on the card now (₹)" : "Opening balance (₹)"} hint={edit.kind === "card" ? "Type it as a minus, e.g. -25000" : "What is in it today"}>
+            <Field label={edit.kind === "card" ? "Amount owed on the card now (₹)" : "Opening balance (₹)"} hint={edit.kind === "card" ? "What you owe the bank on it today, e.g. 25000 (0 if nothing)" : "What is in it today"}>
               <input className="field tabular" inputMode="decimal" value={edit.opening_balance} onChange={(e) => setEdit({ ...edit, opening_balance: e.target.value })} />
             </Field>
             <Field label="As on" hint="Payments from this date count towards the balance"><input type="date" className="field" value={edit.opening_date} onChange={(e) => setEdit({ ...edit, opening_date: e.target.value })} /></Field>

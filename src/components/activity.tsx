@@ -29,7 +29,7 @@ const LABEL: Record<string, string> = {
   payment_due_date: "Client payment due", supplier_due_date: "Supplier payment due", reference: "Reference", visible_to_client: "Visible to client",
   refund_to_client: "Refund to client", refund_from_supplier: "Refund from supplier", amount: "Amount", pay_date: "Date", mode: "Mode",
   due_at: "Due", priority: "Priority", alert: "Reminder", blocking: "Required", mobile: "Mobile", whatsapp: "WhatsApp", email: "Email",
-  passport_expiry: "Passport expiry", dob: "Date of birth", id_numbers: "ID numbers", max_attempts: "Attempts",
+  passport_expiry: "Passport expiry", account_id: "Account", dob: "Date of birth", id_numbers: "ID numbers", max_attempts: "Attempts",
 };
 const MONEY = new Set(["supplier_cost", "selling_price", "gst", "amount", "refund_to_client", "refund_from_supplier"]);
 const WORDS: Record<string, string> = { ...STATUS_LABEL, upi: "UPI", bank: "Bank transfer", cash: "Cash", card: "Card", cheque: "Cheque", normal: "Normal", high: "High", low: "Low", none: "No reminder", due: "At due time" };
@@ -74,14 +74,16 @@ export async function ActivityList({ items: all }: { items: Item[] }) {
   if (ids.size) {
     const list = Array.from(ids).slice(0, 200);
     const sb = await createClient();
-    const [p, s, c] = await Promise.all([
+    const [p, s, c, m] = await Promise.all([
       sb.from("profiles").select("id, full_name").in("id", list),
       sb.from("suppliers").select("id, name").in("id", list),
       sb.from("customers").select("id, full_name").in("id", list),
+      sb.from("money_accounts").select("id, name, last4").in("id", list),
     ]);
     for (const r of p.data ?? []) names.set(r.id, r.full_name);
     for (const r of s.data ?? []) names.set(r.id, r.name);
     for (const r of c.data ?? []) names.set(r.id, r.full_name);
+    for (const r of m.data ?? []) names.set(r.id, r.last4 ? `${r.name} ••${r.last4}` : r.name);
   }
 
   return (

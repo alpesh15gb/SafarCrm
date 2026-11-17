@@ -62,11 +62,11 @@ async function Ledger({ id, wallet, isBoss, canDelete }: { id: string; wallet: b
   const sb = await createClient();
   const [{ data: lines }, { data: pays }] = await Promise.all([
     sb.from("booking_lines").select("id, service, summary, service_date, status, supplier_cost, refund_from_supplier, supplier_due_date, case:cases(id, max_id)").eq("supplier_id", id).order("created_at", { ascending: false }).limit(300),
-    sb.from("payments").select("id, pay_date, amount, mode, reference, allocations:payment_allocations(amount, case:cases(id, max_id))").eq("supplier_id", id).eq("direction", "out").order("pay_date", { ascending: false }),
+    sb.from("payments").select("id, pay_date, amount, mode, reference, account:money_accounts(name, last4), allocations:payment_allocations(amount, case:cases(id, max_id))").eq("supplier_id", id).eq("direction", "out").order("pay_date", { ascending: false }),
   ]);
   type L = { id: string; service: Service; summary: string | null; service_date: string | null; status: string; supplier_cost: number; refund_from_supplier: number; supplier_due_date: string | null; case: { id: string; max_id: string } };
   // a payment can cover a case this staff member may not open; the case then comes back empty
-  type P = { id: string; pay_date: string; amount: number; mode: string; reference: string | null; allocations: { amount: number; case: { id: string; max_id: string } | null }[] };
+  type P = { id: string; pay_date: string; amount: number; mode: string; reference: string | null; account: { name: string; last4: string | null } | null; allocations: { amount: number; case: { id: string; max_id: string } | null }[] };
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
       <Card title="Bookings with this supplier" sub={isBoss ? undefined : "Your cases only. The totals above are for the whole agency."} pad={false}>
@@ -93,7 +93,7 @@ async function Ledger({ id, wallet, isBoss, canDelete }: { id: string; wallet: b
           <ul>
             {((pays ?? []) as unknown as P[]).map((p) => (
               <li key={p.id} className="border-b border-line px-4 py-2.5 text-sm last:border-0">
-                <div className="flex items-center justify-between gap-2"><span>{fdate(p.pay_date)} · {PAY_MODE_LABEL[p.mode]}{p.reference && ` · ${p.reference}`}</span>
+                <div className="flex items-center justify-between gap-2"><span>{fdate(p.pay_date)} · {p.account ? `${p.account.name}${p.account.last4 ? ` ••${p.account.last4}` : ""}${p.mode === "cheque" ? " (cheque)" : ""}` : PAY_MODE_LABEL[p.mode]}{p.reference && ` · ${p.reference}`}</span>
                   <span className="flex items-center gap-2"><Money value={p.amount} className="font-medium" />{canDelete && <DeleteSupplierPayment id={p.id} text={`${fdate(p.pay_date)} · ${inr(p.amount)} · ${PAY_MODE_LABEL[p.mode]}${p.reference ? ` · ${p.reference}` : ""}`} />}</span></div>
                 {(() => {
                   const used = p.allocations.reduce((s, a) => s + Number(a.amount), 0);

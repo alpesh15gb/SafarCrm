@@ -66,6 +66,8 @@ export type FieldDef = {
   label: string;
   type?: "text" | "date" | "time" | "number" | "select" | "bool" | "textarea";
   options?: string[];
+  /** words shown for stored option values, when they differ */
+  optionLabels?: Record<string, string>;
   list?: string; // datalist / lookup kind
   half?: boolean;
   required?: boolean;
@@ -96,6 +98,15 @@ export function visaTemplate(country: string): { mode: string; checklist: string
     mode: appt ? VISA_MODES[1] : VISA_MODES[0],
     checklist: [...BASE_DOCS, ...(strict ? MONEY_DOCS : ["Bank statement, last 3 months"]), ...extra],
   };
+}
+
+/** The simple visa flow (owner, 2026-11-18): not submitted, submitted, then approved or refused. Older detailed statuses map onto it. */
+export function visaStage(st: string | null | undefined): { label: string; tone: Tone; step: number } {
+  const s = st || "";
+  if (s === "Rejected") return { label: "Refused", tone: "red", step: 2 };
+  if (s === "Approved" || s === "Passport collected") return { label: "Approved", tone: "green", step: 2 };
+  if (["Applied", "Appointment booked", "Biometrics done", "Under process"].includes(s)) return { label: "Submitted", tone: "blue", step: 1 };
+  return { label: "Not submitted", tone: "amber", step: 0 };
 }
 
 export const VISA_STATUSES = ["Documents pending", "Documents received", "Applied", "Appointment booked", "Biometrics done", "Under process", "Approved", "Rejected", "Passport collected"];
@@ -147,7 +158,8 @@ export const SERVICE_FIELDS: Record<Service, { main: FieldDef[]; more: FieldDef[
       { key: "stay_days", label: "Stay allowed (days)", type: "number", half: true },
       { key: "valid_from", label: "Valid from", type: "date", half: true },
       { key: "valid_to", label: "Valid until", type: "date", half: true },
-      { key: "application_status", label: "Status (to correct a mistake)", type: "select", options: VISA_STATUSES },
+      { key: "application_status", label: "Status (to correct a mistake)", type: "select", options: ["Documents pending", "Applied", "Approved", "Rejected"],
+        optionLabels: { "Documents pending": "Not submitted", Applied: "Submitted", Rejected: "Refused" } },
     ],
   },
   insurance: {

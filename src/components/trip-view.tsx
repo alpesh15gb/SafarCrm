@@ -1,6 +1,6 @@
-import { FileText, Download, CalendarClock, Check, X, ListChecks } from "lucide-react";
+import { FileText, Download, CalendarClock, Check, X } from "lucide-react";
 import { Badge, Card, KV, Money, ServiceIcon, StatusBadge, cx } from "./ui";
-import { DETAIL_LABELS, SERVICE_LABEL, STATUS_LABEL, VISA_STATUS_TONE, type Service } from "@/lib/constants";
+import { DETAIL_LABELS, SERVICE_LABEL, STATUS_LABEL, visaStage, type Service } from "@/lib/constants";
 import { fdate, inr } from "@/lib/format";
 import { offsetLabel } from "@/lib/flight-time";
 
@@ -75,13 +75,9 @@ export function BookingDetails({ service, details }: { service: string; details:
   return <KV cols={3} items={Object.entries(d).filter(([k]) => !skip.has(k)).map(([k, v]) => [DETAIL_LABELS[k] ?? (k === "nights" ? "Nights" : k), fmt(k, v)])} />;
 }
 
-const VISA_TRACK = ["Documents", "Applied", "Processing", "Decision"];
-function visaStep(st: string) {
-  if (["Approved", "Rejected", "Passport collected"].includes(st)) return 3;
-  if (["Biometrics done", "Under process"].includes(st)) return 2;
-  if (["Applied", "Appointment booked"].includes(st)) return 1;
-  return 0;
-}
+// the same three steps the office sees (owner, 2026-11-18)
+const VISA_TRACK = ["Preparing", "Submitted", "Decision"];
+const visaStep = (st: string) => visaStage(st).step;
 
 /** Client-facing visa view: where it stands, the appointment, and which documents we still need. */
 function VisaDetails({ d }: { d: Record<string, unknown> }) {
@@ -89,17 +85,14 @@ function VisaDetails({ d }: { d: Record<string, unknown> }) {
   const at = visaStep(st);
   const rejected = st === "Rejected";
   const s = (k: string) => (d[k] as string) || "";
-  const list: { item: string; done: boolean }[] = Array.isArray(d.checklist)
-    ? (d.checklist as { item: string; done: boolean }[])
-    : s("documents").split(/\n+/).map((x) => x.replace(/^[-•*\s]+/, "").trim()).filter(Boolean).map((item) => ({ item, done: false }));
-  const missing = list.filter((c) => !c.done).length;
+  // no document checklist for the client: the simple visa flow doesn't tick one, so it would read "5 still pending" for ever
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Badge dot tone={VISA_STATUS_TONE[st] ?? "grey"}>{rejected ? "Refused" : st}</Badge>
+        <Badge dot tone={visaStage(st).tone}>{visaStage(st).label}</Badge>
         <ol className="flex min-w-[260px] flex-1 items-center">
           {VISA_TRACK.map((label, i) => {
-            const done = i < at || (i === at && at === 3 && !rejected);
+            const done = i < at || (i === at && at === 2 && !rejected);
             const cur = i === at;
             return (
               <li key={label} className={cx("flex items-center", i < VISA_TRACK.length - 1 && "flex-1")}>
@@ -129,21 +122,6 @@ function VisaDetails({ d }: { d: Record<string, unknown> }) {
         ["Valid", s("valid_to") ? `${s("valid_from") ? fdate(s("valid_from")) : "…"} → ${fdate(s("valid_to"))}` : ""],
         ["Stay allowed", s("stay_days") ? `${s("stay_days")} days` : ""],
       ]} />
-      {list.length > 0 && !["Approved", "Passport collected"].includes(st) && (
-        <div>
-          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
-            <ListChecks className="h-3.5 w-3.5" />{missing ? `Documents we need from you (${missing} still pending)` : "All documents received. Thank you!"}
-          </div>
-          <ul className="grid gap-1 sm:grid-cols-2">
-            {list.map((c, i) => (
-              <li key={i} className={cx("flex items-start gap-2 text-sm", c.done && "text-muted")}>
-                <span className={cx("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full", c.done ? "bg-emerald-500 text-white" : "border border-gray-300")}>{c.done && <Check className="h-3 w-3" />}</span>
-                {c.item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
@@ -170,7 +148,7 @@ export function TripView({ trip, fileHref }: { trip: Trip; fileHref: (id: string
           {trip.bookings.length === 0 && <Card><p className="text-muted">Booking details will appear here once confirmed.</p></Card>}
           {trip.bookings.map((b) => (
             <Card key={b.id} title={<span className="flex items-center gap-2"><ServiceIcon service={b.service} />{SERVICE_LABEL[b.service]}{b.summary && <span className="font-normal text-muted">· {b.summary}</span>}</span>}
-              action={<span className="flex items-center gap-2">{b.price !== null && b.price !== undefined && <span className="tabular text-sm">{inr(b.price)}</span>}<Badge tone={b.status === "confirmed" ? "green" : b.status === "cancelled" ? "red" : "grey"}>{STATUS_LABEL[b.status]}</Badge></span>}>
+              action={<span className="flex items-center gap-2">{b.price !== null && b.price !== undefined && <span className="tabular text-sm">{inr(b.price)}</span>}{(b.service !== "visa" || b.status === "cancelled") && <Badge tone={b.status === "confirmed" ? "green" : b.status === "cancelled" ? "red" : "grey"}>{STATUS_LABEL[b.status]}</Badge>}</span>}>
               <BookingDetails service={b.service} details={b.details} />
               {b.travellers.length > 0 && <div className="mt-3 text-xs text-muted">For: {b.travellers.join(", ")}</div>}
             </Card>

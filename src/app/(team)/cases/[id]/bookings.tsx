@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Copy, MoreHorizontal, Pencil, Plus, Trash2, X, Ban, Undo2 } from "lucide-react";
+import { Check, Copy, MoreHorizontal, Pencil, Plus, Trash2, X, Ban, Undo2 } from "lucide-react";
 import { Badge, Button, Card, Empty, Field, Money, ServiceIcon, StatusBadge, cx } from "@/components/ui";
 import { Confirm, Dialog, Menu, More, Toggle, useAction } from "@/components/client";
 import { SupplierPicker } from "@/components/pickers";
@@ -8,7 +8,7 @@ import { SupplierQuickForm } from "@/components/forms/supplier-quick";
 import { DropZone, FileItem, withHistory } from "@/components/files";
 import { BookingDetails } from "@/components/trip-view";
 import { useApp } from "@/components/shell/shell";
-import { cancelLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLineVisible } from "@/actions/bookings";
+import { cancelLine, confirmLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLineVisible } from "@/actions/bookings";
 import { DEFAULT_KIND, SERVICES, SERVICE_FIELDS, SERVICE_LABEL, visaTemplate, type FieldDef, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
 import { lineProblem } from "@/lib/validate";
@@ -64,7 +64,7 @@ export function BookingsTab({ caseId, lines, travellers, maxId, customer, lookup
           <Button key={s} size="sm" onClick={() => setDlg({ service: s })}><ServiceIcon service={s} />{SERVICE_LABEL[s]}</Button>
         ))}
       </div>
-      {lines.length === 0 && <Card><Empty text="No bookings yet. Add the first flight, hotel or other service." action={<Button variant="primary" onClick={() => setDlg({ service: "flight" })}><Plus className="h-4 w-4" />Add booking</Button>} /></Card>}
+      {lines.length === 0 && !dlg && <Card><Empty text="No bookings yet. Add the first flight, hotel or other service." action={<Button variant="primary" onClick={() => setDlg({ service: "flight" })}><Plus className="h-4 w-4" />Add booking</Button>} /></Card>}
       {lines.map((l) => (
         <LineCard
           key={l.id}
@@ -119,6 +119,11 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
         </div>
         <Toggle checked={l.visible_to_client} disabled={me.role !== "boss" || pending} onChange={(v) => run(() => setLineVisible(l.id, v))} label={<span className="text-xs text-muted">Visible to client</span>} />
         {(l.service !== "visa" || cancelled) && <StatusBadge status={l.status} />}
+        {l.service !== "visa" && l.status === "pending" && (
+          <Button size="sm" variant="primary" disabled={pending} onClick={() => run(() => confirmLine(l.id))} title="It is booked: ticket or voucher issued">
+            <Check className="h-3.5 w-3.5" />Mark booked
+          </Button>
+        )}
         <Button size="sm" onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</Button>
         <Menu trigger={<Button size="sm" aria-label="More" className="!px-2"><MoreHorizontal className="h-4 w-4" /></Button>}>
           <button type="button" onClick={() => run(() => duplicateLine(l.id))}><Copy className="mr-2 inline h-4 w-4" />{l.service === "visa" ? "Copy for another traveller" : "Duplicate (return trip)"}</button>
@@ -364,7 +369,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           <Field label="Supplier">
             {addSup !== null ? (
               <div className="rounded-lg border border-dashed border-line p-3">
-                <SupplierQuickForm initialName={addSup} onCreated={(s) => { setSupplier({ id: s.id, label: s.name }); setAddSup(null); }} />
+                <SupplierQuickForm initialName={addSup} service={service} onCreated={(s) => { setSupplier({ id: s.id, label: s.name }); setAddSup(null); }} />
                 <button type="button" className="mt-2 text-xs link" onClick={() => setAddSup(null)}>Pick an existing supplier</button>
               </div>
             ) : (
@@ -457,10 +462,12 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 text-[13px]">
               {!isVisa && !isCancelled && <span>Commission <b className="tabular">{inr(commission)}</b></span>}
               {isCancelled && <span className="text-red-700">Cancelled: profit is (selling price − refund to client) − (supplier cost − refund from supplier). Commission doesn&apos;t count.</span>}
-              <span>{isCancelled ? "Profit after cancellation" : "Profit"} <b className={cx("tabular", profit < 0 ? "text-red-600" : "text-emerald-700")}>{inr(profit)}</b></span>
+              <span>{isCancelled ? "Profit after cancellation" : "Profit"} <b className={cx("tabular", profit < 0 ? "text-red-600" : "text-emerald-700")}>{inr(visaPerPerson ? profit * trav.length : profit)}</b></span>
               {margin !== null && <span>Margin <b className="tabular">{margin}%</b></span>}
               {profit < 0 && <Badge tone="red">Loss</Badge>}
-              <span className="text-muted">Client pays {inr(num(m.selling_price) + num(m.gst))}</span>
+              <span className="text-muted">Client pays {visaPerPerson
+                ? `${inr((num(m.selling_price) + num(m.gst)) * trav.length)} (${trav.length} × ${inr(num(m.selling_price) + num(m.gst))})`
+                : inr(num(m.selling_price) + num(m.gst))}</span>
             </div>
           )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -528,7 +535,9 @@ function DetailFields({ defs, d, set }: { defs: FieldDef[]; d: Record<string, un
           <Field key={f.key} label={f.label} hint={f.hint} required={f.required} className={f.type === "textarea" ? "sm:col-span-4" : span}>
             {f.type === "select" ? (
               <select className="field" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
-                <option value="">—</option>{f.options!.map((o) => <option key={o}>{o}</option>)}
+                <option value="">—</option>
+                {Boolean(v) && !f.options!.includes(String(v)) && <option value={String(v)}>{String(v)}</option>}
+                {f.options!.map((o) => <option key={o} value={o}>{f.optionLabels?.[o] ?? o}</option>)}
               </select>
             ) : f.type === "textarea" ? (
               <textarea className="field min-h-16" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)} />

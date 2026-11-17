@@ -11,7 +11,7 @@ import { TrendChart } from "@/components/charts";
 import { ActivityList } from "@/components/activity";
 import { NewButton } from "@/components/list-tools";
 import { AlertDoneButton } from "@/components/case-alerts";
-import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, VISA_STATUS_TONE } from "@/lib/constants";
+import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, visaStage } from "@/lib/constants";
 import { fdate, inr, inrShort, todayIST } from "@/lib/format";
 import { RangeValidationError, resolveRange, type RangeSP as SP } from "@/lib/range";
 
@@ -103,9 +103,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="text-[13px] font-medium text-slate-400">{dateLine}</div>
             <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.025em] md:text-[30px]">{greeting()}, {first}</h1>
             <div className="mt-3 flex flex-wrap gap-2 text-[13px]">
-              <HeroChip href="/cases?quick=attention" icon={AlertCircle} hot={attentionCases > 0}>{attentionCases} case{attentionCases === 1 ? "" : "s"} need attention</HeroChip>
+              <HeroChip href="/cases?quick=attention" icon={AlertCircle} hot={attentionCases > 0}>{attentionCases} case{attentionCases === 1 ? "" : "s"} {attentionCases === 1 ? "needs" : "need"} attention</HeroChip>
               <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departure{trips.length === 1 ? "" : "s"} this week</HeroChip>
-              <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open cases</HeroChip>
+              <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open case{openCases === 1 ? "" : "s"}</HeroChip>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -423,7 +423,7 @@ async function VisaTracker() {
     <Card title="Visa applications" sub={`${rows.length} in progress`} icon={Stamp} pad={false} action={<Link href="/cases?service=visa&status=open" className="text-xs link">All</Link>}>
       <ul className="divide-y divide-line">
         {rows.slice(0, 6).map((r) => {
-          const st = r.details?.application_status || "Documents pending";
+          const st = visaStage(r.details?.application_status);
           const appt = r.details?.appointment_date;
           const soon = appt && appt >= todayIST() && appt <= todayIST(2);
           return (
@@ -437,7 +437,7 @@ async function VisaTracker() {
                     {appt ? `Appt ${fdate(appt)}${r.details?.appointment_time ? " " + r.details.appointment_time : ""}` : r.details?.expected_by ? `Decision by ${fdate(r.details.expected_by)}` : r.case.max_id}
                   </span>
                 </span>
-                <Badge dot tone={VISA_STATUS_TONE[st] ?? "grey"}>{st}</Badge>
+                <Badge dot tone={st.tone}>{st.label}</Badge>
               </Link>
             </li>
           );

@@ -6,10 +6,15 @@ import { Dialog, useAction } from "@/components/client";
 import { saveSupplier } from "@/actions/suppliers";
 import { SUPPLIER_TYPES } from "@/lib/constants";
 
-export function SupplierQuickForm({ initialName = "", onCreated }: { initialName?: string; onCreated: (s: { id: string; name: string }) => void }) {
+export function SupplierQuickForm({ initialName = "", service, onCreated }: {
+  initialName?: string;
+  /** the booking it is added from: a hotel booking suggests a hotel supplier, not an airline */
+  service?: string;
+  onCreated: (s: { id: string; name: string }) => void;
+}) {
   const { run, pending } = useAction();
   const [name, setName] = useState(initialName);
-  const [type, setType] = useState("airline");
+  const [type, setType] = useState(!service || service === "flight" ? "airline" : SUPPLIER_TYPES.some((t) => t.value === service) ? service : "other");
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
