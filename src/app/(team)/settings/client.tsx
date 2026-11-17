@@ -246,13 +246,13 @@ export function DataTab({ backups, stale }: { backups: { at: string; db_size: st
 export type AccountRow = { id: string; name: string; kind: string; last4: string | null; active: boolean; opening_balance: number; money_in: number; money_out: number; balance: number; payments: number };
 const KIND_LABEL: Record<string, string> = { bank: "Bank account", card: "Credit card", cash: "Cash", upi: "UPI" };
 
-export function MoneyAccountsTab({ accounts }: { accounts: AccountRow[] }) {
+export function MoneyAccountsTab({ accounts, canEdit = true }: { accounts: AccountRow[]; canEdit?: boolean }) {
   const { run, pending } = useAction();
   const blank = { id: "", name: "", kind: "bank", last4: "", opening_balance: "", opening_date: "" };
   const [edit, setEdit] = useState<typeof blank | null>(null);
   return (
     <Card title="Money accounts" className="max-w-3xl" sub="The bank accounts, credit cards, cash and UPI the agency's money moves through. Staff pick one when recording a payment."
-      action={<Button size="sm" variant="primary" onClick={() => setEdit(blank)}><Plus className="h-3.5 w-3.5" />Add account</Button>} pad={false}>
+      action={canEdit ? <Button size="sm" variant="primary" onClick={() => setEdit(blank)}><Plus className="h-3.5 w-3.5" />Add account</Button> : undefined} pad={false}>
       <ul className="divide-y divide-line">
         {accounts.map((a) => (
           <li key={a.id} className={cx("flex flex-wrap items-center gap-3 px-4 py-3", !a.active && "opacity-60")}>
@@ -264,8 +264,9 @@ export function MoneyAccountsTab({ accounts }: { accounts: AccountRow[] }) {
               <div className={cx("text-sm font-semibold tabular", Number(a.balance) < 0 && "text-red-700")}>{inr(Math.abs(Number(a.balance)))}</div>
               <div className="text-[11px] text-muted">{a.kind === "card" ? (Number(a.balance) < 0 ? "spent on the card" : "credit on the card") : Number(a.balance) < 0 ? "overdrawn" : "balance"}</div>
             </div>
-            <Button size="sm" onClick={() => setEdit({ id: a.id, name: a.name, kind: a.kind, last4: a.last4 ?? "", opening_balance: String(a.opening_balance ?? ""), opening_date: "" })}>Edit</Button>
-            <Button size="sm" disabled={pending} onClick={() => run(() => setMoneyAccountActive(a.id, !a.active))}>{a.active ? "Hide" : "Use again"}</Button>
+            <Link href={`/reports?r=cashbook&account=${a.id}`} className="text-xs link">Passbook</Link>
+            {canEdit && <Button size="sm" onClick={() => setEdit({ id: a.id, name: a.name, kind: a.kind, last4: a.last4 ?? "", opening_balance: String(a.opening_balance ?? ""), opening_date: "" })}>Edit</Button>}
+            {canEdit && <Button size="sm" disabled={pending} onClick={() => run(() => setMoneyAccountActive(a.id, !a.active))}>{a.active ? "Hide" : "Use again"}</Button>}
           </li>
         ))}
       </ul>

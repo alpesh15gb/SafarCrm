@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
-  LayoutDashboard, Briefcase, CheckSquare, Users, Truck, BarChart3, Settings, Search, Plus, Bell, Menu as MenuIcon,
+  LayoutDashboard, Briefcase, CheckSquare, Landmark, Users, Truck, BarChart3, Settings, Search, Plus, Bell, Menu as MenuIcon,
   ChevronsLeft, ChevronsRight, LogOut, UserCircle, X, CornerDownLeft, FileText, Building2, Ticket, type LucideIcon,
 } from "lucide-react";
 import { cx, Button, Avatar } from "@/components/ui";
@@ -35,6 +35,7 @@ const NAV = [
   { href: "/cases", label: "Cases", icon: Briefcase, count: "cases" as const },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
+  { href: "/accounts", label: "Accounts", icon: Landmark, profit: true },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings, boss: true },
 ];
@@ -78,7 +79,8 @@ export function Shell({ me, staff, agency, counts, children }: { me: Me; staff: 
     try { localStorage.setItem("nav-collapsed", v ? "1" : "0"); } catch {}
   }
 
-  const nav = NAV.filter((n) => !n.boss || me.role === "boss");
+  // "profit" items (money accounts) are for the boss and staff who may see profit
+  const nav = NAV.filter((n) => (!("boss" in n) || !n.boss || me.role === "boss") && (!("profit" in n) || !n.profit || me.role === "boss" || me.can_see_profit));
   const ctx: Ctx = { me, staff, openNew: (kind, preset) => setDlg({ kind, preset }), askNext: () => {} };   // Tasks were removed (owner, 2026-11-18): nothing asks for a next step any more
   const mini = collapsed && !mobileOpen;
 
