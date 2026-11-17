@@ -135,7 +135,7 @@ function LineCard({ line: l, travellers, maxId, customer, files, onEdit, onCance
             </div>
           )}
           {l.service === "visa"
-            ? <VisaPanel lineId={l.id} details={l.details} travellers={travellers.filter((t) => l.traveller_ids.includes(t.id))} trip={trip} readOnly={cancelled} />
+            ? <VisaPanel lineId={l.id} details={l.details} travellers={travellers.filter((t) => l.traveller_ids.includes(t.id))} trip={trip} readOnly={cancelled} hasFile={files.some((x) => !x.superseded_at)} />
             : <BookingDetails service={l.service} details={l.details} />}
           {l.service === "flight" && !cancelled && (
             <FlightPassengers pax={travellers.filter((t) => l.traveller_ids.includes(t.id))} travelDate={l.service_date} international={isIntl(l.details, iata)} />

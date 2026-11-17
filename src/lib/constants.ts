@@ -137,18 +137,12 @@ export const SERVICE_FIELDS: Record<Service, { main: FieldDef[]; more: FieldDef[
   },
   visa: {
     main: [
-      { key: "country", label: "Country", required: true, list: "country", hint: "Pick from the list to fill the checklist for you" },
+      // kept short on purpose (owner, 2026-11-18): country and type; the visa form is attached as a file
+      { key: "country", label: "Country", required: true, list: "country" },
       { key: "visa_type", label: "Visa type", type: "select", options: VISA_TYPES, half: true },
-      { key: "mode", label: "How it is applied", type: "select", options: VISA_MODES, half: true },
     ],
     more: [
-      { key: "application_no", label: "Application / reference no.", half: true },
       { key: "entry", label: "Entry", type: "select", options: ["Single", "Double", "Multiple"], half: true },
-      { key: "appointment_date", label: "Appointment date", type: "date", half: true },
-      { key: "appointment_time", label: "Appointment time", type: "time", half: true },
-      { key: "appointment_center", label: "Appointment centre", hint: "For example VFS Global, Andheri, Mumbai" },
-      { key: "applied_on", label: "Applied on", type: "date", half: true },
-      { key: "expected_by", label: "Decision expected by", type: "date", half: true },
       { key: "visa_number", label: "Visa number", half: true },
       { key: "stay_days", label: "Stay allowed (days)", type: "number", half: true },
       { key: "valid_from", label: "Valid from", type: "date", half: true },
