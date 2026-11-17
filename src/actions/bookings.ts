@@ -187,12 +187,14 @@ export async function reinstateLine(id: string): Promise<ActionResult> {
 export async function confirmLine(id: string): Promise<ActionResult> {
   try {
     const sb = await createClient();
+    const { data: before } = await sb.from("booking_lines").select("case:cases!inner(status)").eq("id", id).maybeSingle();
+    const was = (before?.case as unknown as { status: string } | undefined)?.status;
     const { data: l, error } = await sb.from("booking_lines").update({ status: "confirmed" }).eq("id", id).eq("status", "pending")
       .select("case:cases!inner(id)").maybeSingle();
     if (error) throw error;
     if (!l) return { ok: false, error: "This booking is no longer pending. Reload the page." };
     const { data: c } = await sb.from("cases").select("status, max_id").eq("id", (l.case as unknown as { id: string }).id).maybeSingle();
-    const tail = c?.status === "completed" ? `. ${c.max_id} is complete: booked and fully paid.` : c?.status === "booked" ? `. ${c.max_id} is Booked.` : "";
+    const tail = !c || c.status === was ? "" : c.status === "completed" ? `. ${c.max_id} is complete: booked and fully paid.` : c?.status === "booked" ? `. ${c.max_id} is Booked.` : "";
     return { ok: true, message: `Booking confirmed${tail}` };
   } catch (e) {
     return fail(e);

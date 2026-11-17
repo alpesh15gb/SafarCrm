@@ -13,8 +13,10 @@ insert into public.customers (id, customer_type, first_name, mobile) values
   ('00000000-0000-0000-0000-00000031c001', 'individual', 'Paise Tester', '+919000031001');
 insert into public.cases (id, customer_id, title, assigned_to, status) values
   ('00000000-0000-0000-0000-00000031ca01', '00000000-0000-0000-0000-00000031c001', 'Fractional balances', '00000000-0000-0000-0000-0000000031a1', 'booked');
-insert into public.booking_lines (case_id, service, status, supplier_cost, selling_price, gst, details) values
-  ('00000000-0000-0000-0000-00000031ca01', 'other', 'confirmed', 0.20, 0.25, 0, '{"title":"Fractional booking"}');
+insert into public.suppliers (id, name) values ('00000000-0000-0000-0000-00000031d001', 'Paise Supplier');
+-- a supplier on the booking: only bookings with a supplier count as owed to suppliers (migration 038)
+insert into public.booking_lines (case_id, service, status, supplier_id, supplier_cost, selling_price, gst, details) values
+  ('00000000-0000-0000-0000-00000031ca01', 'other', 'confirmed', '00000000-0000-0000-0000-00000031d001', 0.20, 0.25, 0, '{"title":"Fractional booking"}');
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000031b1","role":"authenticated"}';
