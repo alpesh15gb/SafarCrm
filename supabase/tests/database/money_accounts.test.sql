@@ -58,10 +58,10 @@ insert into r select 'staff_bal', count(*)::text from public.money_account_balan
 reset role; reset request.jwt.claims;
 select is((select v from r where k = 'staff_bal'), '0', 'staff without profit rights see no balances');
 
-select results_eq($ select opening, money_in, money_out, closing from cb where account_id = '00000000-0000-0000-0000-00000000af01' $,
-  $ values (100000.00, 20000.00, 0.00, 120000.00) $, 'cash and bank book: the bank account opens, takes the receipt and closes');
+select results_eq($$ select opening, money_in, money_out, closing from cb where account_id = '00000000-0000-0000-0000-00000000af01' $$,
+  $$ values (100000.00, 20000.00, 0.00, 120000.00) $$, 'cash and bank book: the bank account opens, takes the receipt and closes');
 select is((select closing from cb where account_id = '00000000-0000-0000-0000-00000000af02'), -13000.00, 'the card closes at what is owed on it');
-select results_eq($ select received, paid, party, kind from cbl $, $ values (20000.00, 0.00, 'Acc Client'::text, 'Client payment'::text) $,
+select results_eq($$ select received, paid, party, kind from cbl $$, $$ values (20000.00, 0.00, 'Acc Client'::text, 'Client payment'::text) $$,
   'one account chosen: its entries, with the client and what it was');
 select * from finish();
 rollback;
