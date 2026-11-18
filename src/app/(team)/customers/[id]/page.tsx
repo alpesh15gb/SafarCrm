@@ -7,7 +7,7 @@ import { Avatar, Badge, Card, PageHeader, StatusBadge, Table, Tabs, btnClass } f
 import { CopyButton } from "@/components/client";
 import { NewButton } from "@/components/list-tools";
 import { ActivityList } from "@/components/activity";
-import { expiryLabel, fdate, prettyPhone, waLink } from "@/lib/format";
+import { expiryLabel, fdate, prettyPhone, waWebLink } from "@/lib/format";
 import { CustomerForm } from "./form";
 import { CustomerActions, DocumentsTab } from "./tabs";
 import { FamilyTab, type FamilyMember } from "./family";
@@ -62,7 +62,8 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         }
         action={
           <>
-            <a className={btnClass("secondary")} href={waLink(c.whatsapp || c.mobile, `Namaste ${c.first_name}, `)} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>
+            {/* straight into the chat on WhatsApp Web, in one tab that is reused (owner, 2026-11-18) */}
+            <a className={btnClass("secondary")} href={waWebLink(c.whatsapp || c.mobile)} target="whatsapp-web" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>
             <CustomerActions customer={{ id: c.id, full_name: c.full_name }} isBoss={me.role === "boss"} hasPortal={!!portal?.active} />
             <NewButton kind="case" label="New case" preset={{ customer: { id: c.id, label: c.full_name } }} />
           </>

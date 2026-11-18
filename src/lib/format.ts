@@ -113,6 +113,14 @@ export function waLink(phone: string | null | undefined, text: string) {
   return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
 }
 
+/** Opens the client's chat straight in WhatsApp Web (owner, 2026-11-18), with an optional first line typed in.
+ *  A 10-digit Indian mobile gets 91 in front; a number with another country code is used as it is. */
+export function waWebLink(phone: string | null | undefined, text = "") {
+  let d = (phone || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.length === 10 && /^[6-9]/.test(d)) d = `91${d}`;
+  return `https://web.whatsapp.com/send?phone=${d}${text ? `&text=${encodeURIComponent(text)}` : ""}`;
+}
+
 /** Financial year (April–March) containing the given date */
 export function fyRange(date = todayIST()) {
   const [y, m] = date.split("-").map(Number);
