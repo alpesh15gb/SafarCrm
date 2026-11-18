@@ -83,10 +83,10 @@ export async function sendFileToClient(fileId: string, channel: "whatsapp" | "em
     const sb = await createClient();
     // read through row-level security: only someone who may see the file can send it
     const { data: f } = await sb.from("files")
-      .select("id, file_name, original_name, mime, kind, storage_path, case_id, line:booking_lines(service, status, details, service_date, reference), case:cases(max_id, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email))")
+      .select("id, file_name, original_name, mime, kind, storage_path, case_id, line:booking_lines(service, status, details, service_date, reference, traveller_ids), case:cases(max_id, destination, travel_start, travel_end, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email))")
       .eq("id", fileId).maybeSingle();
     if (!f) return { ok: false, error: "File not found." };
-    const kase = f.case as unknown as { max_id: string; customer: { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null } | null } | null;
+    const kase = f.case as unknown as { max_id: string; destination: string | null; travel_start: string | null; travel_end: string | null; customer: { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null } | null } | null;
     const cust = kase?.customer ?? null;
     const dest = (to ?? (channel === "whatsapp" ? cust?.whatsapp || cust?.mobile : cust?.email) ?? "").trim();
     if (!dest) return { ok: false, error: channel === "whatsapp" ? "The client has no mobile number." : "The client has no email address. Add it on their profile." };
@@ -99,9 +99,17 @@ export async function sendFileToClient(fileId: string, channel: "whatsapp" | "em
     const { data: st } = await sb.from("settings").select("agency_name, agency_phone, agency_email").eq("id", 1).single();
     // the confirmation message in the owner's format (FLIGHT BOOKING CONFIRMATION · Dear … · BOOKING CONFIRMED · details ·
     // 📎 attached · Thank you for booking with …), worded for the booking the file belongs to
+    // who travels: the people on this booking, else everyone on the case
+    const lineTrav = ((f.line as unknown as { traveller_ids?: string[] } | null)?.traveller_ids ?? []);
+    const { data: people } = lineTrav.length
+      ? await sb.from("customers").select("id, full_name").in("id", lineTrav)
+      : f.case_id ? await sb.from("case_travellers").select("customer:customers(id, full_name)").eq("case_id", f.case_id).then((r) => ({ data: (r.data ?? []).map((x) => x.customer as unknown as { id: string; full_name: string }) }))
+      : { data: [] as { id: string; full_name: string }[] };
+    const travellers = ((people ?? []) as { id: string; full_name: string }[]).map((p) => p.full_name).filter(Boolean).sort();
     const msg = sendMessage({
       kind: f.kind, line: (f.line ?? null) as unknown as SendLine, customer: cust?.full_name ?? "",
       maxId: kase?.max_id ?? null, agency: { name: st?.agency_name || "", phone: st?.agency_phone, email: st?.agency_email },
+      trip: { travellers, destination: kase?.destination ?? null, start: kase?.travel_start ?? null, end: kase?.travel_end ?? null },
     });
     const r = channel === "whatsapp"
       ? await sendWhatsAppDocument(dest, { bytes, mime: f.mime, name: f.file_name }, msg.whatsapp)

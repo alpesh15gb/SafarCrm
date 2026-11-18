@@ -7,15 +7,19 @@ const agency = { name: "Max Travel", phone: "7095018018", email: "cs@maxtravel.i
 test("a confirmed flight ticket reads as the owner's confirmation format", () => {
   const m = sendMessage({
     kind: "ticket", customer: "Tour Testkumar Sharma", maxId: "MAX-1001", agency,
-    line: { service: "flight", status: "confirmed", service_date: "2026-12-20", reference: null,
-      details: { pnr: "TTPNR1", sectors: [{ from: "BOM", to: "DXB", date: "2026-12-20", dep: "04:30", airline: "Emirates", flight_no: "EK501" }] } },
+    // the new flow: nothing typed on the booking, the details come from the case
+    line: { service: "flight", status: "confirmed", service_date: null, reference: null, details: {} },
+    trip: { travellers: ["Tour Priya Sharma", "Tour Testkumar Sharma"], destination: "Dubai", start: "2026-12-20", end: "2026-12-24" },
   });
   assert.match(m.whatsapp, /^\*FLIGHT BOOKING CONFIRMATION\*/);
   assert.match(m.whatsapp, /Dear Tour Testkumar Sharma,/);
   assert.match(m.whatsapp, /Your flight booking has been confirmed!/);
   assert.match(m.whatsapp, /✅ \*BOOKING CONFIRMED\*/);
-  assert.match(m.whatsapp, /Flight: \*BOM → DXB · 20-12-2026 04:30 · Emirates EK501\*/);
-  assert.match(m.whatsapp, /PNR: \*TTPNR1\*/);
+  assert.match(m.whatsapp, /Travellers: \*Tour Priya Sharma, Tour Testkumar Sharma\*/);
+  assert.match(m.whatsapp, /Destination: \*Dubai\*/);
+  assert.match(m.whatsapp, /Travel dates: \*20-12-2026 → 24-12-2026\*/);
+  assert.match(m.whatsapp, /Booking ref: \*MAX-1001\*/);
+  assert.doesNotMatch(m.whatsapp, /PNR|Flight:/);
   assert.match(m.whatsapp, /📎 Your e-ticket is attached to this message\./);
   assert.match(m.whatsapp, /Thank you for booking with Max Travel\.\nHave a pleasant journey! ✈️/);
   assert.match(m.html, /BOOKING CONFIRMED/);
@@ -27,7 +31,6 @@ test("a hotel voucher, a pending booking and a file with no booking are worded t
   const hotel = sendMessage({ kind: "voucher", customer: "A B", maxId: null, agency,
     line: { service: "hotel", status: "confirmed", service_date: null, reference: null, details: { hotel_name: "Sea View", city: "Goa", check_in: "2026-12-01", check_out: "2026-12-03" } } });
   assert.match(hotel.whatsapp, /HOTEL BOOKING CONFIRMATION/);
-  assert.match(hotel.whatsapp, /Hotel: \*Sea View, Goa\*/);
   assert.match(hotel.whatsapp, /hotel voucher/);
   const pending = sendMessage({ kind: "ticket", customer: "A B", maxId: null, agency,
     line: { service: "flight", status: "pending", service_date: null, reference: null, details: { sectors: [] } } });

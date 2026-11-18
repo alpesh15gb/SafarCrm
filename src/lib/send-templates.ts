@@ -1,6 +1,6 @@
 // The message that goes with a file sent to the client (owner, 2026-11-18): one format for email and WhatsApp,
 //   FLIGHT BOOKING CONFIRMATION · Dear <name>, · Your flight booking has been confirmed! · [BOOKING CONFIRMED]
-//   · the booking details · 📎 Your e-ticket is attached · Thank you for booking with <agency> · Have a pleasant journey!
+//   · travellers, destination, dates, booking ref · 📎 Your e-ticket is attached · Thank you for booking with <agency> · Have a pleasant journey!
 // worded for the kind of booking. Pure functions: no database, easy to test.
 import { fdate } from "./format.ts";
 
@@ -11,6 +11,8 @@ export type SendInput = {
   customer: string;           // who it is addressed to
   maxId: string | null;
   agency: { name: string; phone?: string | null; email?: string | null };
+  /** the case: travellers on this booking (or the case), destination and travel dates */
+  trip?: { travellers: string[]; destination: string | null; start: string | null; end: string | null };
 };
 export type SendMessage = { subject: string; whatsapp: string; html: string };
 
@@ -37,35 +39,18 @@ function wording(kind: string, line: SendLine): Wording {
   }
 }
 
-/** Label + value pairs for the booking: route, date, flight, PNR; hotel, check-in/out; policy number... */
-function details(line: SendLine, maxId: string | null): [string, string][] {
-  const d = line?.details ?? {};
-  const out: [string, string][] = [];
-  if (line?.service === "flight") {
-    const sectors = Array.isArray(d.sectors) ? (d.sectors as Record<string, unknown>[]) : [];
-    sectors.forEach((x, i) => {
-      const flight = [s(x.airline), s(x.flight_no)].filter(Boolean).join(" ");
-      const when = [fdate(s(x.date)), s(x.dep)].filter(Boolean).join(" ");
-      out.push([sectors.length > 1 ? `Flight ${i + 1}` : "Flight", [`${s(x.from)} → ${s(x.to)}`, when, flight].filter(Boolean).join(" · ")]);
-    });
-    if (s(d.pnr) || line.reference) out.push(["PNR", s(d.pnr) || s(line.reference)]);
-  } else if (line?.service === "hotel") {
-    out.push(["Hotel", [s(d.hotel_name), s(d.city)].filter(Boolean).join(", ")]);
-    out.push(["Check-in", fdate(s(d.check_in))], ["Check-out", fdate(s(d.check_out))]);
-    out.push(["Confirmation no.", s(d.confirmation_no) || s(line.reference)]);
-  } else if (line?.service === "rail" || line?.service === "bus") {
-    out.push(["Journey", [`${s(d.from)} → ${s(d.to)}`, fdate(s(d.date))].filter(Boolean).join(" · ")]);
-    out.push(["PNR", s(d.pnr) || s(line.reference)]);
-  } else if (line?.service === "insurance") {
-    out.push(["Insurer", [s(d.insurer), s(d.plan)].filter(Boolean).join(" · ")]);
-    out.push(["Policy no.", s(d.policy_no) || s(line.reference)]);
-    out.push(["Cover", [fdate(s(d.start_date)), fdate(s(d.end_date))].filter(Boolean).join(" → ")]);
-  } else if (line?.service === "visa") {
-    out.push(["Visa", [s(d.country), s(d.visa_type)].filter(Boolean).join(" · ")]);
-    if (s(d.valid_to)) out.push(["Valid until", fdate(s(d.valid_to))]);
-  }
-  if (maxId) out.push(["Booking ref", maxId]);
-  // drop rows left empty (e.g. a route with no airports, " → ")
+/** Label + value pairs under the greeting. Since the new booking flow (owner, 2026-11-18) flights, hotels and the like
+ *  are not typed in: the ticket itself carries them. So the message shows what the CRM does know, from the case:
+ *  who travels, where, the travel dates and the booking reference. */
+function details(i: SendInput): [string, string][] {
+  const t = i.trip;
+  const out: [string, string][] = [
+    ["Travellers", (t?.travellers ?? []).join(", ")],
+    ["Destination", s(t?.destination)],
+    ["Travel dates", t?.start ? `${fdate(t.start)}${t.end && t.end !== t.start ? ` → ${fdate(t.end)}` : ""}` : ""],
+    ["Booking ref", s(i.maxId)],
+  ];
+  if (i.line?.service === "visa" && s(i.line.details?.valid_to)) out.splice(3, 0, ["Visa valid until", fdate(s(i.line.details?.valid_to))]);
   return out.filter(([, v]) => v.replace(/[\s→·,]/g, "") !== "");
 }
 
@@ -73,7 +58,7 @@ const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 
 export function sendMessage(i: SendInput): SendMessage {
   const w = wording(i.kind, i.line);
-  const rows = details(i.line, i.maxId);
+  const rows = details(i);
   const name = i.customer.trim() || "Customer";
   const agency = i.agency.name.trim() || "your travel agent";
   const contact = [i.agency.phone, i.agency.email].filter(Boolean).join(" · ");
