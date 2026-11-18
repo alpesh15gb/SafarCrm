@@ -7,9 +7,12 @@ import nodemailer from "nodemailer";
 //   Email, through Brevo or Resend (HTTPS APIs, no SMTP library needed):
 //     EMAIL_PROVIDER=brevo  EMAIL_API_KEY=...  EMAIL_FROM=tickets@maxtravel.us  EMAIL_FROM_NAME=Max Travel
 //     (or EMAIL_PROVIDER=resend with the same three)
-//   or through the agency's own Google Workspace mailbox (Gmail SMTP; the mail shows in that mailbox's Sent folder):
-//     EMAIL_PROVIDER=gmail  EMAIL_FROM=cs@maxtravel.in  EMAIL_API_KEY=<16-letter app password of that account>
-//     (SMTP_USER=... only if the login differs from EMAIL_FROM, e.g. sending as an alias)
+//   or through any SMTP server, e.g. the agency's Google Workspace (owner, 2026-11-18). The same settings the
+//   agency already uses elsewhere:
+//     SMTP_HOST=smtp-relay.gmail.com  SMTP_PORT=587  SMTP_SECURE=false  MAIL_FROM="Max Travel <cs@maxtravel.in>"
+//     SMTP_USER / SMTP_PASSWORD: empty for the Workspace SMTP relay (it trusts the server's IP), or a login and an
+//     app password for smtp.gmail.com.
+//   (shortcut: EMAIL_PROVIDER=gmail  EMAIL_FROM=cs@maxtravel.in  EMAIL_API_KEY=<app password> = smtp.gmail.com:465)
 // Not configured → { ok:false, code:"not_configured" } and the screen falls back to sharing a link.
 // Nothing here logs message bodies or file contents.
 
@@ -24,7 +27,12 @@ export function waNumber(raw: string | null | undefined): string | null {
 }
 
 export const whatsappConfigured = () => !!(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE);
-export const emailConfigured = () => !!(process.env.EMAIL_PROVIDER && process.env.EMAIL_API_KEY && process.env.EMAIL_FROM);
+// a value may arrive still wrapped in quotes from the env file, e.g. MAIL_FROM="Max Travel <cs@maxtravel.in>"
+const env = (k: string) => (process.env[k] ?? "").trim().replace(/^(["'])(.*)\1$/, "$2").trim();
+const smtpMode = () => !!env("SMTP_HOST") || env("EMAIL_PROVIDER").toLowerCase() === "gmail";
+export const emailConfigured = () => smtpMode()
+  ? !!(env("MAIL_FROM") || env("EMAIL_FROM"))
+  : !!(env("EMAIL_PROVIDER") && env("EMAIL_API_KEY") && env("EMAIL_FROM"));
 
 async function post(url: string, headers: Record<string, string>, body: unknown): Promise<{ ok: boolean; status: number }> {
   const ctl = new AbortController();
@@ -55,9 +63,9 @@ export async function sendWhatsAppDocument(to: string, file: { bytes: Uint8Array
 export async function sendEmailWithAttachment(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string }): Promise<SendResult> {
   if (!emailConfigured()) return { ok: false, code: "not_configured", message: "Email sending isn't set up on the server yet." };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) return { ok: false, code: "bad_recipient", message: `“${to}” isn't an email address.` };
-  const provider = process.env.EMAIL_PROVIDER!.trim().toLowerCase();
-  const key = process.env.EMAIL_API_KEY!, from = process.env.EMAIL_FROM!, fromName = process.env.EMAIL_FROM_NAME || "";
-  if (provider === "gmail") return sendGmail(to.trim(), subject, html, file, { key, from, fromName });
+  if (smtpMode()) return sendSmtp(to.trim(), subject, html, file);
+  const provider = env("EMAIL_PROVIDER").toLowerCase();
+  const key = env("EMAIL_API_KEY"), from = env("EMAIL_FROM"), fromName = env("EMAIL_FROM_NAME");
   const content = Buffer.from(file.bytes).toString("base64");
   const r = provider === "resend"
     ? await post("https://api.resend.com/emails", { authorization: `Bearer ${key}` }, {
@@ -71,28 +79,34 @@ export async function sendEmailWithAttachment(to: string, subject: string, html:
   return { ok: false, code: "failed", message: r.status === 0 ? "Couldn't reach the email service." : r.status === 401 || r.status === 403 ? "The email service refused the key. Check EMAIL_API_KEY." : "The email service didn't accept the message. Check the sender address is verified." };
 }
 
-/** Google Workspace / Gmail over SMTP with an app password (owner, 2026-11-18: mail is on Workspace, cs@maxtravel.in). */
-async function sendGmail(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string },
-  o: { key: string; from: string; fromName: string }): Promise<SendResult> {
+/** Email over SMTP: Google Workspace SMTP relay, smtp.gmail.com with an app password, or any other mail server. */
+async function sendSmtp(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string }): Promise<SendResult> {
+  const gmailShortcut = !env("SMTP_HOST");
+  const host = env("SMTP_HOST") || "smtp.gmail.com";
+  const port = Number(env("SMTP_PORT") || (gmailShortcut ? 465 : 587));
+  const secure = env("SMTP_SECURE") ? env("SMTP_SECURE").toLowerCase() === "true" : port === 465;
+  const fromAddr = env("MAIL_FROM") || (env("EMAIL_FROM_NAME") ? `"${env("EMAIL_FROM_NAME").replace(/"/g, "")}" <${env("EMAIL_FROM")}>` : env("EMAIL_FROM"));
+  const fromEmail = (fromAddr.match(/<([^>]+)>/)?.[1] ?? fromAddr).trim();
+  const user = env("SMTP_USER") || (gmailShortcut ? fromEmail : "");
+  const pass = (env("SMTP_PASSWORD") || env("EMAIL_API_KEY")).replace(/\s+/g, "");   // app passwords are shown with spaces
   const transport = nodemailer.createTransport({
-    // 465 (SSL) by default; SMTP_PORT=587 if the server provider blocks 465
-    host: "smtp.gmail.com", port: Number(process.env.SMTP_PORT || 465), secure: Number(process.env.SMTP_PORT || 465) === 465,
-    auth: { user: process.env.SMTP_USER || o.from, pass: o.key.replace(/s+/g, "") },   // app passwords are shown with spaces
+    host, port, secure, requireTLS: !secure,
+    // the Workspace relay checks the greeting name; the container's random hostname would not do
+    name: env("SMTP_HELO") || fromEmail.split("@")[1] || undefined,
+    ...(user ? { auth: { user, pass } } : {}),   // no login: the Workspace SMTP relay trusts the server's IP address
     connectionTimeout: 20_000, greetingTimeout: 20_000, socketTimeout: 60_000,
   });
   try {
-    await transport.sendMail({
-      from: o.fromName ? { name: o.fromName, address: o.from } : o.from, to, subject, html,
-      attachments: [{ filename: file.name, content: Buffer.from(file.bytes) }],
-    });
+    await transport.sendMail({ from: fromAddr, to, subject, html, attachments: [{ filename: file.name, content: Buffer.from(file.bytes) }] });
     return { ok: true };
   } catch (e) {
-    const code = (e as { code?: string; responseCode?: number }) ?? {};
-    if (code.code === "EAUTH" || code.responseCode === 535) {
-      return { ok: false, code: "failed", message: "Gmail refused the login. Check EMAIL_API_KEY is an app password for " + (process.env.SMTP_USER || o.from) + "." };
+    const err = (e as { code?: string; responseCode?: number; response?: string }) ?? {};
+    if (err.code === "EAUTH" || err.responseCode === 535) return { ok: false, code: "failed", message: `The mail server refused the login for ${user || "this server"}. Check SMTP_USER and SMTP_PASSWORD.` };
+    if (err.responseCode === 550 && /relay|not allowed|denied/i.test(err.response ?? "")) {
+      return { ok: false, code: "failed", message: "The Workspace SMTP relay refused this server. In Google Admin → Apps → Gmail → Routing → SMTP relay, allow this server's IP address." };
     }
-    if (code.code === "ETIMEDOUT" || code.code === "ECONNECTION" || code.code === "ESOCKET") return { ok: false, code: "failed", message: "Couldn't reach Gmail from the server." };
-    return { ok: false, code: "failed", message: "Gmail didn't accept the message. Try again, or check the address." };
+    if (err.code === "ETIMEDOUT" || err.code === "ECONNECTION" || err.code === "ESOCKET" || err.code === "EDNS") return { ok: false, code: "failed", message: `Couldn't reach ${host}:${port} from the server.` };
+    return { ok: false, code: "failed", message: "The mail server didn't accept the message. Try again, or check the address." };
   } finally {
     transport.close();
   }
