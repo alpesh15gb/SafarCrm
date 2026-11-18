@@ -188,7 +188,21 @@ Meta's official Business API: use a dedicated office number and never send bulk 
    EVOLUTION_INSTANCE=maxtravel
    ```
 
-**Email (Brevo or Resend).** Create an account, add and verify the sending domain (they show the DNS records to
+**Email from Google Workspace (Gmail), e.g. cs@maxtravel.in.** The client gets the mail from your own address, and
+it shows in that mailbox's Sent folder. Sign in to Google as cs@maxtravel.in, turn on 2-Step Verification
+(myaccount.google.com → Security), then create an App password (myaccount.google.com/apppasswords, name it "CRM").
+Put the 16 letters in `deploy/.env.production`:
+```
+EMAIL_PROVIDER=gmail
+EMAIL_FROM=cs@maxtravel.in
+EMAIL_API_KEY=abcd efgh ijkl mnop   # the app password (spaces are fine)
+EMAIL_FROM_NAME=Max Travel
+# SMTP_PORT=587                     # only if the server provider blocks port 465
+```
+and `bash deploy/deploy.sh`. If App passwords is missing, the Workspace admin has to allow 2-Step Verification for users
+(admin.google.com → Security → Authentication). Workspace sends up to 2,000 emails a day.
+
+**Email (Brevo or Resend), instead of Gmail.** Create an account, add and verify the sending domain (they show the DNS records to
 add for maxtravel.us), create an API key, then in `deploy/.env.production`:
 ```
 EMAIL_PROVIDER=brevo            # or resend
