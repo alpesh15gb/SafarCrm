@@ -5,7 +5,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(53);
+select plan(54);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -258,6 +258,13 @@ insert into public.booking_lines (case_id, service, status, traveller_ids, detai
 select is((select count(*)::int from public.departures('2026-12-01', '2026-12-31') d where d.case_id = (select ((v::jsonb) ->> 'case_id')::uuid from r where k = 'confirm1')),
   2, 'outbound and return both count as departures');
 select is((select count(*)::int from public.departures('2026-12-01', '2026-12-31') where service = 'hotel'), 0, 'hotel dates never count as departures');
+-- the new flow: a flight booking with only the ticket and prices; the case dates are the departure and the return
+insert into public.cases (id, customer_id, title, assigned_to, created_by, status, travel_start, travel_end) values
+  ('00000000-0000-0000-0000-0000000ca5e3', '00000000-0000-0000-0000-00000000c003', 'Ticket only trip', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a1', 'booked', '2026-12-05', '2026-12-09');
+insert into public.booking_lines (case_id, service, status, traveller_ids, details) values
+  ('00000000-0000-0000-0000-0000000ca5e3', 'flight', 'confirmed', '{}', '{}');
+select results_eq($$ select dep_date::text, leg from public.departures('2026-12-01', '2026-12-31') where case_id = '00000000-0000-0000-0000-0000000ca5e3' order by dep_date $$,
+  $$ values ('2026-12-05', 1), ('2026-12-09', 2) $$, 'a booking with no legs typed departs on the case dates (out and return)');
 select is((select count(*)::int from public.service_dates('2026-12-01', '2026-12-31') where service = 'hotel'), 2, 'hotel check-in and check-out are listed separately');
 
 -- ================================================================== A8: money in the database matches the browser rules
