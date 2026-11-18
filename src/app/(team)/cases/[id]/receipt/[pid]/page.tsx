@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { AGENCY_COLS, PrintDoc, type Agency } from "@/components/print-doc";
+import { AGENCY_COLS, PrintDoc, Rule, SignOff, type Agency } from "@/components/print-doc";
 import { PAY_MODE_LABEL } from "@/lib/constants";
 import { fdate, inr, rupeesInWords, waLink } from "@/lib/format";
 
@@ -33,6 +33,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
   return (
     <PrintDoc back={{ href: `/cases/${id}?tab=payments`, label: kase.max_id }} wa={waLink(cu.whatsapp || cu.mobile, text)} agency={agency as unknown as Agency}
       title="Payment receipt" meta={[["Receipt no.", no], ["Date", fdate(pay.pay_date)]]}>
+      <Rule />
       <p>
         Received with thanks from <b>{cu.full_name}</b>{cu.city && `, ${cu.city}`} the sum of <b>{inr(amt)}</b>{" "}
         (<i>{rupeesInWords(amt)}</i>) by <b>{PAY_MODE_LABEL[pay.mode]}</b>{pay.reference && <> (reference {pay.reference})</>}{" "}
@@ -45,10 +46,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
           <tr className="border-t border-ink font-semibold"><td className="py-1.5">{balance > 0 ? "Balance due" : "Balance"}</td><td className="py-1.5 text-right tabular">{balance > 0 ? inr(balance) : "Fully paid"}</td></tr>
         </tbody>
       </table>
-      <div className="mt-10 flex items-end justify-between gap-4 text-[13px]">
-        <div className="text-muted">Received by {(pay.receiver as unknown as { full_name: string } | null)?.full_name ?? "—"}<br />This is a computer-generated receipt.</div>
-        <div className="text-center"><div className="mb-1 h-10 w-44 border-b border-ink" />For {agency?.agency_name}</div>
-      </div>
+      <SignOff agency={agency as unknown as Agency} note={`Received by ${(pay.receiver as unknown as { full_name: string } | null)?.full_name ?? "—"}. This is a computer-generated receipt.`} />
     </PrintDoc>
   );
 }
