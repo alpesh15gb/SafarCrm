@@ -5,7 +5,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(52);
+select plan(53);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -219,6 +219,17 @@ select is((select v from r where k = 'other_source'), '0', 'an unrelated client 
 select is((select v from r where k = 'other_customers'), '0', 'an unrelated client cannot list customers');
 
 -- ================================================================== A6: required work blocks completion; overrides are recorded
+-- a case with no booking cannot be completed at all, not even by the boss with a reason (QA, 2026-11-18)
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000b1","role":"authenticated"}';
+do $$ begin
+  perform public.complete_case('00000000-0000-0000-0000-0000000ca5e2', 'nothing booked');
+  insert into r values ('complete_empty', 'ok');
+exception when others then insert into r values ('complete_empty', sqlerrm); end $$;
+reset role; reset request.jwt.claims;
+select ok((select v from r where k = 'complete_empty') like 'no_booking:%', 'a case with no booking cannot be completed');
+insert into public.booking_lines (case_id, service, status, traveller_ids, supplier_cost, selling_price, gst, details) values
+  ('00000000-0000-0000-0000-0000000ca5e2', 'other', 'confirmed', '{}', 800, 1000, 0, '{"title":"Child ticket"}');
 insert into public.tasks (title, case_id, assigned_to, created_by, blocking) values
   ('Required check', '00000000-0000-0000-0000-0000000ca5e2', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a1', true);
 set local role authenticated;

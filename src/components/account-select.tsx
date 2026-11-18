@@ -26,7 +26,7 @@ export function AccountSelect({ label, value, onChange, allowCheque = true }: {
     try { last = localStorage.getItem(memo); } catch { /* private window */ }
     const a = accounts.find((x) => x.id === last) ?? accounts.find((x) => x.kind === value.mode) ?? accounts[0];
     onChange({ account_id: a.id, mode: value.mode === "cheque" ? "cheque" : a.kind });
-  }, [useAccounts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [useAccounts, value.account_id]); // eslint-disable-line react-hooks/exhaustive-deps -- also after the form resets to blank
   if (accounts === null) return <Field label={label}><select className="field" disabled><option>Loading…</option></select></Field>;
   if (!useAccounts) {
     return (

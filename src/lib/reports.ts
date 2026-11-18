@@ -6,7 +6,9 @@ import { fdate } from "./format";
 import { clientDueTiming, reportParams } from "./report-filters";
 
 export type Col = { key: string; label: string; money?: boolean; profit?: boolean; date?: boolean; pct?: boolean };
-export type Report = { title: string; sub: string; cols: Col[]; rows: Record<string, unknown>[]; totals?: Record<string, unknown>; link?: (r: Record<string, unknown>) => string | null; sections?: { title: string; cols: Col[]; rows: Record<string, unknown>[] }[] };
+export type Report = { title: string; sub: string; cols: Col[]; rows: Record<string, unknown>[]; totals?: Record<string, unknown>; link?: (r: Record<string, unknown>) => string | null; sections?: { title: string; cols: Col[]; rows: Record<string, unknown>[] }[];
+  /** a second table under the main one (e.g. costs with no supplier under Supplier dues) */
+  after?: { title: string; sub?: string; cols: Col[]; rows: Record<string, unknown>[]; totals?: Record<string, unknown>; link?: (r: Record<string, unknown>) => string | null } };
 
 export const REPORTS = [
   { key: "pnl", label: "Profit and loss", profit: true },
@@ -20,6 +22,30 @@ export const REPORTS = [
 ] as const;
 
 const sum = (rows: Record<string, unknown>[], k: string) => rows.reduce((s, r) => s + Number(r[k] ?? 0), 0);
+
+/** Costs on bookings with no supplier (QA, 2026-11-18): they are not owed to anyone in the table above, so they are
+ *  listed here until a supplier is put on the booking. Confirmed or cancelled-with-a-charge bookings only. */
+async function unassignedCosts(sb: Awaited<ReturnType<typeof createClient>>) {
+  const { data, error } = await sb.from("booking_lines")
+    .select("id, service, summary, status, supplier_cost, refund_from_supplier, service_date, case:cases!inner(id, max_id, status, customer:customers!cases_customer_id_fkey(full_name))")
+    .is("supplier_id", null).neq("status", "pending").neq("case.status", "cancelled").limit(500);
+  if (error) throw new Error(error.message);
+  type L = { id: string; service: string; summary: string | null; status: string; supplier_cost: number; refund_from_supplier: number | null; service_date: string | null; case: { id: string; max_id: string; customer: { full_name: string } | null } };
+  const rows = ((data ?? []) as unknown as L[])
+    .map((l) => ({ case_id: l.case.id, max_id: l.case.max_id, customer: l.case.customer?.full_name ?? "",
+      booking: `${SERVICE_LABEL[l.service as Service] ?? l.service}${l.summary ? ` · ${l.summary}` : ""}${l.status === "cancelled" ? " (cancelled)" : ""}`,
+      service_date: l.service_date,
+      cost: Number(l.supplier_cost ?? 0) - (l.status === "cancelled" ? Number(l.refund_from_supplier ?? 0) : 0) }))
+    .filter((r) => r.cost > 0.009);
+  return {
+    title: `Costs with no supplier (${rows.length})`,
+    sub: "Not counted above, because there is no one to pay. Open the booking and choose the supplier, or leave it if it was paid directly (e.g. visa fees on the embassy site).",
+    cols: [{ key: "max_id", label: "MAX ID" }, { key: "customer", label: "Customer" }, { key: "booking", label: "Booking" },
+      { key: "service_date", label: "Date", date: true }, { key: "cost", label: "Cost", money: true }] as Col[],
+    rows, totals: { max_id: `Total (${rows.length})`, cost: sum(rows, "cost") },
+    link: (r: Record<string, unknown>) => `/cases/${r.case_id}?tab=bookings`,
+  };
+}
 
 export async function runReport(key: string, input: Record<string, string | undefined>): Promise<Report> {
   const sp = reportParams(key, input);
@@ -72,6 +98,7 @@ export async function runReport(key: string, input: Record<string, string | unde
         { key: "held", label: "Wallet / advance", money: true }, { key: "oldest_due", label: "Oldest due date", date: true }],
       rows, link: (r) => `/suppliers/${r.supplier_id}`,
       totals: { name: `Total (${rows.length})`, payable: sum(rows, "payable"), paid: sum(rows, "paid"), due: sum(rows, "due"), held: sum(rows, "held") },
+      after: await unassignedCosts(sb),
     };
   }
   if (key === "sales") {
@@ -140,7 +167,8 @@ export async function runReport(key: string, input: Record<string, string | unde
       title: "Upcoming travel", sub: `Trips from ${fdate(from)} to ${fdate(to)}. Uses each booking's date; a case with no dated booking yet is listed by its trip start date.`,
       cols: [{ key: "service_date", label: "Date", date: true }, { key: "max_id", label: "MAX ID" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" },
         { key: "service", label: "Service" }, { key: "summary", label: "Details" }, { key: "line_status", label: "Status" }, { key: "staff", label: "Staff" }],
-      rows: (data ?? []).map((r: Record<string, unknown>) => ({ ...r, service: r.service === "trip" ? "Trip (case dates)" : SERVICE_LABEL[r.service as Service], line_status: STATUS_LABEL[String(r.line_status)] })),
+      rows: (data ?? []).map((r: Record<string, unknown>) => ({ ...r, // a visa row is dated by its application or appointment, not by travel: say so (QA, 2026-11-18)
+        service: r.service === "trip" ? "Trip (case dates)" : r.service === "visa" ? "Visa (applied / appointment date, not travel)" : SERVICE_LABEL[r.service as Service], line_status: STATUS_LABEL[String(r.line_status)] })),
       link: (r) => `/cases/${r.case_id}?tab=bookings`,
     };
   }

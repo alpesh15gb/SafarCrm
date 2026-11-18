@@ -17,8 +17,9 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   const { run, pending } = useAction();
   const [customer, setCustomer] = useState<Picked | null>((preset?.customer as Picked) ?? null);
   const [adding, setAdding] = useState<string | null>(null);
+  // the suggested title is shown in the empty box; whatever is typed replaces it whole (QA, 2026-11-18: typing used to
+  // land next to the suggestion and both were saved run together)
   const [title, setTitle] = useState("");
-  const [titleTouched, setTitleTouched] = useState(false);
   const [dest, setDest] = useState("");
   const [from, setFrom] = useState("");
   const [start, setStart] = useState("");
@@ -38,15 +39,16 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   }, [customer]);
   const tick = (id: string, on: boolean) => setTravellers((t) => (on ? [...t, id] : t.filter((x) => x !== id)));
 
-  useEffect(() => {
-    if (titleTouched || !customer) return;
+  const suggested = (() => {
+    if (!customer) return "";
     const who = !family.corporate && family.members.length && family.last_name ? `${family.last_name} family` : customer.label;
     const route = from && dest ? `${from} to ${dest}` : dest || "";
-    setTitle(route ? `${route}, ${who}` : `Trip for ${who}`);
-  }, [customer, dest, from, family, titleTouched]);
+    return route ? `${route}, ${who}` : `Trip for ${who}`;
+  })();
+  const finalTitle = title.trim() || suggested;
 
   const submit = () =>
-    run(() => createCase({ customer_id: customer?.id ?? "", title, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want }, requestKey), {
+    run(() => createCase({ customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want }, requestKey), {
       then: (r) => onDone(r.data as { id: string; max_id: string }),
     });
 
@@ -99,8 +101,8 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
       <More title={`More: title, starting city, lead source, owner${compact ? ", dates" : ""}`}>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Field label="Title" required hint="Suggested from the customer and destination; change it if you like.">
-              <input className="field" value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} />
+            <Field label="Title" required hint="Leave empty to use the suggestion shown, or type your own.">
+              <input className="field" value={title} placeholder={suggested} onChange={(e) => setTitle(e.target.value)} />
             </Field>
           </div>
           <Field label="Starting from"><input className="field" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Delhi" /></Field>
@@ -117,8 +119,8 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
         </div>
       </More>
       <div className="flex items-center justify-end gap-3">
-        {customer && title.trim() && <span className="min-w-0 truncate text-xs text-muted">Will be saved as “{title}”</span>}
-        <Button variant="primary" disabled={pending || !customer || !title.trim()} onClick={submit}>Create case</Button>
+        {customer && finalTitle && <span className="min-w-0 truncate text-xs text-muted" title={finalTitle}>Will be saved as “{finalTitle}”</span>}
+        <Button variant="primary" disabled={pending || !customer || !finalTitle} onClick={submit}>Create case</Button>
       </div>
     </div>
   );

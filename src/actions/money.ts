@@ -3,6 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
 import { moneyProblem, strictAmount } from "@/lib/money";
 
+/** Which account a payment goes through (QA, 2026-11-18): once the boss has set up a bank account or card, a payment
+ *  must name one; a blank one was saved as "Cash" on the case but "No account chosen" in the cash book. Before that,
+ *  a cash payment goes to "Cash in hand". Returns the account id to save, or a message to show. */
+async function pickAccount(sb: Awaited<ReturnType<typeof createClient>>, accountId: string | null | undefined, mode: string): Promise<{ id: string | null } | { error: string }> {
+  if (accountId) return { id: accountId };
+  const { data } = await sb.from("money_accounts").select("id, kind").eq("active", true);
+  const list = data ?? [];
+  if (list.some((a) => a.kind !== "cash")) return { error: "Choose the account the money went through (bank, card, cash or UPI)." };
+  if (mode === "cash") return { id: list.find((a) => a.kind === "cash")?.id ?? null };
+  return { id: null };
+}
+
 type PayIn = { case_id: string; pay_date: string; amount: number | string; refund?: boolean; mode: string; account_id?: string | null; reference?: string; received_by?: string; notes?: string };
 
 export async function addClientPayment(p: PayIn): Promise<ActionResult> {
@@ -14,9 +26,11 @@ export async function addClientPayment(p: PayIn): Promise<ActionResult> {
     if (!paid) return { ok: false, error: "Enter an amount greater than zero." };
     const me = await getMe();
     const sb = await createClient();
+    const acc = await pickAccount(sb, p.account_id, p.mode);
+    if ("error" in acc) return { ok: false, error: acc.error };
     const { data: before } = await sb.from("cases").select("status").eq("id", p.case_id).maybeSingle();
     const { error } = await sb.from("payments").insert({
-      direction: "in", case_id: p.case_id, pay_date: p.pay_date, amount: paid, mode: p.mode, account_id: p.account_id || null,
+      direction: "in", case_id: p.case_id, pay_date: p.pay_date, amount: paid, mode: p.mode, account_id: acc.id,
       reference: p.reference?.trim() || null, received_by: p.received_by || me?.id, notes: p.notes?.trim() || null,
     });
     if (error) throw error;
@@ -50,6 +64,9 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
     // a refund from a supplier is a negative payment, put against the case as a negative amount
     if (Math.abs(sum) - Math.abs(paid) > 0.009) return { ok: false, error: `The MAX ID amounts add up to ₹${sum}, more than the payment of ₹${paid}.` };
     const sb = await createClient();
+    // an opening wallet balance is not money that moved, so it has no account
+    const acc = p.mode === "opening" ? { id: null } : await pickAccount(sb, p.account_id, p.mode);
+    if ("error" in acc) return { ok: false, error: acc.error };
     // payment + allocations in one database transaction (all or nothing)
     const { data: pid, error } = await sb.rpc("record_supplier_payment", {
       p_supplier: p.supplier_id, p_date: p.pay_date || null, p_amount: paid, p_mode: p.mode,
@@ -59,8 +76,8 @@ export async function addSupplierPayment(p: PayOut): Promise<ActionResult> {
     if (error) throw error;
     // say what happened in the words of the form: a refund, money for MAX IDs, or an advance / wallet top-up
     const what = paid < 0 ? "Refund from the supplier recorded" : alloc.length ? "Supplier payment recorded" : "Advance / wallet top-up recorded";
-    if (p.account_id && pid) {
-      const { error: ae } = await sb.rpc("set_payment_account", { p_payment: pid, p_account: p.account_id });
+    if (acc.id && pid) {
+      const { error: ae } = await sb.rpc("set_payment_account", { p_payment: pid, p_account: acc.id });
       if (ae) return { ok: true, message: `${what}, but the account could not be set on it. Set it on the payment.` };
     }
     return { ok: true, message: what };

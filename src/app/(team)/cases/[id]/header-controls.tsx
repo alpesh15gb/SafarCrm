@@ -55,7 +55,7 @@ export function CaseHeaderControls({ kase }: { kase: {
     <>
       <label className="flex items-center gap-1.5 text-xs text-muted">
         Owner
-        <span className="block w-40 text-ink">
+        <span className="block w-52 max-w-[60vw] text-ink">
           <StaffSelect staff={staff} value={kase.assigned_to ?? ""} allowEmpty onChange={(v) => run(() => updateCase(kase.id, { assigned_to: v }), { success: "Owner changed" })} />
         </span>
       </label>

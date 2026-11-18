@@ -64,7 +64,11 @@ export function BookingsTab({ caseId, lines, travellers, maxId, customer, lookup
           <Button key={s} size="sm" onClick={() => setDlg({ service: s })}><ServiceIcon service={s} />{SERVICE_LABEL[s]}</Button>
         ))}
       </div>
-      {lines.length === 0 && !dlg && <Card><Empty text="No bookings yet. Add the first flight, hotel or other service." action={<Button variant="primary" onClick={() => setDlg({ service: "flight" })}><Plus className="h-4 w-4" />Add booking</Button>} /></Card>}
+      {/* each button opens the service it names: no "Add booking" that always opened a flight (QA, 2026-11-18) */}
+      {lines.length === 0 && !dlg && <Card><Empty text="No bookings yet. What did the client book?" action={
+        <span className="flex flex-wrap justify-center gap-2">
+          {SERVICES.map((s) => <Button key={s} size="sm" variant={s === "flight" ? "primary" : "secondary"} onClick={() => setDlg({ service: s })}><ServiceIcon service={s} />{SERVICE_LABEL[s]}</Button>)}
+        </span>} /></Card>}
       {lines.map((l) => (
         <LineCard
           key={l.id}
@@ -471,7 +475,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
             </div>
           )}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="Client payment due date" hint="Left empty, it is set to a week before the service (or today) so the payment reminder runs."><input className="field" type="date" value={m.payment_due_date} onChange={(e) => setM({ ...m, payment_due_date: e.target.value })} /></Field>
+            <Field label="Client payment due date" hint="Left empty: a week before the service date (today if that is sooner), or 3 days from today if the booking has no date. The payment reminder uses it."><input className="field" type="date" value={m.payment_due_date} onChange={(e) => setM({ ...m, payment_due_date: e.target.value })} /></Field>
             {line && <Field label="Supplier payment due" hint="Set from the supplier's payment terms (a wallet supplier is paid from the wallet when the case is confirmed)"><input className="field" type="date" value={m.supplier_due_date} onChange={(e) => setM({ ...m, supplier_due_date: e.target.value })} /></Field>}
           </div>
         </div>

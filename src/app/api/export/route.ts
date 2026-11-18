@@ -108,6 +108,7 @@ export async function GET(req: Request) {
       const rep = await runReport(key, sp);
       if (rep.sections) rep.sections.forEach((s) => addSheet(wb, s.title, s.cols, s.rows));
       else addSheet(wb, rep.title, rep.cols, rep.rows, rep.totals);
+      if (rep.after?.rows.length) addSheet(wb, rep.after.title.replace(/s*(d+)$/, ""), rep.after.cols, rep.after.rows, rep.after.totals);
       return respond(wb, rep.title.replace(/\W+/g, "_"));
     }
     if (kind === "all") {

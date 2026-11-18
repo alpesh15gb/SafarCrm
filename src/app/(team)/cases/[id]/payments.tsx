@@ -60,7 +60,7 @@ export function PaymentsTab({ caseId, lines, money, payments, expenses, supplier
                   <td data-label="Payment details"><div className="min-w-0">
                     <div>{p.account ? <>{p.account.name}{p.account.last4 ? ` ••${p.account.last4}` : ""}{p.mode === "cheque" ? " (cheque)" : ""}</> : PAY_MODE_LABEL[p.mode]}</div>
                     {p.reference && <div className="break-all text-xs text-muted">Reference {p.reference}</div>}
-                    <div className="break-words text-xs text-muted">Received by {p.receiver?.full_name ?? "—"}</div>
+                    <div className="break-words text-xs text-muted">{Number(p.amount) < 0 ? "Paid by" : "Received by"} {p.receiver?.full_name ?? "—"}</div>
                   </div></td>
                   <td data-label=""><span className="flex items-center justify-end gap-2 whitespace-nowrap">{p.receipt_no && Number(p.amount) > 0 && <Link className="inline-flex items-center gap-1 text-xs link" href={`/cases/${caseId}/receipt/${p.id}`}><Printer className="h-3.5 w-3.5" />Receipt R-{p.receipt_no}</Link>}{me.role === "boss" && <button type="button" aria-label="Delete payment" className="text-muted hover:text-red-600" onClick={() => setDel({ kind: "payment", id: p.id, text: `${fdate(p.pay_date)} · ${inr(Math.abs(p.amount))} ${Number(p.amount) < 0 ? "refund" : "received"} by ${PAY_MODE_LABEL[p.mode]}${p.reference ? ` · ${p.reference}` : ""}` })}><Trash2 className="h-3.5 w-3.5" /></button>}</span></td>
                 </tr>
@@ -217,7 +217,7 @@ function ClientPaymentDialog({ open, onClose, caseId, due, received, status }: {
         <Field label="Date"><input type="date" className="field" value={v.pay_date} onChange={(e) => setV({ ...v, pay_date: e.target.value })} /></Field>
         <AccountSelect label={isRefund ? "Paid from" : "Received into"} value={{ account_id: v.account_id, mode: v.mode }} onChange={(x) => setV({ ...v, ...x })} />
         <Field label="Reference no."><input className="field" value={v.reference} onChange={(e) => setV({ ...v, reference: e.target.value })} placeholder="UTR / cheque no." /></Field>
-        <Field label="Received by"><StaffSelect staff={staff} value={v.received_by} onChange={(x) => setV({ ...v, received_by: x })} /></Field>
+        <Field label={isRefund ? "Paid by" : "Received by"}><StaffSelect staff={staff} value={v.received_by} onChange={(x) => setV({ ...v, received_by: x })} /></Field>
         <Field label="Notes"><input className="field" value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
         {["enquiry", "quoted"].includes(status) && !isRefund && (
           <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900 sm:col-span-2">

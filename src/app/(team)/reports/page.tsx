@@ -64,6 +64,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           )) : (
             <Card pad={false}>{report.rows.length ? <ReportTable cols={report.cols} rows={report.rows} totals={report.totals} link={report.link} /> : <Empty text="Nothing to show for these filters." />}</Card>
           )}
+          {report.after && report.after.rows.length > 0 && (
+            <Card title={report.after.title} sub={report.after.sub} pad={false}>
+              <ReportTable cols={report.after.cols} rows={report.after.rows} totals={report.after.totals} link={report.after.link} />
+            </Card>
+          )}
         </div>
       )}
     </>

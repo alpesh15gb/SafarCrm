@@ -81,6 +81,7 @@ function friendly(msg: string) {
   if (msg.includes("invalid_amount")) return `That amount isn't a number${msg.match(/"([^"]*)"/) ? `: “${msg.match(/"([^"]*)"/)![1]}”` : ""}. Use digits, e.g. 12500.`;
   if (msg.includes("cancel_blocked_confirmed")) return "This case has confirmed bookings. Cancel each one on the Bookings tab first, so refunds and supplier charges are recorded. Then cancel the case.";
   if (msg.includes("cancel_blocked_supplier_paid")) return "A supplier has already been paid on this case. Cancel each booking on the Bookings tab first and enter what the supplier refunds. Then cancel the case.";
+  if (msg.includes("no_booking:")) return "This case has no booking, so there is nothing to complete. Add the booking, or cancel the case if the client is not going ahead.";
   if (msg.includes("override_not_permitted")) return "Required work is still open (blocking tasks, ticket imports or documents). Only the boss can complete a case past that.";
   if (msg.includes("override_needs_reason")) return "Give a reason for completing with open items.";
   if (msg.includes("case_completion_direct")) return "Use Completed from the case page so open items are checked.";
