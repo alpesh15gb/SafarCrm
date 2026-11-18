@@ -1,6 +1,6 @@
 // The message that goes with a file sent to the client (owner, 2026-11-18): one format for email and WhatsApp,
 //   FLIGHT BOOKING CONFIRMATION · Dear <name>, · Your flight booking has been confirmed! · [BOOKING CONFIRMED]
-//   · travellers, destination, dates, booking ref · 📎 Your e-ticket is attached · Thank you for booking with <agency> · Have a pleasant journey!
+//   · booking ref · 📎 Your e-ticket is attached · Thank you for booking with <agency> · Have a pleasant journey!
 // worded for the kind of booking. Pure functions: no database, easy to test.
 import { fdate } from "./format.ts";
 
@@ -11,8 +11,6 @@ export type SendInput = {
   customer: string;           // who it is addressed to
   maxId: string | null;
   agency: { name: string; phone?: string | null; email?: string | null };
-  /** the case: travellers on this booking (or the case), destination and travel dates */
-  trip?: { travellers: string[]; destination: string | null; start: string | null; end: string | null };
 };
 export type SendMessage = { subject: string; whatsapp: string; html: string };
 
@@ -39,19 +37,14 @@ function wording(kind: string, line: SendLine): Wording {
   }
 }
 
-/** Label + value pairs under the greeting. Since the new booking flow (owner, 2026-11-18) flights, hotels and the like
- *  are not typed in: the ticket itself carries them. So the message shows what the CRM does know, from the case:
- *  who travels, where, the travel dates and the booking reference. */
+/** Label + value pairs under the greeting. The attached ticket carries the flight, hotel and traveller details, so
+ *  the message only gives the booking reference (owner, 2026-11-18: no travellers, destination or travel dates),
+ *  and a visa's valid-until date when it is known. */
 function details(i: SendInput): [string, string][] {
-  const t = i.trip;
-  const out: [string, string][] = [
-    ["Travellers", (t?.travellers ?? []).join(", ")],
-    ["Destination", s(t?.destination)],
-    ["Travel dates", t?.start ? `${fdate(t.start)}${t.end && t.end !== t.start ? ` → ${fdate(t.end)}` : ""}` : ""],
-    ["Booking ref", s(i.maxId)],
-  ];
-  if (i.line?.service === "visa" && s(i.line.details?.valid_to)) out.splice(3, 0, ["Visa valid until", fdate(s(i.line.details?.valid_to))]);
-  return out.filter(([, v]) => v.replace(/[\s→·,]/g, "") !== "");
+  const out: [string, string][] = [];
+  if (i.line?.service === "visa" && s(i.line.details?.valid_to)) out.push(["Visa valid until", fdate(s(i.line.details?.valid_to))]);
+  out.push(["Booking ref", s(i.maxId)]);
+  return out.filter(([, v]) => v.trim() !== "");
 }
 
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

@@ -13,9 +13,7 @@ import { DEFAULT_KIND, SERVICES, SERVICE_LABEL, type Service } from "@/lib/const
 import { VisaPanel } from "@/components/visa-panel";
 import { lineProblem } from "@/lib/validate";
 import { amount, cancelBreakdown, commissionOf, lineProfit, moneyProblem } from "@/lib/money";
-import { InlineTravellerAdd } from "@/components/inline-traveller";
 import { FlightPassengers, type Pax } from "@/components/flight-pax";
-import { PAX_LABEL, paxType } from "@/lib/iata";
 import { fdate, inr } from "@/lib/format";
 
 export type Line = {
@@ -196,8 +194,6 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 // ---------------------------------------------------------------- add / edit
-// date = departure local date; arr_date = arrival local date (explicit, never inferred from the times)
-type Sector = { from: string; to: string; date: string; airline: string; flight_no: string; dep: string; arr: string; arr_date?: string; dep_tz?: string; arr_tz?: string };
 type Ticket = { passenger: string; number: string; customer_id?: string; name_as_issued?: string; source?: string };
 
 const VISA_CHECKLIST = [
@@ -229,14 +225,10 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   // the ticket, voucher, policy or visa form picked in the form: uploaded onto the booking when it is saved
   const [file, setFile] = useState<File | null>(null);
   const [fileErr, setFileErr] = useState("");
-  // people added inline while this form is open (the page's traveller list refreshes behind the dialog)
-  const [added, setAdded] = useState<Pax[]>([]);
-  const allTravellers = useMemo(() => [...travellers, ...added.filter((a) => !travellers.some((t) => t.id === a.id))], [travellers, added]);
 
   // reset only when the dialog opens or a different booking is opened: a background refresh must never wipe what was typed
   useEffect(() => {
     if (!open) return;
-    setAdded([]);
     if (line) {
       setService(line.service);
       setSupplier(line.supplier ? { id: line.supplier.id, label: line.supplier.name } : null);
@@ -274,7 +266,6 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     return Math.round((Date.parse(String(d.check_out)) - Date.parse(String(d.check_in))) / 86400000);
   }, [service, d.check_in, d.check_out]);
 
-  const sectors = (d.sectors as Sector[]) ?? [];
   // a ticket belongs to a person (customer_id); older tickets without one are matched by name
   const tickets = (d.tickets as Ticket[]) ?? [];
 
@@ -375,19 +366,8 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </Field>
         </div>
 
-        <Field label={isVisa ? "Who needs this visa?" : "Travellers on this booking"} hint={visaPerPerson ? `We'll make ${trav.length} visa files, one per person, because each is approved separately.` : undefined}>
-          {allTravellers.length === 0 && <p className="text-[13px] text-amber-800">This case has no travellers yet. Add one below; what you typed here stays.</p>}
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            {allTravellers.map((t) => (
-              <label key={t.id} className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" checked={trav.includes(t.id)} onChange={(e) => setTrav((x) => (e.target.checked ? [...x, t.id] : x.filter((y) => y !== t.id)))} />{t.full_name}
-                {service === "flight" && (() => { const pt = paxType(t.dob, sectors[0]?.date || new Date().toISOString().slice(0, 10)); return pt ? <span className="text-xs text-muted">· {PAX_LABEL[pt]}</span> : null; })()}
-              </label>
-            ))}
-          </div>
-          <InlineTravellerAdd caseId={caseId} exclude={allTravellers.map((t) => t.id)}
-            onAdded={(p) => { setAdded((a) => [...a, { id: p.id, full_name: p.full_name } as Pax]); setTrav((x) => (x.includes(p.id) ? x : [...x, p.id])); }} />
-        </Field>
+        {/* no traveller picker (owner, 2026-11-18): a booking is for everyone on the case; a visa is still one file each */}
+        {visaPerPerson && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">We&apos;ll make {trav.length} visa files, one for each traveller on the case, because each visa is approved separately.</p>}
         <div className="rounded-lg border border-line p-3">
           <div className="grid gap-3 sm:grid-cols-4">
             <Field label={isVisa ? "Our cost (₹)" : "Supplier cost (₹)"} hint={!me.can_see_profit && line ? "Hidden. Leave empty to keep the cost already saved." : isVisa ? `Embassy + VFS fees${visaPerPerson ? ", per person" : ""}` : undefined}><input className="field tabular" inputMode="decimal" placeholder={!me.can_see_profit && line ? "Hidden" : undefined} value={m.supplier_cost} onChange={(e) => setM({ ...m, supplier_cost: e.target.value })} /></Field>

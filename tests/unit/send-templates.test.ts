@@ -9,17 +9,14 @@ test("a confirmed flight ticket reads as the owner's confirmation format", () =>
     kind: "ticket", customer: "Tour Testkumar Sharma", maxId: "MAX-1001", agency,
     // the new flow: nothing typed on the booking, the details come from the case
     line: { service: "flight", status: "confirmed", service_date: null, reference: null, details: {} },
-    trip: { travellers: ["Tour Priya Sharma", "Tour Testkumar Sharma"], destination: "Dubai", start: "2026-12-20", end: "2026-12-24" },
   });
   assert.match(m.whatsapp, /^\*FLIGHT BOOKING CONFIRMATION\*/);
   assert.match(m.whatsapp, /Dear Tour Testkumar Sharma,/);
   assert.match(m.whatsapp, /Your flight booking has been confirmed!/);
   assert.match(m.whatsapp, /✅ \*BOOKING CONFIRMED\*/);
-  assert.match(m.whatsapp, /Travellers: \*Tour Priya Sharma, Tour Testkumar Sharma\*/);
-  assert.match(m.whatsapp, /Destination: \*Dubai\*/);
-  assert.match(m.whatsapp, /Travel dates: \*20-12-2026 → 24-12-2026\*/);
   assert.match(m.whatsapp, /Booking ref: \*MAX-1001\*/);
-  assert.doesNotMatch(m.whatsapp, /PNR|Flight:/);
+  // owner, 2026-11-18: no travellers, destination or travel dates (the ticket carries them)
+  assert.doesNotMatch(m.whatsapp, /Travellers|Destination|Travel dates|PNR|Flight:/);
   assert.match(m.whatsapp, /📎 Your e-ticket is attached to this message\./);
   assert.match(m.whatsapp, /Thank you for booking with Max Travel\.\nHave a pleasant journey! ✈️/);
   assert.match(m.html, /BOOKING CONFIRMED/);
