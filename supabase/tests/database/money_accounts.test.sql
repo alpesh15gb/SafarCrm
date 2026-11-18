@@ -2,7 +2,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(10);
+select plan(11);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -63,5 +63,14 @@ select results_eq($$ select opening, money_in, money_out, closing from cb where 
 select is((select closing from cb where account_id = '00000000-0000-0000-0000-00000000af02'), -13000.00, 'the card closes at what is owed on it');
 select results_eq($$ select received, paid, party, kind from cbl $$, $$ values (20000.00, 0.00, 'Acc Client'::text, 'Client payment'::text) $$,
   'one account chosen: its entries, with the client and what it was');
+-- a refund to the client from the bank account is money out, not less money in (QA, 2026-11-18)
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000ab01","role":"authenticated"}';
+insert into public.payments (direction, case_id, pay_date, amount, mode, account_id)
+values ('in', '00000000-0000-0000-0000-00000000ad01', current_date, -5000, 'bank', '00000000-0000-0000-0000-00000000af01');
+create temp table bal2 as select * from public.money_account_balances();
+reset role; reset request.jwt.claims;
+select results_eq($$ select money_in, money_out, balance from bal2 where id = '00000000-0000-0000-0000-00000000af01' $$,
+  $$ values (20000.00, 5000.00, 115000.00) $$, 'Accounts: receipts in, the refund out, like the cash book');
 select * from finish();
 rollback;

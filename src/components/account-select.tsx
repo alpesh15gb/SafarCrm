@@ -20,11 +20,14 @@ export function AccountSelect({ label, value, onChange, allowCheque = true }: {
   // an account is always chosen: the one last used on this kind of form (tour, 2026-11-18: always starting on
   // "Cash in hand" let bank receipts slip in as cash), else the one matching the form's usual mode, else the first
   const memo = `safar.account.${label}`;
-  useEffect(() => {
-    if (!useAccounts || value.account_id || !accounts) return;
+  const pick = (list: MoneyAccount[]) => {
     let last: string | null = null;
     try { last = localStorage.getItem(memo); } catch { /* private window */ }
-    const a = accounts.find((x) => x.id === last) ?? accounts.find((x) => x.kind === value.mode) ?? accounts[0];
+    return list.find((x) => x.id === last) ?? list.find((x) => x.kind === value.mode) ?? list[0];
+  };
+  useEffect(() => {
+    if (!useAccounts || value.account_id || !accounts) return;
+    const a = pick(accounts);
     onChange({ account_id: a.id, mode: value.mode === "cheque" ? "cheque" : a.kind });
   }, [useAccounts, value.account_id]); // eslint-disable-line react-hooks/exhaustive-deps -- also after the form resets to blank
   if (accounts === null) return <Field label={label}><select className="field" disabled><option>Loading…</option></select></Field>;
@@ -40,9 +43,9 @@ export function AccountSelect({ label, value, onChange, allowCheque = true }: {
   const cheque = value.mode === "cheque";
   return (
     <Field label={label} hint={cheque ? "Cheque: pick the bank account it is paid into or drawn on." : undefined}>
-      <select className="field" required value={value.account_id}
+      {/* always shows the account the payment will go into: no "Choose…" that quietly meant Cash in hand (QA, 2026-11-18) */}
+      <select className="field" required value={value.account_id || pick(accounts).id}
         onChange={(e) => { const a = accounts.find((x) => x.id === e.target.value); try { localStorage.setItem(memo, e.target.value); } catch { /* ignore */ } onChange({ account_id: e.target.value, mode: cheque ? "cheque" : a?.kind ?? value.mode }); }}>
-        <option value="">Choose…</option>
         {accounts.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
       </select>
       {allowCheque && (
