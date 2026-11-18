@@ -5,6 +5,9 @@
 #   bash deploy/wipe-data.sh 1001 --new-owner owner@maxtravel.in "Owner Name"
 #        also removes EVERY login (boss, staff, clients) and creates one new owner login; you are asked for its
 #        password (hidden). The new owner is created before the old logins are removed, so there is always a way in.
+#   bash deploy/wipe-data.sh 1001 --keep-customers
+#        keeps customers, families, their saved documents (passports...) and client portal logins; customer codes
+#        carry on (the next new customer gets the next C- number). Everything else below is deleted.
 #
 # KEEPS: owner and staff logins (and their two-step login), agency settings, lists (airlines, airports...),
 #        automatic-reminder settings, the encryption key for ID numbers.
@@ -15,10 +18,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . deploy/instance.sh
-START=1001; NEW_EMAIL=""; NEW_NAME=""
+START=1001; NEW_EMAIL=""; NEW_NAME=""; KEEP=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --new-owner) NEW_EMAIL="${2:-}"; NEW_NAME="${3:-}"; shift 3 || { echo 'Use: --new-owner owner@maxtravel.in "Owner Name"'; exit 1; } ;;
+    --keep-customers) KEEP=1; shift ;;
     [0-9]*) START="$1"; shift ;;
     *) echo "Not understood: $1"
        echo 'Use:  bash deploy/wipe-data.sh 1001'
@@ -42,11 +46,20 @@ qc() { docker exec "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -
 q() { docker exec -i "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -qtA; }
 
 echo "This will DELETE from the CRM:"
+if [ "$KEEP" = 1 ]; then
+qc "select '  ' || (select count(*) from public.cases) || ' cases, '
+         || (select count(*) from public.suppliers) || ' suppliers, ' || (select count(*) from public.booking_lines) || ' bookings, '
+         || (select count(*) from public.payments) || ' payments, ' || (select count(*) from public.tasks) || ' tasks, '
+         || (select count(*) from storage.objects o where bucket_id = 'files' and name not like 'agency/%'
+               and not exists (select 1 from public.customer_documents d where d.storage_path = o.name)) || ' uploaded case files'"
+echo "It KEEPS $(qc 'select count(*) from public.customers') customers (with families, saved documents and portal logins)."
+else
 qc "select '  ' || (select count(*) from public.cases) || ' cases, ' || (select count(*) from public.customers) || ' customers, '
          || (select count(*) from public.suppliers) || ' suppliers, ' || (select count(*) from public.booking_lines) || ' bookings, '
          || (select count(*) from public.payments) || ' payments, ' || (select count(*) from public.tasks) || ' tasks, '
          || (select count(*) from storage.objects where bucket_id = 'files') || ' uploaded files, '
          || (select count(*) from public.profiles where role = 'client') || ' client portal logins'"
+fi
 if [ -n "$NEW_EMAIL" ]; then
   echo "It also REMOVES EVERY LOGIN:"
   qc "select '  ' || u.email || ' (' || coalesce(p.role, 'no role') || ')' from auth.users u left join public.profiles p on p.id = u.id order by p.role, u.email"
@@ -55,7 +68,8 @@ else
   echo "It KEEPS these logins:"
   qc "select '  ' || email || ' (' || role || ')' from public.profiles where role in ('boss','staff') order by role, email"
 fi
-echo "The first new case will be MAX-$START and the first new customer C-0001."
+if [ "$KEEP" = 1 ]; then echo "The first new case will be MAX-$START; customer codes carry on."
+else echo "The first new case will be MAX-$START and the first new customer C-0001."; fi
 [ "$DRY" = 1 ] && echo "(DRY RUN: nothing will actually be deleted)"
 if [ -n "$NEW_EMAIL" ]; then
   while :; do
@@ -76,12 +90,32 @@ fi
 
 # collected before the wipe: uploaded files (100 per request) and client portal logins
 FILE_BATCHES=$(qc "select json_build_object('prefixes', json_agg(name)) from (select name, (row_number() over (order by name) - 1) / 100 as b
-                     from storage.objects where bucket_id = 'files' and name not like 'agency/%') x group by b")
+                     from storage.objects o where bucket_id = 'files' and name not like 'agency/%'
+                       and ($KEEP = 0 or not exists (select 1 from public.customer_documents d where d.storage_path = o.name))) x group by b")
 # (agency/ holds the logo from Settings: it is kept, like the rest of the settings)
-CLIENTS=$(qc "select id from public.profiles where role = 'client'")
+CLIENTS=$([ "$KEEP" = 1 ] || qc "select id from public.profiles where role = 'client'")   # kept with the customers
 ALL_USERS=$(qc "select id from auth.users")
 
 echo "• Clearing the CRM data"
+if [ "$KEEP" = 1 ]; then
+# customers, families, customer_documents and profiles are not in the list; the count check stops (and undoes
+# everything) if the cascade ever reached the customers
+q <<SQL
+begin;
+create temp table kept as select count(*) n from public.customers;
+truncate public.payment_allocations, public.payments, public.expenses, public.share_links, public.files,
+         public.task_comments, public.tasks, public.notifications, public.booking_lines, public.case_travellers,
+         public.cases, public.suppliers, public.activity_log,
+         public.invoices, public.invoice_counters, public.ticket_imports, public.case_requests, public.money_accounts
+         restart identity cascade;
+insert into public.money_accounts (name, kind, sort) values ('Cash in hand', 'cash', 0);
+do \$\$ begin
+  if (select count(*) from public.customers) <> (select n from kept) then raise exception 'customers would be lost; stopping'; end if;
+  if not exists (select 1 from public.profiles where role = 'boss' and active) then raise exception 'owner login missing; stopping'; end if;
+end \$\$;
+$([ "$DRY" = 1 ] && echo "rollback;" || printf "select setval('public.max_seq', %s, false);\nselect setval('public.receipt_seq', 1, false);\ncommit;" "$START")
+SQL
+else
 # profiles.customer_id points at customers, so TRUNCATE ... CASCADE would also empty profiles (every login).
 # The link is detached for the wipe and put back. One transaction: if anything fails, nothing changes.
 q <<SQL
@@ -101,6 +135,7 @@ do \$\$ begin
 end \$\$;
 $([ "$DRY" = 1 ] && echo "rollback;" || printf "select setval('public.max_seq', %s, false);\nselect setval('public.customer_code_seq', 1, false);\nselect setval('public.receipt_seq', 1, false);\ncommit;" "$START")
 SQL
+fi
 
 if [ "$DRY" = 1 ]; then
   if [ -n "$NEW_EMAIL" ]; then
