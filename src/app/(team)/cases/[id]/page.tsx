@@ -219,7 +219,7 @@ async function DocsLoader({ caseId, caseStatus, lines }: { caseId: string; caseS
   const { data } = await sb.from("invoices").select("id, number, issued_on, total, status, cancel_reason, lines").eq("case_id", caseId).order("created_at", { ascending: false });
   return (
     <CaseDocs caseId={caseId} caseStatus={caseStatus} invoices={(data ?? []) as unknown as InvoiceRow[]}
-      lines={lines.map((l) => ({ id: l.id, status: l.status, selling_price: Number(l.selling_price), gst: Number(l.gst) }))} />
+      lines={lines.map((l) => ({ id: l.id, status: l.status, selling_price: Number(l.selling_price), gst: Number(l.gst), refund_to_client: Number(l.refund_to_client ?? 0) }))} />
   );
 }
 
