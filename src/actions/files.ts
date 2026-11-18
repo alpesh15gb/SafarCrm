@@ -1,6 +1,7 @@
 "use server";
 import { createAdmin, createClient } from "@/lib/supabase/server";
 import { fail, type ActionResult } from "@/lib/auth";
+import { sendMessage, type SendLine } from "@/lib/send-templates";
 
 export async function setFileVisible(id: string, visible: boolean): Promise<ActionResult> {
   try {
@@ -82,7 +83,7 @@ export async function sendFileToClient(fileId: string, channel: "whatsapp" | "em
     const sb = await createClient();
     // read through row-level security: only someone who may see the file can send it
     const { data: f } = await sb.from("files")
-      .select("id, file_name, original_name, mime, kind, storage_path, case_id, case:cases(max_id, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email))")
+      .select("id, file_name, original_name, mime, kind, storage_path, case_id, line:booking_lines(service, status, details, service_date, reference), case:cases(max_id, customer:customers!cases_customer_id_fkey(id, full_name, mobile, whatsapp, email))")
       .eq("id", fileId).maybeSingle();
     if (!f) return { ok: false, error: "File not found." };
     const kase = f.case as unknown as { max_id: string; customer: { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null } | null } | null;
@@ -94,15 +95,17 @@ export async function sendFileToClient(fileId: string, channel: "whatsapp" | "em
     const { data: blob, error: de } = await createAdmin().storage.from("files").download(f.storage_path);
     if (de || !blob) return { ok: false, error: "The file could not be read from storage." };
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const what = f.kind === "other" || f.kind === "document" ? "document" : f.kind;
     const first = cust?.full_name.split(" ")[0] ?? "";
-    const { data: st } = await sb.from("settings").select("agency_name, agency_phone").eq("id", 1).single();
-    const agency = st?.agency_name || "your travel agent";
+    const { data: st } = await sb.from("settings").select("agency_name, agency_phone, agency_email").eq("id", 1).single();
+    // the confirmation message in the owner's format (FLIGHT BOOKING CONFIRMATION · Dear … · BOOKING CONFIRMED · details ·
+    // 📎 attached · Thank you for booking with …), worded for the booking the file belongs to
+    const msg = sendMessage({
+      kind: f.kind, line: (f.line ?? null) as unknown as SendLine, customer: cust?.full_name ?? "",
+      maxId: kase?.max_id ?? null, agency: { name: st?.agency_name || "", phone: st?.agency_phone, email: st?.agency_email },
+    });
     const r = channel === "whatsapp"
-      ? await sendWhatsAppDocument(dest, { bytes, mime: f.mime, name: f.file_name }, `Namaste ${first}, here is your ${what}${kase ? ` for ${kase.max_id}` : ""}.\n${agency}${st?.agency_phone ? ` · ${st.agency_phone}` : ""}`)
-      : await sendEmailWithAttachment(dest, `${kase ? `${kase.max_id}: ` : ""}your ${what} from ${agency}`,
-          `<p>Namaste ${first},</p><p>Please find your ${what}${kase ? ` for ${kase.max_id}` : ""} attached.</p><p>${agency}${st?.agency_phone ? `<br>${st.agency_phone}` : ""}</p>`,
-          { bytes, name: f.file_name });
+      ? await sendWhatsAppDocument(dest, { bytes, mime: f.mime, name: f.file_name }, msg.whatsapp)
+      : await sendEmailWithAttachment(dest, msg.subject, msg.html, { bytes, name: f.file_name });
     if (!r.ok) return { ok: false, error: r.code === "not_configured" ? "not_configured" : r.message };
     if (f.case_id) await sb.rpc("log_file_sent", { p_file: f.id, p_channel: channel, p_to: dest }).then(() => {}, () => {});
     return { ok: true, message: channel === "whatsapp" ? `Sent on WhatsApp to ${first || dest}` : `Emailed to ${dest}` };
