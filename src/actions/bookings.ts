@@ -61,7 +61,7 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
     if (hasSale && !hasCost && input.status !== "cancelled") return { ok: false, error: "Enter the supplier cost as well (type 0 if there is none), so the profit is right." };
     const priced = hasSale || hasCost;
     const sb = await createClient();
-    const { data: caseBefore } = await sb.from("cases").select("status").eq("id", input.case_id).maybeSingle();
+    const { data: caseBefore } = await sb.from("cases").select("status, travel_start").eq("id", input.case_id).maybeSingle();
     // a confirmed booking can move the case to Booked, or complete it: say so
     const moved = async () => {
       const { data: c } = await sb.from("cases").select("status, max_id").eq("id", input.case_id).maybeSingle();
@@ -102,12 +102,12 @@ export async function saveLine(input: LineInput): Promise<ActionResult<{ id: str
     if (input.id) {
       const { data, error } = await sb.from("booking_lines").update(row).eq("id", input.id).select("id, service_date").maybeSingle();
       if (error) throw error;
-      const note = data ? await fillDue(input.id, data.service_date as string | null) : "";
+      const note = data ? await fillDue(input.id, (data.service_date as string | null) ?? caseBefore?.travel_start ?? null) : "";
       return { ok: true, data: { id: input.id }, message: `Booking saved${note}${await moved()}` };
     }
     const { data, error } = await sb.from("booking_lines").insert(row).select("id, service_date").single();
     if (error) throw error;
-    const note = await fillDue(data.id, data.service_date as string | null);
+    const note = await fillDue(data.id, (data.service_date as string | null) ?? caseBefore?.travel_start ?? null);
     return { ok: true, data: { id: data.id }, message: `Booking added${note}${await moved()}` };
   } catch (e) {
     return fail(e);

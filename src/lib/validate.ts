@@ -1,5 +1,5 @@
 // Checks shared by the booking form (browser) and saveLine (server), so a half-filled booking is never saved.
-import { SERVICE_FIELDS, SERVICE_LABEL, type Service } from "./constants.ts";
+import type { Service } from "./constants.ts";
 import { fdate } from "./format.ts";
 import { sectorTimeIssues } from "./flight-time.ts";
 
@@ -11,12 +11,15 @@ const DATE_PAIRS: [string, string, string, boolean][] = [
   ["applied_on", "expected_by", "The decision date can't be before the date applied.", false],
 ];
 
-/** What's wrong with a booking, in plain words, or null when it can be saved. */
+/** What's wrong with a booking, in plain words, or null when it can be saved.
+ *  Owner, 2026-11-18: a booking is the ticket file plus prices; sectors, PNR, hotel name and the like are no longer
+ *  typed in, so nothing is required. Details an older booking already has are still checked for obvious mistakes. */
 export function lineProblem(service: Service, d: Record<string, unknown>): string | null {
   const v = (k: string) => String(d[k] ?? "").trim();
   if (service === "flight") {
-    const sectors = Array.isArray(d.sectors) ? (d.sectors as Record<string, string>[]) : [];
-    if (!sectors.length) return "Add at least one flight sector.";
+    // only sectors someone actually filled in (an untouched blank sector is ignored)
+    const sectors = (Array.isArray(d.sectors) ? (d.sectors as Record<string, string>[]) : [])
+      .filter((s) => ["from", "to", "date", "airline", "flight_no", "dep", "arr"].some((k) => String(s[k] ?? "").trim()));
     let prev = "";
     for (const [i, s] of sectors.entries()) {
       const from = String(s.from ?? "").trim().toUpperCase(), to = String(s.to ?? "").trim().toUpperCase();
@@ -29,9 +32,6 @@ export function lineProblem(service: Service, d: Record<string, unknown>): strin
       if (s.date && prev && s.date < prev) return n + cap(`the date ${fdate(s.date)} is before the previous sector.`);
       if (s.date) prev = s.date;
     }
-  }
-  for (const f of [...SERVICE_FIELDS[service].main, ...SERVICE_FIELDS[service].more]) {
-    if (f.required && !v(f.key)) return `${SERVICE_LABEL[service]} needs ${f.label.toLowerCase()}.`;
   }
   for (const [a, b, msg, strict] of DATE_PAIRS) {
     if (v(a) && v(b) && (strict ? v(b) <= v(a) : v(b) < v(a))) return msg;

@@ -71,3 +71,10 @@ test("booking validation rejects malformed dates and times", () => {
   assert.match(lineProblem("flight", { sectors: [{ ...sector, arr_date: "2026-02-30" }] }) ?? "", /not a valid date/);
   assert.match(lineProblem("flight", { sectors: [{ ...sector, arr: "25:00" }] }) ?? "", /arrival time/);
 });
+
+test("a booking with no sectors or other details can be saved (owner, 2026-11-18: ticket and prices only)", () => {
+  assert.equal(lineProblem("flight", {}), null);
+  assert.equal(lineProblem("flight", { trip_type: "one-way", sectors: [{ from: "", to: "", date: "", airline: "", flight_no: "", dep: "", arr: "" }] }), null);
+  assert.equal(lineProblem("hotel", {}), null);
+  assert.equal(lineProblem("visa", {}), null);
+});
