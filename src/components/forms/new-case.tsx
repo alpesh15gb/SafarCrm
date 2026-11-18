@@ -130,7 +130,10 @@ export function NewCaseDialog({ open, onClose, preset }: { open: boolean; onClos
   const router = useRouter();
   return (
     <Dialog open={open} onClose={onClose} title="New case">
-      <NewCaseForm preset={preset} onDone={(c) => { onClose(); router.push(`/cases/${c.id}`); }} />
+      {/* a fresh form each time it opens: the dialog stays on the page, and the form used to keep the customer from the
+          first time (opening New case from a second customer's profile still showed the first one) */}
+      {open && <NewCaseForm key={String((preset?.customer as { id?: string } | undefined)?.id ?? "none")} preset={preset}
+        onDone={(c) => { onClose(); router.push(`/cases/${c.id}`); }} />}
     </Dialog>
   );
 }
