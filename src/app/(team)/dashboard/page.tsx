@@ -62,7 +62,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const endOfToday = new Date(`${todayIST(1)}T00:00:00+05:30`).toISOString();
   const alertsQ = sb.from("tasks").select(ALERT_SEL).neq("status", "done").lt("due_at", endOfToday).order("due_at");
   const none = Promise.resolve({ data: null });
-  const [{ data: alertRows }, { data: travel }, money, moneyPrev, trend, { data: pipe }, activity, { data: other }] = await Promise.all([
+  const [{ data: alertRows }, { data: travel }, money, moneyPrev, trend, { data: pipe }, activity, { data: other }, { data: activeRows }] = await Promise.all([
     boss ? alertsQ : alertsQ.eq("assigned_to", me.id),
     // one row per departing flight leg, rail or bus journey (outbound and return each count; hotels and visas don't)
     sb.rpc("departures", { p_from: todayIST(), p_to: todayIST(7) }),
@@ -72,16 +72,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     sb.rpc("dashboard_pipeline"),
     boss ? sb.from("activity_log").select("*").not("actor", "is", null).order("created_at", { ascending: false }).limit(7) : none,
     sb.rpc("service_dates", { p_from: todayIST(), p_to: todayIST(7) }),
+    // the cases the dashboard shows (owner, 2026-11-18): until the trip is over, then only while the client owes money
+    sb.rpc("dashboard_case_ids"),
   ]);
+  const active = new Set(((activeRows ?? []) as { case_id: string }[]).map((r) => r.case_id));
   const m = money.data as Money | null;
   const mp = moneyPrev.data as Money | null;
   const tr = ((trend.data ?? []) as { month: string; sales: number; profit: number; cases: number }[]).map((r) => ({ ...r, sales: Number(r.sales), profit: Number(r.profit), cases: Number(r.cases) }));
-  const alertsDue = (alertRows ?? []) as unknown as AlertDue[];
+  // an alert on a case that is off the dashboard (trip over, nothing owed) stays on the case, not here
+  const alertsDue = ((alertRows ?? []) as unknown as AlertDue[]).filter((a) => !a.case_id || active.has(a.case_id));
   type Dep = { case_id: string; max_id: string; customer: string; line_id: string; service: string; dep_date: string; dep_time: string | null; from_code: string | null; to_code: string | null; carrier: string | null; leg: number; legs: number };
   const trips = ((travel ?? []) as Dep[]).sort((a, b) => (a.dep_date + (a.dep_time ?? "")).localeCompare(b.dep_date + (b.dep_time ?? "")));
   const otherDates = (other ?? []) as { case_id: string; max_id: string; customer: string; line_id: string; service: string; kind: string; on_date: string; label: string | null }[];
   const pipeline = (pipe ?? []) as { status: string; cases: number; sale: number; due: number }[];
-  const openCases = pipeline.filter((p) => !["completed", "cancelled"].includes(p.status)).reduce((a, p) => a + Number(p.cases), 0);
+  const openCases = active.size;
   const attentionCases = new Set(alertsDue.map((a) => a.case_id ?? a.id)).size;
   const first = me.full_name.split(" ")[0];
   const dateLine = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
@@ -105,7 +109,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <div className="mt-3 flex flex-wrap gap-2 text-[13px]">
               <HeroChip href="/cases?quick=attention" icon={AlertCircle} hot={attentionCases > 0}>{attentionCases} case{attentionCases === 1 ? "" : "s"} {attentionCases === 1 ? "needs" : "need"} attention</HeroChip>
               <HeroChip href="#departures" icon={PlaneTakeoff}>{trips.length} departure{trips.length === 1 ? "" : "s"} this week</HeroChip>
-              <HeroChip href="/cases?status=open" icon={Briefcase}>{openCases} open case{openCases === 1 ? "" : "s"}</HeroChip>
+              <HeroChip href="/cases?quick=active" icon={Briefcase}>{openCases} active case{openCases === 1 ? "" : "s"}</HeroChip>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -119,13 +123,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {/* left column (2/3) */}
         <div className="min-w-0 space-y-5 xl:col-span-2">
           <NeedsAttention alerts={alertsDue} />
-          {boss ? <PaymentsDue /> : <MyOpenCases userId={me.id} />}
+          {boss ? <PaymentsDue /> : <MyOpenCases userId={me.id} active={[...active]} />}
         </div>
 
         {/* right column (1/3) */}
         <div className="min-w-0 space-y-5">
           <Pipeline rows={pipeline} />
-          <VisaTracker />
+          <VisaTracker active={active} />
           <Card title="Departures" sub="Next 7 days" icon={PlaneTakeoff} pad={false} className="scroll-mt-24" >
             <div id="departures" />
             {trips.length === 0 ? <p className="p-4 text-sm text-muted">No one is travelling in the next 7 days.</p> : (
@@ -236,7 +240,7 @@ function Pipeline({ rows }: { rows: { status: string; cases: number; sale: numbe
   const max = Math.max(1, ...data.map((d) => d.n));
   const cancelled = Number(rows.find((x) => x.status === "cancelled")?.cases ?? 0);
   return (
-    <Card title="Case pipeline" sub="All cases by stage" icon={PieChart} action={<Link href="/cases?view=board" className="inline-flex items-center gap-1 text-xs link">Board <ArrowRight className="h-3 w-3" /></Link>}>
+    <Card title="Case pipeline" sub="Active cases by stage: until the trip is over, or while money is due" icon={PieChart} action={<Link href="/cases?view=board" className="inline-flex items-center gap-1 text-xs link">Board <ArrowRight className="h-3 w-3" /></Link>}>
       <div className="space-y-3">
         {data.map((d) => (
           <Link key={d.s} href={`/cases?status=${d.s}`} className="group block" title={`${STATUS_LABEL[d.s]}: ${d.n} cases, ${inr(d.sale)} sale value`}>
@@ -335,13 +339,16 @@ async function PaymentsDue() {
   );
 }
 
-async function MyOpenCases({ userId }: { userId: string }) {
+async function MyOpenCases({ userId, active }: { userId: string; active: string[] }) {
   const sb = await createClient();
-  const { data } = await sb.from("cases").select("id, max_id, title, status, travel_start, customer:customers!cases_customer_id_fkey(full_name)").eq("assigned_to", userId).not("status", "in", "(completed,cancelled)").order("travel_start", { nullsFirst: false }).limit(10);
+  // the same rule as the rest of the dashboard: a completed case with the trip still ahead is listed too
+  const { data } = active.length
+    ? await sb.from("cases").select("id, max_id, title, status, travel_start, customer:customers!cases_customer_id_fkey(full_name)").eq("assigned_to", userId).in("id", active.slice(0, 300)).order("travel_start", { nullsFirst: false }).limit(10)
+    : { data: [] };
   const rows = (data ?? []) as unknown as { id: string; max_id: string; title: string; status: string; travel_start: string | null; customer: { full_name: string } | null }[];
   return (
-    <Card title="My open cases" icon={Briefcase} action={<Link href={`/cases?staff=${userId}&status=open`} className="text-xs link">All</Link>} pad={false}>
-      {rows.length === 0 && <p className="p-4 text-sm text-muted">No open cases.</p>}
+    <Card title="My active cases" icon={Briefcase} action={<Link href={`/cases?staff=${userId}&quick=active`} className="text-xs link">All</Link>} pad={false}>
+      {rows.length === 0 && <p className="p-4 text-sm text-muted">No active cases.</p>}
       {rows.map((c) => (
         <Link key={c.id} href={`/cases/${c.id}`} className="flex items-center gap-3 border-b border-line px-4 py-2.5 last:border-0 hover:bg-[#fafbfc]">
           <Avatar name={c.customer?.full_name} size="md" />
@@ -410,14 +417,14 @@ function ProfitByService({ rows }: { rows: { service: string; profit: number; sa
 }
 
 /** Visa applications still in progress, soonest appointment first. */
-async function VisaTracker() {
+async function VisaTracker({ active }: { active: Set<string> }) {
   const sb = await createClient();
   const { data } = await sb.from("booking_lines")
     .select("id, details, case:cases!inner(id, max_id, status, customer:customers!cases_customer_id_fkey(full_name))")
     .eq("service", "visa").neq("status", "cancelled").neq("case.status", "cancelled").order("service_date", { nullsFirst: false }).limit(60);
   const done = ["Approved", "Rejected", "Passport collected"];
   const rows = ((data ?? []) as unknown as { id: string; details: Record<string, string>; case: { id: string; max_id: string; customer: { full_name: string } | null } }[])
-    .filter((r) => !done.includes(r.details?.application_status));
+    .filter((r) => !done.includes(r.details?.application_status) && active.has(r.case.id));
   if (!rows.length) return null;
   return (
     <Card title="Visa applications" sub={`${rows.length} in progress`} icon={Stamp} pad={false} action={<Link href="/cases?service=visa&status=open" className="text-xs link">All</Link>}>

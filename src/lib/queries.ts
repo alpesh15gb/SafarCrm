@@ -61,6 +61,11 @@ export async function listCases(sp: SP, all = false) {
   // quick chips (owner, 2026-11-18): the few questions the office asks of 50 open cases
   let quickIds: string[] | null = null;
   if (sp.quick === "attention") quickIds = await attentionCaseIds();
+  else if (sp.quick === "active") {
+    // the cases on the dashboard: trip not over yet, or the client still owes money (owner, 2026-11-18)
+    const { data } = await sb.rpc("dashboard_case_ids");
+    quickIds = ((data ?? []) as { case_id: string }[]).map((r) => r.case_id);
+  }
   else if (sp.quick === "payment") {
     const { data } = await sb.from("v_case_money").select("case_id").gt("due", 0.009).limit(1000);
     quickIds = (data ?? []).map((r) => r.case_id as string);

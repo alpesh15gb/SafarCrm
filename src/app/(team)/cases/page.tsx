@@ -18,7 +18,8 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
   const sb = await createClient();
   const board = sp.view === "board";
   // the list opens on open cases; "All" shows everything, and a search looks through every case
-  const listSp: SP = { ...sp, status: sp.status === "all" ? undefined : sp.status ?? (sp.q ? undefined : "open") };
+  // "Active" includes a completed case whose trip is still ahead, so it is not limited to open cases
+  const listSp: SP = { ...sp, status: sp.status === "all" ? undefined : sp.status ?? (sp.q || sp.quick === "active" ? undefined : "open") };
   const [{ rows, count, page }, { data: staff }] = await Promise.all([
     board ? boardCases(sp) : listCases(listSp),
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
@@ -54,7 +55,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         <SearchBox placeholder="Search by MAX ID, customer, mobile or place" />
         {/* the questions asked most of a long list, one tap each (owner, 2026-11-18) */}
         <Chips param="quick" current={sp.quick} base={sp} allLabel={sp.status && sp.status !== "open" ? "Everything" : "All open"} items={[
-          { value: "starred", label: "⭐ Starred" }, { value: "attention", label: "Needs attention" },
+          { value: "starred", label: "⭐ Starred" }, { value: "active", label: "Active" }, { value: "attention", label: "Needs attention" },
           { value: "week", label: "Travelling this week" }, { value: "payment", label: "Payment due" }, { value: "visa", label: "Visa pending" },
         ]} />
         {/* the filters used now and then stay folded away until one of them is in use */}
