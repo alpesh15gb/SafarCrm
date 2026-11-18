@@ -56,7 +56,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
           rows={[
             ...rows.map((l) => ({
               label: <>{SERVICE_LABEL[l.service as Service]}{l.summary && `: ${l.summary}`}</>,
-              sub: [(l.traveller_ids as string[]).map((t) => name.get(t)).filter(Boolean).join(", "), fdate(l.service_date)].filter(Boolean).join(" · ") || undefined,
+              sub: [(l.traveller_ids as string[]).map((t) => name.get(t)).filter(Boolean).join(", "), l.service === "visa" ? "" : fdate(l.service_date)].filter(Boolean).join(" · ") || undefined,
               amount: Number(l.selling_price),
             })),
             ...(gst > 0 ? [{ label: "GST", sub: "On our service charges", amount: gst }] : []),

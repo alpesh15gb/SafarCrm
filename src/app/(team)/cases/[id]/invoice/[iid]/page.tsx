@@ -62,7 +62,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         rows={[
           ...lines.map((l) => ({
             label: <>{SERVICE_LABEL[l.service as Service] ?? l.service}{l.summary && `: ${l.summary}`}</>,
-            sub: [l.travellers, fdate(l.service_date)].filter(Boolean).join(" · ") || undefined,
+            sub: [l.travellers, l.service === "visa" ? "" : fdate(l.service_date)].filter(Boolean).join(" · ") || undefined,
             amount: Number(l.amount), code: SAC[l.service],
           })),
           ...(hasGst ? [{ label: "GST", sub: "On our service charges", amount: Number(inv.gst) }] : []),
