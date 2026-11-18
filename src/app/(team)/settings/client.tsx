@@ -1,18 +1,58 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Download, Plus, X } from "lucide-react";
 import { Badge, Button, Card, Field, Table, btnClass, cx } from "@/components/ui";
 import { Confirm, CopyButton, Dialog, Toggle, useAction } from "@/components/client";
 import {
-  addLookup, createStaff, deactivateStaff, reactivateStaff, removeLookup, resetStaffPassword, runRemindersNow, saveSettings, setMaxStart, updateStaff,
+  addLookup, createStaff, deactivateStaff, reactivateStaff, removeLogo, removeLookup, resetStaffPassword, runRemindersNow, saveSettings, setMaxStart, updateStaff,
 } from "@/actions/settings";
 import { fdatetime, inr } from "@/lib/format";
 import { saveMoneyAccount, setMoneyAccountActive } from "@/actions/money";
 
 type S = Record<string, unknown> & { auto_reminders: Record<string, boolean>; portal_defaults: Record<string, boolean> };
 
-export function GeneralTab({ settings, nextMax }: { settings: S; nextMax: number }) {
+/** The agency logo: printed at the top of estimates, invoices and receipts (owner, 2026-11-18). */
+function LogoCard({ logo }: { logo: string | null }) {
+  const { run, pending } = useAction();
+  const router = useRouter();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const upload = async (f: File) => {
+    setBusy(true); setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f); fd.append("target", "logo");
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      const j = await r.json().catch(() => ({}));
+      setMsg(r.ok ? { ok: true, text: "Logo uploaded. It now shows on estimates, invoices and receipts." } : { ok: false, text: j.error ?? "Upload failed. Try again." });
+      if (r.ok) router.refresh();
+    } finally { setBusy(false); if (input.current) input.current.value = ""; }
+  };
+  return (
+    <Card title="Logo" sub="Printed at the top of every estimate, invoice and receipt">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex h-20 w-44 items-center justify-center rounded-lg border border-dashed border-line bg-gray-50 p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element -- an inline data: URL */}
+          {logo ? <img src={logo} alt="Agency logo" className="max-h-full max-w-full object-contain" /> : <span className="text-xs text-muted">No logo yet</span>}
+        </div>
+        <div className="space-y-2">
+          <input ref={input} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+          <div className="flex gap-2">
+            <Button variant="primary" disabled={busy} onClick={() => input.current?.click()}>{busy ? "Uploading…" : logo ? "Change logo" : "Upload logo"}</Button>
+            {logo && <Button disabled={pending || busy} onClick={() => run(() => removeLogo(), { then: () => router.refresh() })}>Remove</Button>}
+          </div>
+          <p className="text-xs text-muted">PNG or JPG, up to 1 MB. A wide logo on a white or clear background prints best.</p>
+        </div>
+      </div>
+      {msg && <p className={cx("mt-3 text-[13px]", msg.ok ? "text-emerald-700" : "text-red-600")}>{msg.text}</p>}
+    </Card>
+  );
+}
+
+export function GeneralTab({ settings, nextMax, logo }: { settings: S; nextMax: number; logo: string | null }) {
   const { run, pending } = useAction();
   const [v, setV] = useState({ agency_name: String(settings.agency_name ?? ""), agency_phone: String(settings.agency_phone ?? ""), agency_email: String(settings.agency_email ?? ""), agency_address: String(settings.agency_address ?? ""), app_url: String(settings.app_url ?? "") });
   const [start, setStart] = useState(String(nextMax));
@@ -33,6 +73,7 @@ export function GeneralTab({ settings, nextMax }: { settings: S; nextMax: number
           <div className="flex justify-end"><Button variant="primary" disabled={pending} onClick={() => run(() => saveSettings(v))}>Save</Button></div>
         </div>
       </Card>
+      <LogoCard logo={logo} />
       <Card title="MAX ID numbering">
         <p className="mb-3 text-[13px] text-muted">The next case will be <b className="font-mono text-ink">MAX-{nextMax}</b>. You can move the starting number forward (for example to continue from your old register). Numbers are never reused or edited.</p>
         <div className="flex gap-2">

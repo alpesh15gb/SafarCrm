@@ -151,6 +151,19 @@ export async function POST(req: Request) {
       })));
       return NextResponse.json(row);
     }
+    // ------------------------------------------------ agency logo (boss): printed on estimates, invoices and receipts
+    if (target === "logo") {
+      if (me.role !== "boss") return err("Only the boss can change the logo.", 403);
+      if (mime === "application/pdf") return err("The logo must be a PNG or JPG picture.");
+      if (buf.length > 1024 * 1024) return err("The logo must be 1 MB or smaller.");
+      const path = `agency/logo-${randomUUID()}.${ext}`;
+      await put(path);
+      const { data: old } = await admin.from("settings").select("logo_path").eq("id", 1).single();
+      const { error } = await admin.from("settings").update({ logo_path: path }).eq("id", 1);
+      if (error) { await admin.storage.from("files").remove([path]); throw error; }
+      if (old?.logo_path) await admin.storage.from("files").remove([old.logo_path]);
+      return NextResponse.json({ ok: true, message: "Logo uploaded" });
+    }
     return err("Unknown upload target.");
   } catch (e) {
     return err(e instanceof Error ? e.message : "Upload failed", 500);

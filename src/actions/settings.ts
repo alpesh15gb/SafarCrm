@@ -25,6 +25,21 @@ export async function saveSettings(patch: Record<string, unknown>): Promise<Acti
   }
 }
 
+/** Take the agency logo off estimates, invoices and receipts (the file is deleted). */
+export async function removeLogo(): Promise<ActionResult> {
+  try {
+    await boss();
+    const admin = createAdmin();
+    const { data } = await admin.from("settings").select("logo_path").eq("id", 1).single();
+    const { error } = await admin.from("settings").update({ logo_path: null }).eq("id", 1);
+    if (error) throw error;
+    if (data?.logo_path) await admin.storage.from("files").remove([data.logo_path]);
+    return { ok: true, message: "Logo removed" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function setMaxStart(n: number): Promise<ActionResult> {
   try {
     await boss();

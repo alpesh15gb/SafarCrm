@@ -15,6 +15,17 @@ export function sniff(buf: Uint8Array) {
   return null;
 }
 
+/** A stored picture as a data: URL, so a printed document carries it inline (no login or expiring link needed). */
+export async function imageDataUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+  const { data } = await createAdmin().storage.from("files").download(path);
+  if (!data) return null;
+  const buf = new Uint8Array(await data.arrayBuffer());
+  const mime = sniff(buf);
+  if (mime !== "image/png" && mime !== "image/jpeg") return null;
+  return `data:${mime};base64,${Buffer.from(buf).toString("base64")}`;
+}
+
 export function slug(s: unknown) {
   return String(s ?? "").normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 }

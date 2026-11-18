@@ -2,6 +2,7 @@ import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader, Tabs } from "@/components/ui";
 import { redirect } from "next/navigation";
+import { imageDataUrl } from "@/lib/storage";
 import { DataTab, GeneralTab, LookupsTab, PortalTab, RemindersTab, UsersTab } from "./client";
 
 export const metadata = { title: "Settings" };
@@ -19,7 +20,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         { key: "general", label: "Agency and MAX ID" }, { key: "users", label: "Users" }, { key: "portal", label: "Client portal" },
         { key: "reminders", label: "Automatic reminders" }, { key: "lookups", label: "Lookup lists" }, { key: "data", label: "Data" },
       ]} />
-      {tab === "general" && <GeneralTab settings={s} nextMax={Number(next)} />}
+      {tab === "general" && <GeneralTab settings={s} nextMax={Number(next)} logo={await imageDataUrl(s?.logo_path)} />}
       {/* money accounts moved to their own page in the left menu (owner, 2026-11-18) */}
       {tab === "accounts" && redirect("/accounts")}
       {tab === "users" && <UsersLoader meId={me.id} />}

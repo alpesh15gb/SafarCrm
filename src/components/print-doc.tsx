@@ -3,13 +3,15 @@ import { ArrowLeft, MessageCircle } from "lucide-react";
 import { btnClass, cx } from "@/components/ui";
 import { PrintButton } from "@/app/(team)/reports/client";
 import { inr } from "@/lib/format";
+import { imageDataUrl } from "@/lib/storage";
 
 export type Agency = {
   agency_name: string; agency_phone: string | null; agency_email: string | null; agency_address: string | null;
   agency_gstin?: string | null; agency_pan?: string | null; bank_details?: string | null; upi_id?: string | null;
+  logo_path?: string | null;
 };
 /** Columns to select from `settings` for any printed document. */
-export const AGENCY_COLS = "agency_name, agency_phone, agency_email, agency_address, agency_gstin, agency_pan, bank_details, upi_id";
+export const AGENCY_COLS = "agency_name, agency_phone, agency_email, agency_address, agency_gstin, agency_pan, bank_details, upi_id, logo_path";
 
 /** One labelled value in a details grid; empty values are left out. */
 export type DocField = [label: string, value: React.ReactNode];
@@ -23,7 +25,7 @@ export const SAC: Record<string, string> = {
 
 /** A printable client document (estimate, invoice, receipt) laid out like a tax invoice: the title and the agency
  *  on top, a grid of the document's details, then the body. Toolbar on screen, clean A4 sheet on paper. */
-export function PrintDoc({ back, wa, agency, title, meta, children, stamp }: {
+export async function PrintDoc({ back, wa, agency, title, meta, children, stamp }: {
   back: { href: string; label: string }; wa?: string; agency: Agency; title: string;
   /** the document's details (number, date, ...): shown as a labelled grid under the header */
   meta: DocField[];
@@ -31,6 +33,8 @@ export function PrintDoc({ back, wa, agency, title, meta, children, stamp }: {
   /** printed across the sheet, e.g. "Cancelled" */
   stamp?: string;
 }) {
+  // the logo from Settings, embedded in the page so it prints and saves to PDF with no login or expiring link
+  const logo = await imageDataUrl(agency.logo_path);
   const fields: DocField[] = [
     ...meta,
     ["GSTIN", agency.agency_gstin ? <span className="font-mono">{agency.agency_gstin}</span> : null],
@@ -50,6 +54,8 @@ export function PrintDoc({ back, wa, agency, title, meta, children, stamp }: {
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <h1 className="text-[26px] font-bold uppercase leading-none tracking-tight">{title}</h1>
           <div className="min-w-0 sm:max-w-[55%] sm:text-right">
+            {/* eslint-disable-next-line @next/next/no-img-element -- an inline data: URL, nothing to optimise */}
+            {logo && <img src={logo} alt={agency.agency_name} className="mb-2 max-h-16 max-w-[220px] object-contain sm:ml-auto" />}
             <div className="text-[15px] font-bold uppercase tracking-wide text-coral-dark">{agency.agency_name}</div>
             {agency.agency_address && <div className="whitespace-pre-line text-[12.5px]">{agency.agency_address}</div>}
             <div className="text-[12.5px] text-muted">{[agency.agency_phone, agency.agency_email].filter(Boolean).join(" · ")}</div>
