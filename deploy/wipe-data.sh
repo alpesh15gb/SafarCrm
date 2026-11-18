@@ -76,7 +76,8 @@ fi
 
 # collected before the wipe: uploaded files (100 per request) and client portal logins
 FILE_BATCHES=$(qc "select json_build_object('prefixes', json_agg(name)) from (select name, (row_number() over (order by name) - 1) / 100 as b
-                     from storage.objects where bucket_id = 'files') x group by b")
+                     from storage.objects where bucket_id = 'files' and name not like 'agency/%') x group by b")
+# (agency/ holds the logo from Settings: it is kept, like the rest of the settings)
 CLIENTS=$(qc "select id from public.profiles where role = 'client'")
 ALL_USERS=$(qc "select id from auth.users")
 
@@ -90,8 +91,10 @@ alter table public.profiles drop constraint profiles_customer_fk;
 truncate public.payment_allocations, public.payments, public.expenses, public.share_links, public.files,
          public.task_comments, public.tasks, public.notifications, public.booking_lines, public.case_travellers,
          public.cases, public.customer_documents, public.customers, public.families, public.suppliers, public.activity_log,
-         public.invoices, public.invoice_counters, public.ticket_imports, public.case_requests
+         public.invoices, public.invoice_counters, public.ticket_imports, public.case_requests, public.money_accounts
          restart identity cascade;
+-- money accounts were test entries too; start again with just Cash in hand (the boss adds the real bank accounts)
+insert into public.money_accounts (name, kind, sort) values ('Cash in hand', 'cash', 0);
 alter table public.profiles add constraint profiles_customer_fk foreign key (customer_id) references public.customers (id) on delete set null;
 do \$\$ begin
   if not exists (select 1 from public.profiles where role = 'boss' and active) then raise exception 'owner login missing; stopping'; end if;
