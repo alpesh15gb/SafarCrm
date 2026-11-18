@@ -42,3 +42,9 @@ test("names in the email are escaped", () => {
   assert.doesNotMatch(m.html, /<b>x<\/b>/);
   assert.match(m.html, /&lt;b&gt;x/);
 });
+
+test("both say they are automated and not to reply, with where to ask instead", () => {
+  const m = sendMessage({ kind: "document", customer: "A B", maxId: null, agency, line: null });
+  assert.match(m.whatsapp, /This is an automated message\. Please do not reply to it\. For any help, contact Max Travel: 7095018018 · cs@maxtravel\.in\./);
+  assert.match(m.html, /This is an automated email\. Please do not reply to it\./);
+});

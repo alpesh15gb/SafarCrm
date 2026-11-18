@@ -92,7 +92,9 @@ export function sendMessage(i: SendInput): SendMessage {
     "",
     `Thank you for booking with ${agency}.`,
     w.closing,
-    ...(contact ? ["", `${agency} · ${contact}`] : []),
+    "",
+    // owner, 2026-11-18: say it is automated, and where to ask instead
+    `_This is an automated message. Please do not reply to it.${contact ? ` For any help, contact ${agency}: ${contact}._` : "_"}`,
   ].join("\n");
 
   const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f4f5f7;">
@@ -118,7 +120,9 @@ ${rows.length ? `<tr><td style="padding:16px 28px 0 28px;">
   <p style="margin:0;">Thank you for booking with ${esc(agency)}.</p>
   <p style="margin:4px 0 0 0;">${esc(w.closing)}</p>
 </td></tr>
-<tr><td style="padding:22px 28px 22px 28px;"><div style="border-top:1px solid #eef0f3;padding-top:12px;font-size:12px;color:#6b7280;">${esc(agency)}${contact ? ` · ${esc(contact)}` : ""}</div></td></tr>
+<tr><td style="padding:22px 28px 22px 28px;"><div style="border-top:1px solid #eef0f3;padding-top:12px;font-size:12px;color:#6b7280;line-height:1.5;">
+  This is an automated email. Please do not reply to it.${contact ? `<br>For any help, contact ${esc(agency)}: ${esc(contact)}` : ""}
+</div></td></tr>
 </table>
 </td></tr></table></body></html>`;
 
