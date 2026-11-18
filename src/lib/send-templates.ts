@@ -11,6 +11,8 @@ export type SendInput = {
   customer: string;           // who it is addressed to
   maxId: string | null;
   agency: { name: string; phone?: string | null; email?: string | null };
+  /** where the email finds the agency logo, e.g. "cid:agency-logo"; without it the agency name is shown */
+  logoSrc?: string | null;
 };
 export type SendMessage = { subject: string; whatsapp: string; html: string };
 
@@ -80,7 +82,9 @@ export function sendMessage(i: SendInput): SendMessage {
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;border:1px solid #e3e6ea;">
 <tr><td style="padding:22px 28px 6px 28px;">
-  <div style="font-size:12px;letter-spacing:1.5px;color:#e5533d;font-weight:bold;text-transform:uppercase;">${esc(agency)}</div>
+  ${i.logoSrc
+    ? `<img src="${esc(i.logoSrc)}" alt="${esc(agency)}" style="display:block;max-height:56px;max-width:220px;border:0;">`
+    : `<div style="font-size:12px;letter-spacing:1.5px;color:#1f2430;font-weight:bold;text-transform:uppercase;">${esc(agency)}</div>`}
   <h1 style="margin:8px 0 0 0;font-size:20px;letter-spacing:0.5px;text-transform:uppercase;">${esc(w.title)}</h1>
 </td></tr>
 <tr><td style="padding:14px 28px 0 28px;font-size:15px;line-height:1.55;">

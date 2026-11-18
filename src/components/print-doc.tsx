@@ -56,7 +56,8 @@ export async function PrintDoc({ back, wa, agency, title, meta, children, stamp 
           <div className="min-w-0 sm:max-w-[55%] sm:text-right">
             {/* eslint-disable-next-line @next/next/no-img-element -- an inline data: URL, nothing to optimise */}
             {logo && <img src={logo} alt={agency.agency_name} className="mb-2 max-h-16 max-w-[220px] object-contain sm:ml-auto" />}
-            <div className="text-[15px] font-bold uppercase tracking-wide text-coral-dark">{agency.agency_name}</div>
+            {/* the logo carries the name (owner, 2026-11-18: no red name under it); without a logo the name stands in, in black */}
+            {!logo && <div className="text-[15px] font-bold uppercase tracking-wide">{agency.agency_name}</div>}
             {agency.agency_address && <div className="whitespace-pre-line text-[12.5px]">{agency.agency_address}</div>}
             <div className="text-[12.5px] text-muted">{[agency.agency_phone, agency.agency_email].filter(Boolean).join(" · ")}</div>
           </div>

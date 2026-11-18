@@ -96,16 +96,28 @@ export async function sendFileToClient(fileId: string, channel: "whatsapp" | "em
     if (de || !blob) return { ok: false, error: "The file could not be read from storage." };
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const first = cust?.full_name.split(" ")[0] ?? "";
-    const { data: st } = await sb.from("settings").select("agency_name, agency_phone, agency_email").eq("id", 1).single();
+    const { data: st } = await sb.from("settings").select("agency_name, agency_phone, agency_email, logo_path").eq("id", 1).single();
+    // the agency logo at the top of the email (Settings → Logo), carried as an inline picture over SMTP
+    const { emailInlineLogo, LOGO_CID } = await import("@/lib/send");
+    let logo: { bytes: Uint8Array; mime: string } | null = null;
+    if (channel === "email" && st?.logo_path && emailInlineLogo()) {
+      const { data: lb } = await createAdmin().storage.from("files").download(st.logo_path);
+      if (lb) {
+        const lbytes = new Uint8Array(await lb.arrayBuffer());
+        const png = lbytes[0] === 0x89 && lbytes[1] === 0x50, jpg = lbytes[0] === 0xff && lbytes[1] === 0xd8;
+        if (png || jpg) logo = { bytes: lbytes, mime: png ? "image/png" : "image/jpeg" };
+      }
+    }
     // the confirmation message in the owner's format (FLIGHT BOOKING CONFIRMATION · Dear … · BOOKING CONFIRMED · details ·
     // 📎 attached · Thank you for booking with …), worded for the booking the file belongs to
     const msg = sendMessage({
       kind: f.kind, line: (f.line ?? null) as unknown as SendLine, customer: cust?.full_name ?? "",
       maxId: kase?.max_id ?? null, agency: { name: st?.agency_name || "", phone: st?.agency_phone, email: st?.agency_email },
+      logoSrc: logo ? `cid:${LOGO_CID}` : null,
     });
     const r = channel === "whatsapp"
       ? await sendWhatsAppDocument(dest, { bytes, mime: f.mime, name: f.file_name }, msg.whatsapp)
-      : await sendEmailWithAttachment(dest, msg.subject, msg.html, { bytes, name: f.file_name });
+      : await sendEmailWithAttachment(dest, msg.subject, msg.html, { bytes, name: f.file_name }, logo);
     if (!r.ok) return { ok: false, error: r.code === "not_configured" ? "not_configured" : r.message };
     if (f.case_id) await sb.rpc("log_file_sent", { p_file: f.id, p_channel: channel, p_to: dest }).then(() => {}, () => {});
     return { ok: true, message: channel === "whatsapp" ? `Sent on WhatsApp to ${first || dest}` : `Emailed to ${dest}` };

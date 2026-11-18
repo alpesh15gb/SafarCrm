@@ -48,3 +48,11 @@ test("both say they are automated and not to reply, with where to ask instead", 
   assert.match(m.whatsapp, /This is an automated message\. Please do not reply to it\. For any help, contact Max Travel: 7095018018 · cs@maxtravel\.in\./);
   assert.match(m.html, /This is an automated email\. Please do not reply to it\./);
 });
+
+test("the email shows the agency logo when there is one, else the name in black (not red)", () => {
+  const withLogo = sendMessage({ kind: "document", customer: "A B", maxId: null, agency, line: null, logoSrc: "cid:agency-logo" });
+  assert.match(withLogo.html, /<img src="cid:agency-logo"/);
+  const plain = sendMessage({ kind: "document", customer: "A B", maxId: null, agency, line: null });
+  assert.doesNotMatch(plain.html, /<img /);
+  assert.doesNotMatch(plain.html, /#e5533d/);
+});

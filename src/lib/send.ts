@@ -60,10 +60,15 @@ export async function sendWhatsAppDocument(to: string, file: { bytes: Uint8Array
   return { ok: false, code: "failed", message: r.status === 0 ? "Couldn't reach the WhatsApp server." : r.status === 401 || r.status === 403 ? "The WhatsApp server refused the key. Check EVOLUTION_API_KEY." : r.status === 404 ? "The WhatsApp instance wasn't found, or the number isn't on WhatsApp." : "WhatsApp didn't accept the message. Is the office phone still connected?" };
 }
 
-export async function sendEmailWithAttachment(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string }): Promise<SendResult> {
+/** The agency logo can sit inside the email (as an inline picture the HTML points to with cid:) only over SMTP. */
+export const emailInlineLogo = () => smtpMode();
+export const LOGO_CID = "agency-logo";
+
+export async function sendEmailWithAttachment(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string },
+  logo?: { bytes: Uint8Array; mime: string } | null): Promise<SendResult> {
   if (!emailConfigured()) return { ok: false, code: "not_configured", message: "Email sending isn't set up on the server yet." };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) return { ok: false, code: "bad_recipient", message: `“${to}” isn't an email address.` };
-  if (smtpMode()) return sendSmtp(to.trim(), subject, html, file);
+  if (smtpMode()) return sendSmtp(to.trim(), subject, html, file, logo ?? null);
   const provider = env("EMAIL_PROVIDER").toLowerCase();
   const key = env("EMAIL_API_KEY"), from = env("EMAIL_FROM"), fromName = env("EMAIL_FROM_NAME");
   const content = Buffer.from(file.bytes).toString("base64");
@@ -80,7 +85,7 @@ export async function sendEmailWithAttachment(to: string, subject: string, html:
 }
 
 /** Email over SMTP: Google Workspace SMTP relay, smtp.gmail.com with an app password, or any other mail server. */
-async function sendSmtp(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string }): Promise<SendResult> {
+async function sendSmtp(to: string, subject: string, html: string, file: { bytes: Uint8Array; name: string }, logo: { bytes: Uint8Array; mime: string } | null): Promise<SendResult> {
   const gmailShortcut = !env("SMTP_HOST");
   const host = env("SMTP_HOST") || "smtp.gmail.com";
   const port = Number(env("SMTP_PORT") || (gmailShortcut ? 465 : 587));
@@ -97,7 +102,11 @@ async function sendSmtp(to: string, subject: string, html: string, file: { bytes
     connectionTimeout: 20_000, greetingTimeout: 20_000, socketTimeout: 60_000,
   });
   try {
-    await transport.sendMail({ from: fromAddr, to, subject, html, attachments: [{ filename: file.name, content: Buffer.from(file.bytes) }] });
+    await transport.sendMail({ from: fromAddr, to, subject, html, attachments: [
+      { filename: file.name, content: Buffer.from(file.bytes) },
+      // Gmail and most mail apps do not show data: pictures, but do show an inline attachment the HTML points to
+      ...(logo ? [{ filename: logo.mime === "image/png" ? "logo.png" : "logo.jpg", content: Buffer.from(logo.bytes), cid: LOGO_CID, contentDisposition: "inline" as const }] : []),
+    ] });
     return { ok: true };
   } catch (e) {
     const err = (e as { code?: string; responseCode?: number; response?: string }) ?? {};
