@@ -52,7 +52,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         }
         sub={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-mono">{c.code}</span> · {prettyPhone(c.mobile)}<CopyButton text={c.mobile} />
+            <span className="font-mono">{c.code}</span>{c.mobile && <> · {prettyPhone(c.mobile)}<CopyButton text={c.mobile} /></>}
             {c.email && <>· {c.email}</>}
             {c.customer_type === "corporate" ? <Badge tone="blue">Corporate</Badge> : c.family_id && <Badge tone="blue">{c.relation ? `Family · ${c.relation}` : "Family"}</Badge>}
             {(c.tags as string[]).map((t) => <Badge key={t} tone={t === "VIP" ? "coral" : "grey"}>{t}</Badge>)}
@@ -63,7 +63,7 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         action={
           <>
             {/* straight into the chat on WhatsApp Web, in one tab that is reused (owner, 2026-11-18) */}
-            <a className={btnClass("secondary")} href={waWebLink(c.whatsapp || c.mobile)} target="whatsapp-web" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>
+            {(c.whatsapp || c.mobile) && <a className={btnClass("secondary")} href={waWebLink(c.whatsapp || c.mobile)} target="whatsapp-web" rel="noreferrer"><MessageCircle className="h-4 w-4" />WhatsApp</a>}
             <CustomerActions customer={{ id: c.id, full_name: c.full_name }} isBoss={me.role === "boss"} hasPortal={!!portal?.active} />
             <NewButton kind="case" label="New case" preset={{ customer: { id: c.id, label: c.full_name } }} />
           </>

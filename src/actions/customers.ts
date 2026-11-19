@@ -19,7 +19,6 @@ export async function checkDuplicates(mobile: string, aadhaar?: string, passport
 export async function saveCustomer(input: CustomerInput): Promise<ActionResult<{ id: string }>> {
   try {
     if (!String(input.first_name ?? "").trim()) return { ok: false, error: "Name is required." };
-    if (!String(input.mobile ?? "").trim()) return { ok: false, error: "Mobile is required." };
     const PHONE_LABEL: Record<string, string> = { mobile: "Mobile", alt_mobile: "Alternate mobile", whatsapp: "WhatsApp number", emergency_mobile: "Emergency contact mobile" };
     for (const k of PHONE_KEYS) {
       const err = phoneError((input as Record<string, unknown>)[k] as string);
@@ -185,7 +184,7 @@ export async function inviteToPortal(customerId: string): Promise<ActionResult<{
     if (existing) {
       email = existing.email!;
       const patch = { password, app_metadata: meta, ban_duration: "none" };
-      if (email !== portalEmail(c.mobile) && email !== portalCodeEmail(c.code)) {
+      if (c.mobile && email !== portalEmail(c.mobile) && email !== portalCodeEmail(c.code)) {
         // the mobile changed since the first invitation: move the login to the new number, so the login we show works
         let res = await admin.auth.admin.updateUserById(existing.id, { ...patch, email: portalEmail(c.mobile), email_confirm: true });
         email = portalEmail(c.mobile);
@@ -200,7 +199,8 @@ export async function inviteToPortal(customerId: string): Promise<ActionResult<{
       }
       await admin.from("profiles").update({ active: true, must_change_password: true }).eq("id", existing.id);
     } else {
-      email = portalEmail(c.mobile);
+      // no mobile saved: they log in with their customer code
+      email = c.mobile ? portalEmail(c.mobile) : portalCodeEmail(c.code);
       let res = await admin.auth.admin.createUser({ email, password, email_confirm: true, app_metadata: meta });
       if (res.error && /already|exists|registered/i.test(res.error.message)) {
         email = portalCodeEmail(c.code); // mobile shared with a family member: log in with the customer code
@@ -208,7 +208,7 @@ export async function inviteToPortal(customerId: string): Promise<ActionResult<{
       }
       if (res.error) throw res.error;
     }
-    const login = email.startsWith("m") && email === portalEmail(c.mobile) ? c.mobile : c.code;
+    const login = c.mobile && email === portalEmail(c.mobile) ? c.mobile : c.code;
     const url = (s?.app_url || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "") + "/login";
     const text = `Namaste ${c.first_name}, your ${s?.agency_name ?? "travel"} trip portal is ready.\n\nOpen: ${url}\nLogin: ${login}\nTemporary password: ${password}\n\nYou'll be asked to set your own password the first time.`;
     return { ok: true, data: { login, password, wa: waLink(c.whatsapp || c.mobile, text), text }, message: "Portal login ready" };

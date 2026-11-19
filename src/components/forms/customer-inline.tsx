@@ -19,7 +19,7 @@ export function CustomerInline({ initialName = "", onCreated, onCancel }: { init
 
   async function create(force = false) {
     const parts = name.trim().split(/\s+/);
-    if (!parts[0] || !mobile.trim()) return toast("Name and mobile are required.", "error");
+    if (!parts[0]) return toast("Name is required.", "error");   // the mobile is optional (owner, 2026-11-19)
     setCheckPhone(true);
     if (phoneError(mobile)) return;
     setBusy(true);
@@ -40,7 +40,7 @@ export function CustomerInline({ initialName = "", onCreated, onCancel }: { init
     <form className="space-y-3 rounded-lg border border-dashed border-line bg-gray-50 p-3" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); if (!busy) create(); }}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Full name" required><input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Mobile" required>
+        <Field label="Mobile">
           <input className={"field" + (mobileErr ? " !border-red-400" : "")} inputMode="tel" placeholder="98765 43210" value={mobile} aria-invalid={!!mobileErr}
             onBlur={() => mobile.trim() && setCheckPhone(true)} onChange={(e) => { setMobile(e.target.value); setDups([]); }} />
           {mobileErr && <span role="alert" className="mt-1 block text-xs font-medium text-red-600">{mobileErr}</span>}

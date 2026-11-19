@@ -115,7 +115,7 @@ export async function personCandidates(issuedName: string) {
     const pass = c.passport_surname ? `${c.passport_surname}/${c.passport_given_name ?? ""}`.toUpperCase() : null;
     const why: keyof typeof rank = pass && letters(pass).startsWith(letters(`${last}/${first}`).slice(0, Math.max(3, last.length + 2))) ? "passport name matches"
       : words(c.full_name) === issuedWords ? "same name" : "similar name";
-    return { id: c.id, code: c.code, full_name: c.full_name, dob: c.dob, mobile_last4: c.mobile.slice(-4), family: c.family?.name ?? null, passport_name: pass, why };
+    return { id: c.id, code: c.code, full_name: c.full_name, dob: c.dob, mobile_last4: (c.mobile ?? "").slice(-4), family: c.family?.name ?? null, passport_name: pass, why };
   }).sort((a, b) => rank[a.why] - rank[b.why]);
 }
 

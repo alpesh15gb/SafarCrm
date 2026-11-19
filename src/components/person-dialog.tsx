@@ -74,7 +74,6 @@ export function PersonDialog({ personId, kind = "traveller", link, defaults, sta
 
   async function save(force = false) {
     if (!v.first_name.trim()) return toast("First name is required.", "error");
-    if (!v.mobile.trim()) return toast("Mobile is required. Use the family's or office's number if they don't have one.", "error");
     const pe = phoneError(v.mobile);
     if (pe) return toast(`Mobile: ${pe}`, "error");
     const passportChanged = v.passport_number.trim() !== (ids.passport ?? "");
@@ -158,7 +157,7 @@ export function PersonDialog({ personId, kind = "traveller", link, defaults, sta
             <Field label="Title" hint="Left blank, it is filled from gender and age">
               <select className="field" value={v.title} onChange={(e) => set("title", e.target.value)}><option value="">Auto{autoTitle(v) ? ` (${autoTitle(v)})` : ""}</option>{["Mr", "Mrs", "Ms", "Mstr", "Miss", "Dr"].map((t) => <option key={t}>{t}</option>)}</select>
             </Field>
-            <Field label="Mobile" required hint={!p && defaults?.mobile && v.mobile === defaults.mobile ? "Same as the main customer's number. Change it if they have their own." : undefined}>
+            <Field label="Mobile" hint={!p && defaults?.mobile && v.mobile === defaults.mobile ? "Same as the main customer's number. Change it if they have their own." : undefined}>
               <input className="field" type="tel" inputMode="tel" value={v.mobile} onChange={(e) => set("mobile", e.target.value)} />
             </Field>
           </div>

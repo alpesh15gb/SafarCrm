@@ -79,7 +79,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         sub={
           <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
             <Avatar name={customer.full_name} size="xs" />
-            <Link href={`/customers/${customer.id}`} className="link">{customer.full_name}</Link> · {prettyPhone(customer.mobile)}
+            <Link href={`/customers/${customer.id}`} className="link">{customer.full_name}</Link>{customer.mobile && <> · {prettyPhone(customer.mobile)}</>}
             {c.travel_start && <> · {fdate(c.travel_start)}{c.travel_end && ` → ${fdate(c.travel_end)}`}</>}
             {c.destination && <> · {c.destination}</>}
           </span>

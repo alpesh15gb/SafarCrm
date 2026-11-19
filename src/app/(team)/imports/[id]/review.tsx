@@ -418,7 +418,7 @@ function MatchAndConfirm({ row, draft, version, dirty, isBoss, canSeeProfit, sav
     openDups.length > 0 && !dupReason.trim() && "sort out the possible duplicate",
     !lineStatus && "say whether the ticket is issued",
     matches.some((m) => !m) && "choose who each traveller is",
-    matches.some((m) => m?.kind === "new" && (!m.first_name.trim() || !m.mobile.trim())) && "a name and mobile for each new customer",
+    matches.some((m) => m?.kind === "new" && !m.first_name.trim()) && "a first name for each new customer",
     pricingShown && canSeeProfit && price.sale.trim() && !price.cost.trim() && "the incoming price (0 if none)",
     pricingShown && [price.cost, price.sale].some((v) => v.trim() && parseMoney(v).kind === "invalid") && "prices as numbers",
   ];
@@ -708,7 +708,7 @@ function PassengerMatch({ name, ff, pays, match, onChange, payerMobile, taken }:
           </Field>
           <Field label="First name" required><input className="field" value={match.first_name} onChange={(e) => onChange({ ...match, first_name: e.target.value })} /></Field>
           <Field label="Last name"><input className="field" value={match.last_name} onChange={(e) => onChange({ ...match, last_name: e.target.value })} /></Field>
-          <Field label="Mobile" required hint={!pays && payerMobile && match.mobile === payerMobile ? "Same as the payer's; change it if they have their own." : !match.mobile.trim() ? "Tickets show the agency's number; type the traveller's own." : undefined}>
+          <Field label="Mobile" hint={!pays && payerMobile && match.mobile === payerMobile ? "Same as the payer's; change it if they have their own." : !match.mobile.trim() ? "Tickets show the agency's number; type the traveller's own." : undefined}>
             <input className="field" inputMode="tel" value={match.mobile} onChange={(e) => onChange({ ...match, mobile: e.target.value })} />
           </Field>
         </div>

@@ -103,7 +103,7 @@ export function CustomerPicker(props: { value: Opt | null; onChange: (o: Custome
       {...props}
       onChange={(o) => props.onChange(o as CustomerOpt | null)}
       placeholder="Search name, mobile or code"
-      search={async (q) => (await searchCustomers(q)).map((c) => ({ id: c.id, label: c.full_name, sub: `${c.code} · ${prettyPhone(c.mobile)}`, raw: c }))}
+      search={async (q) => (await searchCustomers(q)).map((c) => ({ id: c.id, label: c.full_name, sub: [c.code, prettyPhone(c.mobile)].filter(Boolean).join(" · "), raw: c }))}
     />
   );
 }
