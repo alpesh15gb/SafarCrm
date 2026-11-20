@@ -14,6 +14,8 @@ import { AlertDoneButton } from "@/components/case-alerts";
 import { CASE_STATUSES, SERVICE_LABEL, SERVICES, STATUS_LABEL, visaStage } from "@/lib/constants";
 import { fdate, inr, inrShort, todayIST } from "@/lib/format";
 import { RangeValidationError, resolveRange, type RangeSP as SP } from "@/lib/range";
+import { caseOverview, type OverviewLine } from "@/lib/case-overview";
+import { CaseOverviewBoxes } from "@/components/case-overview";
 
 export const metadata = { title: "Dashboard" };
 
@@ -86,6 +88,18 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const otherDates = (other ?? []) as { case_id: string; max_id: string; customer: string; line_id: string; service: string; kind: string; on_date: string; label: string | null }[];
   const pipeline = (pipe ?? []) as { status: string; cases: number; sale: number; due: number }[];
   const openCases = active.size;
+  // the Running cases boxes: the bookings of the active cases (ids sent in small batches to keep the request short)
+  const activeIds = [...active];
+  const [batches, { data: checkins }] = await Promise.all([
+    Promise.all(Array.from({ length: Math.ceil(activeIds.length / 150) }, (_, i) =>
+      sb.from("booking_lines").select("case_id, service, status, visa_status:details->>application_status").in("case_id", activeIds.slice(i * 150, i * 150 + 150)))),
+    // web check-in alerts whose window has opened and that nobody has ticked off yet
+    sb.from("tasks").select("case_id").like("auto_key", "webcheckin:%").neq("status", "done").lte("due_at", new Date().toISOString()).limit(500),
+  ]);
+  const overview = caseOverview(activeIds, batches.flatMap((b) => (b.data ?? []) as OverviewLine[]), {
+    flyingThisWeek: trips.filter((t) => t.service === "flight").map((t) => t.case_id),
+    checkinDue: (checkins ?? []).map((t) => t.case_id as string),
+  });
   const attentionCases = new Set(alertsDue.map((a) => a.case_id ?? a.id)).size;
   const first = me.full_name.split(" ")[0];
   const dateLine = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
@@ -117,6 +131,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </div>
         </div>
       </section>
+
+      {/* the workload at a glance: running cases by flights, visas and other bookings (owner, 2026-11-20) */}
+      <CaseOverviewBoxes o={overview} />
 
       {/* what needs doing today comes first; the money figures follow below */}
       <div className="grid gap-5 xl:grid-cols-3">

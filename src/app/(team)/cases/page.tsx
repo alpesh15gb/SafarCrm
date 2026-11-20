@@ -65,7 +65,10 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
           </summary>
           <div className="mt-2.5 space-y-2.5">
           {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
-            <Chips param="service" current={sp.service} base={sp} allLabel="All services" items={SERVICES.map((s) => ({ value: s, label: SERVICE_LABEL[s] }))} />
+            <Chips param="service" current={sp.service} base={sp} allLabel="All services" items={[...SERVICES.map((s) => ({ value: s, label: SERVICE_LABEL[s] })),
+              // reached from the dashboard's Running cases boxes; shown so the filter can be seen and cleared
+              ...(sp.service === "others" ? [{ value: "others", label: "Not flight or visa" }] : []),
+              ...(sp.service === "none" ? [{ value: "none", label: "No booking yet" }] : [])]} />
             <Chips param="date" current={sp.date} base={sp} allLabel="Any date" items={[
               { value: "travelling", label: "Travelling now" }, { value: "upcoming", label: "Travel in next 30 days" },
               { value: "this_month", label: "Created this month" }, { value: "last_month", label: "Created last month" },

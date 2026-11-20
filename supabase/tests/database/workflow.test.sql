@@ -5,7 +5,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(54);
+select plan(56);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -265,6 +265,15 @@ insert into public.booking_lines (case_id, service, status, traveller_ids, detai
   ('00000000-0000-0000-0000-0000000ca5e3', 'flight', 'confirmed', '{}', '{}');
 select results_eq($$ select dep_date::text, leg from public.departures('2026-12-01', '2026-12-31') where case_id = '00000000-0000-0000-0000-0000000ca5e3' order by dep_date $$,
   $$ values ('2026-12-05', 1), ('2026-12-09', 2) $$, 'a booking with no legs typed departs on the case dates (out and return)');
+-- web check-in from the case dates: departure and return, two days before at 09:00 IST; moving a date moves the alert
+select results_eq($$ select title, to_char(due_at at time zone 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI') from public.tasks
+                     where case_id = '00000000-0000-0000-0000-0000000ca5e3' and auto_key like 'webcheckin:%' and status <> 'done' order by due_at $$,
+  $$ values ('Web check-in: departure 05-12-2026', '2026-12-03 09:00'), ('Web check-in: return 09-12-2026', '2026-12-07 09:00') $$,
+  'a ticketed flight with no legs typed gets web check-in alerts for the case dates');
+update public.cases set travel_end = '2026-12-10' where id = '00000000-0000-0000-0000-0000000ca5e3';
+select results_eq($$ select title from public.tasks where case_id = '00000000-0000-0000-0000-0000000ca5e3' and auto_key like 'webcheckin:%' and status <> 'done' order by due_at $$,
+  $$ values ('Web check-in: departure 05-12-2026'), ('Web check-in: return 10-12-2026') $$,
+  'changing the return date closes the old alert and makes the new one');
 select is((select count(*)::int from public.service_dates('2026-12-01', '2026-12-31') where service = 'hotel'), 2, 'hotel check-in and check-out are listed separately');
 
 -- ================================================================== A8: money in the database matches the browser rules
