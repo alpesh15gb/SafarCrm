@@ -50,7 +50,7 @@ export async function listCases(sp: SP, all = false) {
   const page = Math.max(1, Number(sp.page) || 1);
   const sel = `id, max_id, title, status, travel_start, travel_end, destination, created_at, assigned_to, starred,
     customer:customers!cases_customer_id_fkey(id, full_name, mobile), staff:profiles!cases_assigned_to_fkey(full_name),
-    lines:booking_lines${sp.service && sp.service !== "none" ? "!inner" : ""}(service, status)`;
+    lines:booking_lines${sp.service ? "!inner" : ""}(service, status)`;
   // "what the case needs next" filter: the ids come from the database (open cases only), then the usual filters apply
   let workIds: string[] | null = null;
   if (sp.work) {
@@ -73,11 +73,10 @@ export async function listCases(sp: SP, all = false) {
     const { data } = await sb.from("booking_lines").select("case_id").eq("service", "visa").eq("status", "pending").limit(1000);
     quickIds = Array.from(new Set((data ?? []).map((r) => r.case_id as string)));
   }
-  // the dashboard's "no booking yet" link: active cases with no live booking (cancelled ones don't count)
-  if (sp.service === "none" && quickIds?.length) {
-    const { data } = await sb.from("booking_lines").select("case_id").in("case_id", quickIds.slice(0, 300)).neq("status", "cancelled");
-    const booked = new Set((data ?? []).map((r) => r.case_id as string));
-    quickIds = quickIds.filter((id) => !booked.has(id));
+  // a number clicked in the dashboard's Running cases boxes (?box=flight.ticketed …): exactly the cases it counted
+  if (sp.box) {
+    const { loadCaseOverview } = await import("./case-overview-data");
+    quickIds = (await loadCaseOverview()).ids[sp.box] ?? [];
   }
   if (quickIds && !quickIds.length) quickIds = ["00000000-0000-0000-0000-000000000000"];
   // the search also finds cases by the customer's name or mobile (looked up first; the case query then matches their ids)
@@ -97,9 +96,7 @@ export async function listCases(sp: SP, all = false) {
   if (sp.quick === "week") q = q.gte("travel_start", todayIST()).lte("travel_start", todayIST(7));
   if (sp.status === "open") q = q.not("status", "in", "(completed,cancelled)");
   else if (sp.status) q = q.eq("status", sp.status);
-  // "others" (dashboard Other box): any booking that is not a flight or a visa; "none" is handled with the ids above
-  if (sp.service === "others") q = q.not("booking_lines.service", "in", "(flight,visa)");
-  else if (sp.service && sp.service !== "none") q = q.eq("booking_lines.service", sp.service);
+  if (sp.service) q = q.eq("booking_lines.service", sp.service);
   if (sp.staff) q = q.eq("assigned_to", sp.staff);
   if (sp.customer) q = q.eq("customer_id", sp.customer);
   if (sp.date === "upcoming") q = q.gte("travel_start", todayIST()).lte("travel_start", todayIST(30));

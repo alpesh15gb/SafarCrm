@@ -9,6 +9,7 @@ import { NewButton, SearchBox } from "@/components/list-tools";
 import { CaseStar } from "@/components/case-star";
 import { CASE_STATUSES, SERVICES, SERVICE_LABEL, STATUS_LABEL } from "@/lib/constants";
 import { fdate, fdatetime } from "@/lib/format";
+import { BOX_LABEL } from "@/lib/case-overview";
 
 export const metadata = { title: "Cases" };
 
@@ -19,7 +20,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
   const board = sp.view === "board";
   // the list opens on open cases; "All" shows everything, and a search looks through every case
   // "Active" includes a completed case whose trip is still ahead, so it is not limited to open cases
-  const listSp: SP = { ...sp, status: sp.status === "all" ? undefined : sp.status ?? (sp.q || sp.quick === "active" ? undefined : "open") };
+  const listSp: SP = { ...sp, status: sp.status === "all" ? undefined : sp.status ?? (sp.q || sp.quick === "active" || sp.box ? undefined : "open") };
   const [{ rows, count, page }, { data: staff }] = await Promise.all([
     board ? boardCases(sp) : listCases(listSp),
     sb.from("profiles").select("id, full_name").in("role", ["boss", "staff"]).eq("active", true).order("full_name"),
@@ -58,6 +59,13 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
           { value: "starred", label: "⭐ Starred" }, { value: "active", label: "Active" }, { value: "attention", label: "Needs attention" },
           { value: "week", label: "Travelling this week" }, { value: "payment", label: "Payment due" }, { value: "visa", label: "Visa pending" },
         ]} />
+        {/* opened from a number on the dashboard: say which, with a way back to the whole list */}
+        {sp.box && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] bg-sky-50 px-3 py-2 text-[13px] text-sky-900">
+            <span>Showing <b className="font-semibold">{BOX_LABEL[sp.box] ?? "cases from the dashboard"}</b> (active cases, from the dashboard)</span>
+            <Link href={`?${new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "box" && k !== "page") as [string, string][])}`} className="link">Show all cases</Link>
+          </div>
+        )}
         {/* the filters used now and then stay folded away until one of them is in use */}
         <details open={!!(sp.service || sp.date || sp.staff || (sp.status && sp.status !== "open"))} className="group">
           <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1 text-[13px] font-medium text-muted hover:text-ink">
@@ -65,10 +73,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
           </summary>
           <div className="mt-2.5 space-y-2.5">
           {!board && <Chips param="status" current={sp.status === "open" ? undefined : sp.status ?? (sp.q ? "all" : undefined)} base={sp} allLabel="Open" items={[{ value: "all", label: "All" }, ...CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />}
-            <Chips param="service" current={sp.service} base={sp} allLabel="All services" items={[...SERVICES.map((s) => ({ value: s, label: SERVICE_LABEL[s] })),
-              // reached from the dashboard's Running cases boxes; shown so the filter can be seen and cleared
-              ...(sp.service === "others" ? [{ value: "others", label: "Not flight or visa" }] : []),
-              ...(sp.service === "none" ? [{ value: "none", label: "No booking yet" }] : [])]} />
+            <Chips param="service" current={sp.service} base={sp} allLabel="All services" items={SERVICES.map((s) => ({ value: s, label: SERVICE_LABEL[s] }))} />
             <Chips param="date" current={sp.date} base={sp} allLabel="Any date" items={[
               { value: "travelling", label: "Travelling now" }, { value: "upcoming", label: "Travel in next 30 days" },
               { value: "this_month", label: "Created this month" }, { value: "last_month", label: "Created last month" },

@@ -18,7 +18,24 @@ test("running cases are counted per box; a flight + visa case is in both, cancel
   assert.deepEqual(o.visa, { cases: 1, notSubmitted: 0, submitted: 1, approved: 0, refused: 0 });
   assert.equal(o.other.cases, 1);
   assert.deepEqual(o.other.byService, [{ service: "hotel", cases: 1 }, { service: "insurance", cases: 1 }]);
-  assert.equal(o.noBooking, 2, "d (only a cancelled booking) and e (nothing) have no booking yet");
+  assert.equal(o.noBooking.cases, 2, "d (only a cancelled booking) and e (nothing) have no booking yet");
+  // each number opens exactly its cases
+  assert.deepEqual(o.ids["flight.ticketed"], ["a"]);
+  assert.deepEqual(o.ids["flight.pending"], ["b"]);
+  assert.deepEqual(o.ids["flight.checkin"], ["b"]);
+  assert.deepEqual(o.ids["visa.submitted"], ["a"]);
+  assert.deepEqual(o.ids["other.hotel"], ["c"]);
+  assert.deepEqual(o.ids.none, ["d", "e"]);
+});
+
+test("cases with no booking yet: travelling soon first, then waiting over a week, else new", () => {
+  const o = caseOverview(["s", "w", "n", "far"], [], { today: "2026-11-20", cases: [
+    { id: "s", created_at: "2026-11-01T10:00:00Z", travel_start: "2026-11-25" },   // old too, but travel soon wins
+    { id: "w", created_at: "2026-11-10T10:00:00Z", travel_start: null },
+    { id: "n", created_at: "2026-11-19T10:00:00Z", travel_start: "2026-12-20" },
+    { id: "far", created_at: "2026-11-18T10:00:00Z", travel_start: "2026-11-28" },
+  ] });
+  assert.deepEqual(o.noBooking, { cases: 4, travelSoon: 1, waitingLong: 1, fresh: 2 });
 });
 
 test("a visa case is as far as its least advanced application", () => {
