@@ -2,7 +2,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
 import { readinessText, type Readiness } from "@/lib/readiness";
-import type { Service } from "@/lib/constants";
+import { SERVICES, SERVICE_LABEL, type Service } from "@/lib/constants";
+import { lineProblem, withoutEmptyFlightLegs } from "@/lib/validate";
+
+export type CaseCreation = { id: string; max_id: string; bookings: { id: string; service: Service }[] };
 
 type CaseInput = {
   customer_id: string;
@@ -16,54 +19,46 @@ type CaseInput = {
   notes?: string | null;
   tags?: string[];
   traveller_ids?: string[];
-  services?: Service[];
+  bookings?: { service: Service; details: Record<string, unknown> }[];
 };
 
 const clean = (v: string | null | undefined) => (v === undefined ? undefined : v?.toString().trim() || null);
 
-/** Case and its travellers in one transaction. The request key makes a double click or retry return the same MAX ID. */
-export async function createCase(input: CaseInput, requestKey?: string): Promise<ActionResult<{ id: string; max_id: string }>> {
+/** Case, travellers and bookings in one transaction. A retried request returns the original IDs. */
+export async function createCase(input: CaseInput, requestKey?: string): Promise<ActionResult<CaseCreation>> {
   try {
     if (!input.customer_id) return { ok: false, error: "Pick a customer." };
     if (!input.title?.trim()) return { ok: false, error: "Give the case a title." };
+    const dest = clean(input.destination), start = clean(input.travel_start), end = clean(input.travel_end);
+    const bookings: NonNullable<CaseInput["bookings"]> = [];
+    const seen = new Set<Service>();
+    for (const { service, details } of input.bookings ?? []) {
+      if (!SERVICES.includes(service) || seen.has(service)) return { ok: false, error: "Choose each booking service once." };
+      seen.add(service);
+      const defaults = service === "visa"
+        ? { visa_type: "Tourist", mode: "e-Visa", entry: "Single", application_status: "Documents pending", ...(dest ? { country: dest } : {}) }
+        : service === "hotel" ? { ...(dest ? { city: dest } : {}), ...(start ? { check_in: start } : {}), ...(end && start && end > start ? { check_out: end } : {}) } : {};
+      const entered = Object.fromEntries(Object.entries(details).filter(([, value]) => value !== ""));
+      const d = withoutEmptyFlightLegs(service, { ...defaults, ...entered });
+      const problem = lineProblem(service, d);
+      if (problem) return { ok: false, error: `${SERVICE_LABEL[service]}: ${problem}` };
+      bookings.push({ service, details: d });
+    }
     const sb = await createClient();
     const travellers = Array.from(new Set(input.traveller_ids ?? []));
     const { data, error } = await sb.rpc("create_case", {
       p: {
         customer_id: input.customer_id, title: input.title.trim(), travel_start: clean(input.travel_start) ?? null,
         travel_end: clean(input.travel_end) ?? null, destination: clean(input.destination) ?? null, lead_source: clean(input.lead_source) ?? null,
-        assigned_to: input.assigned_to || null, status: input.status || "enquiry", notes: clean(input.notes) ?? null, tags: input.tags ?? [],
+        assigned_to: input.assigned_to || null, status: input.status || "enquiry", notes: clean(input.notes) ?? null, tags: input.tags ?? [], bookings,
       },
       p_travellers: travellers,
       p_request_key: requestKey ?? null,
     });
     if (error) throw error;
-    const r = data as { id: string; max_id: string; existing: boolean };
-    const services = Array.from(new Set((input.services ?? []).filter(Boolean)));
-    if (!r.existing && services.length) {
-      const { data: ct } = await sb.from("case_travellers").select("customer_id").eq("case_id", r.id);
-      const paxIds = (ct ?? []).map((x) => x.customer_id as string);
-      const dest = clean(input.destination) ?? undefined;
-      const start = clean(input.travel_start) ?? undefined;
-      const end = clean(input.travel_end) ?? undefined;
-      const rows = services.flatMap<Record<string, unknown>>((service, idx) => {
-        if (service === "visa") {
-          const details: Record<string, unknown> = { visa_type: "Tourist", mode: "e-Visa", entry: "Single", application_status: "Documents pending", ...(dest ? { country: dest } : {}) };
-          const pax = paxIds.length > 1 ? paxIds.map((tid) => [tid]) : [paxIds];
-          return pax.map((tids, j) => ({
-            case_id: r.id, service, status: "pending", pricing_state: "not_entered", traveller_ids: tids, details, sort: idx * 10 + j,
-          }));
-        }
-        const details: Record<string, unknown> = service === "hotel"
-          ? { ...(dest ? { city: dest } : {}), ...(start ? { check_in: start } : {}), ...(end && start && end > start ? { check_out: end } : {}) }
-          : {};
-        return [{ case_id: r.id, service, status: "pending", pricing_state: "not_entered", traveller_ids: paxIds, details, sort: idx * 10 }];
-      });
-      const { error: le } = await sb.from("booking_lines").insert(rows);
-      if (le) throw le;
-    }
+    const r = data as CaseCreation & { existing: boolean };
     return {
-      ok: true, data: { id: r.id, max_id: r.max_id },
+      ok: true, data: { id: r.id, max_id: r.max_id, bookings: r.bookings },
       message: r.existing ? `${r.max_id} was already created` : `${r.max_id} created`,
     };
   } catch (e) {

@@ -1,17 +1,19 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, MoreHorizontal, Pencil, Trash2, Ban, Undo2 } from "lucide-react";
 import { Badge, Button, Card, Empty, Field, Money, ServiceIcon, StatusBadge, cx } from "@/components/ui";
 import { Confirm, Dialog, Menu, More, Toggle, useAction } from "@/components/client";
 import { SupplierPicker } from "@/components/pickers";
 import { SupplierQuickForm } from "@/components/forms/supplier-quick";
+import { BookingDetailsFields } from "@/components/forms/booking-details-fields";
+import { TicketPick } from "@/components/forms/ticket-pick";
 import { DropZone, FileItem, withHistory } from "@/components/files";
 import { BookingDetails } from "@/components/trip-view";
 import { useApp } from "@/components/shell/shell";
 import { cancelLine, confirmLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLineVisible } from "@/actions/bookings";
 import { DEFAULT_KIND, SERVICES, SERVICE_LABEL, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
-import { lineProblem } from "@/lib/validate";
+import { lineProblem, withoutEmptyFlightLegs } from "@/lib/validate";
 import { amount, cancelBreakdown, commissionOf, lineProfit, moneyProblem } from "@/lib/money";
 import { FlightPassengers, type Pax } from "@/components/flight-pax";
 import { fdate, inr } from "@/lib/format";
@@ -202,7 +204,6 @@ const VISA_CHECKLIST = [
 ].join("\n");
 
 function blankDetails(s: Service): Record<string, unknown> {
-  if (s === "flight") return {};   // no sectors typed in any more: the ticket file carries them (owner, 2026-11-18)
   if (s === "visa") return { visa_type: "Tourist", mode: "e-Visa", entry: "Single", application_status: "Documents pending", documents: VISA_CHECKLIST };
   return {};
 }
@@ -301,7 +302,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
         gst: m.gst, payment_due_date: m.payment_due_date || null, supplier_due_date: line ? m.supplier_due_date || null : undefined, notes,
         details: service === "hotel" && nights !== null ? { ...d, nights }
           // a ticket stays only while its passenger is on the booking (unticking someone removes their ticket too)
-          : service === "flight" && tickets.length ? { ...d, tickets: tickets.filter((t) => !t.customer_id || trav.includes(t.customer_id)) } : d,
+          : withoutEmptyFlightLegs(service, tickets.length ? { ...d, tickets: tickets.filter((t) => !t.customer_id || trav.includes(t.customer_id)) } : d),
         visible_to_client: visible,
       });
         if (!r.ok || !file) return r;
@@ -366,6 +367,9 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </Field>
         </div>
 
+        <More key={line?.id ?? service} title="Booking details">
+          <BookingDetailsFields service={service} details={d} onChange={setD} lookups airportZones={iata.tzByCode} />
+        </More>
         {/* no traveller picker (owner, 2026-11-18): a booking is for everyone on the case; a visa is still one file each */}
         {visaPerPerson && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">We&apos;ll make {trav.length} visa files, one for each traveller on the case, because each visa is approved separately.</p>}
         <div className="rounded-lg border border-line p-3">
@@ -418,26 +422,6 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
         </More>
       </div>
     </Dialog>
-  );
-}
-
-/** Pick the ticket (PDF, JPG or PNG, up to 10 MB) in the booking form; it is uploaded when the booking is saved. */
-function TicketPick({ file, onPick }: { file: File | null; onPick: (f: File | null, err: string) => void }) {
-  const input = useRef<HTMLInputElement>(null);
-  const take = (f: File | undefined) => {
-    if (!f) return;
-    if (!["application/pdf", "image/jpeg", "image/png"].includes(f.type)) return onPick(null, `${f.name}: only PDF, JPG or PNG.`);
-    if (f.size > 10 * 1024 * 1024) return onPick(null, `${f.name} is larger than 10 MB.`);
-    onPick(f, "");
-  };
-  return (
-    <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); take(e.dataTransfer.files?.[0]); }}
-      className={cx("flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm", file ? "border-emerald-300 bg-emerald-50" : "border-line")}>
-      <input ref={input} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={(e) => { take(e.target.files?.[0]); e.target.value = ""; }} />
-      {file
-        ? <><span className="min-w-0 flex-1 truncate">{file.name}</span><button type="button" className="text-xs text-muted hover:text-red-600" onClick={() => onPick(null, "")}>Remove</button></>
-        : <><span className="min-w-0 flex-1 text-muted">Drop the file here, or</span><Button size="sm" onClick={() => input.current?.click()}>Choose file</Button></>}
-    </div>
   );
 }
 

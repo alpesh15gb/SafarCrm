@@ -1,20 +1,60 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { Button, Field, ServiceIcon, cx } from "@/components/ui";
 import { Dialog, More, useAction } from "@/components/client";
 import { CustomerPicker, StaffSelect } from "@/components/pickers";
 import { CustomerInline } from "./customer-inline";
+import { BookingDetailsFields } from "./booking-details-fields";
+import { TicketPick } from "./ticket-pick";
 import { useApp } from "@/components/shell/shell";
-import { createCase } from "@/actions/cases";
+import { createCase, type CaseCreation } from "@/actions/cases";
+import { confirmLine } from "@/actions/bookings";
 import { familyMembers } from "@/actions/search";
-import { LEAD_SOURCES, SERVICE_LABEL, type Service } from "@/lib/constants";
+import { DEFAULT_KIND, LEAD_SOURCES, SERVICES, SERVICE_LABEL, type Service } from "@/lib/constants";
 
 type Picked = { id: string; label: string; sub?: string };
-const CASE_SERVICES: Service[] = ["flight", "hotel", "visa", "other"];
+const ATTACH_LABEL: Record<Service, string> = {
+  flight: "Attach ticket", hotel: "Attach voucher", visa: "Attach visa document", insurance: "Attach policy",
+  rail: "Attach ticket", bus: "Attach ticket", other: "Attach document",
+};
+type Upload = CaseCreation["bookings"][number] & { file: File | null; key: string; attached?: boolean; error?: string };
 
-export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: string; max_id: string; services?: Service[] }) => void; preset?: Record<string, unknown>; compact?: boolean }) {
+const confirmsWithFile = (service: Service) => ["ticket", "voucher", "policy"].includes(DEFAULT_KIND[service]);
+
+async function finishUpload(caseId: string, upload: Upload): Promise<Upload> {
+  if (!upload.file) return upload;
+  let attached = upload.attached;
+  try {
+    if (!attached) {
+      const body = new FormData();
+      body.set("target", "line");
+      body.set("case_id", caseId);
+      body.set("line_id", upload.id);
+      body.set("kind", DEFAULT_KIND[upload.service]);
+      body.set("file", upload.file);
+      body.set("upload_id", upload.key);
+      const response = await fetch("/api/upload", { method: "POST", body });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        return { ...upload, error: result.error || "The file could not be uploaded." };
+      }
+      attached = true;
+    }
+    if (confirmsWithFile(upload.service)) {
+      const result = await confirmLine(upload.id);
+      if (!result.ok) return { ...upload, attached, error: `File attached. ${result.error}` };
+    }
+    return { ...upload, attached, error: undefined };
+  } catch {
+    return { ...upload, attached, error: attached ? "File attached. Booking confirmation failed. Try again." : "Upload interrupted. Try again." };
+  }
+}
+
+export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
+  onDone: (c: CaseCreation) => void; onSavingChange?: (saving: boolean) => void; preset?: Record<string, unknown>; compact?: boolean;
+}) {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
   const [customer, setCustomer] = useState<Picked | null>((preset?.customer as Picked) ?? null);
@@ -29,16 +69,28 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   const [lead, setLead] = useState("");
   const [want, setWant] = useState("");
   const [services, setServices] = useState<Service[]>([]);
+  const [details, setDetails] = useState<Partial<Record<Service, Record<string, unknown>>>>({});
+  const [files, setFiles] = useState<Partial<Record<Service, File | null>>>({});
+  const [fileErrors, setFileErrors] = useState<Partial<Record<Service, string>>>({});
+  const [created, setCreated] = useState<CaseCreation | null>(null);
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [formError, setFormError] = useState("");
+  const saving = useRef(false);
   const [assigned, setAssigned] = useState(me.id);
   const [family, setFamily] = useState<{ last_name: string | null; corporate: boolean; members: { id: string; full_name: string; relation?: string | null; designation?: string | null }[] }>({ last_name: null, corporate: false, members: [] });
   const [travellers, setTravellers] = useState<string[]>([]);
+  const [familyFor, setFamilyFor] = useState<string>();
   // one key per form: a double click or a retry after a lost response returns the same MAX ID
   const [requestKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
-    if (!customer) { setFamily({ last_name: null, corporate: false, members: [] }); setTravellers([]); return; }
+    if (!customer) return;
     // the customer travels by default (untick if they are only paying); a company never travels
-    familyMembers(customer.id).then((f) => { setFamily(f); setTravellers(f.corporate ? [] : [customer.id]); });
+    let current = true;
+    familyMembers(customer.id).then((f) => {
+      if (current) { setFamily(f); setTravellers(f.corporate ? [] : [customer.id]); setFamilyFor(customer.id); }
+    }).catch(() => { if (current) setFormError("Could not load travellers. Select the customer again to retry."); });
+    return () => { current = false; };
   }, [customer]);
   const tick = (id: string, on: boolean) => setTravellers((t) => (on ? [...t, id] : t.filter((x) => x !== id)));
   const toggleService = (s: Service) => setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -55,10 +107,70 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   })();
   const finalTitle = title.trim() || suggested;
 
-  const submit = () =>
-    run(() => createCase({ customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want, services }, requestKey), {
-      then: (r) => onDone({ ...(r.data as { id: string; max_id: string }), services }),
-    });
+  const submit = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    onSavingChange?.(true);
+    setFormError("");
+    try {
+      await run(async () => {
+        let kase = created;
+        let queue = uploads;
+        if (!kase) {
+          const result = await createCase({
+            customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null,
+            lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want,
+            bookings: services.map((service) => ({ service, details: details[service] ?? {} })),
+          }, requestKey);
+          if (!result.ok) { setFormError(result.error); return result; }
+          if (!result.data) return { ok: false as const, error: "The case could not be opened. Try again." };
+          kase = result.data;
+          queue = kase.bookings.flatMap((line) => {
+            const file = files[line.service];
+            return file ? [{ ...line, file, key: crypto.randomUUID() }] : [];
+          });
+          setCreated(kase);
+          setUploads(queue);
+        }
+        // Upload in order so multiple attachments on a case get distinct file names.
+        const remaining: Upload[] = [];
+        for (const upload of queue) {
+          const result = await finishUpload(kase.id, upload);
+          if (result.error) remaining.push(result);
+        }
+        setUploads(remaining);
+        return remaining.length
+          ? { ok: false as const, error: `${kase.max_id} created. Check the attachments below.` }
+          : { ok: true as const, data: kase, message: `${kase.max_id} created` };
+      }, { refresh: false, then: (r) => { if (r.data) onDone(r.data); } });
+    } finally {
+      saving.current = false;
+      onSavingChange?.(false);
+    }
+  };
+
+  if (created) return (
+    <div className="space-y-4">
+      <p className="text-sm font-medium">{created.max_id} created</p>
+      {pending ? <p role="status" className="text-sm text-muted">Attaching files…</p> : <>
+        {uploads.map((upload) => (
+          <div key={upload.id} className="space-y-2 rounded-lg border border-line p-3">
+            <p className="text-sm font-medium">{SERVICE_LABEL[upload.service]}</p>
+            {upload.attached ? <p className="text-sm text-muted">{upload.file?.name} attached</p> : (
+              <TicketPick file={upload.file} onPick={(file, error) => setUploads((items) => items.map((item) => item.id === upload.id
+                ? { ...item, file, key: file === item.file ? item.key : crypto.randomUUID(), error }
+                : item))} />
+            )}
+            {upload.error && <p role="alert" className="text-sm text-red-700">{upload.error}</p>}
+          </div>
+        ))}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={() => onDone(created)}>Open case</Button>
+          {uploads.some((upload) => upload.file) && <Button variant="primary" onClick={submit}>Retry attachments</Button>}
+        </div>
+      </>}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -78,10 +190,9 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
           />
         )}
       </Field>
-      {customer && (
-        <Field label="Who is travelling?" hint={family.corporate
-          ? (family.members.length ? "Tick the employees on this trip." : "No employees saved yet. Add them on the company's Employees tab, or on the case page after creating it.")
-          : "Untick the customer if they are only paying for someone else's trip."}>
+      {customer && familyFor === customer.id && (
+        <fieldset>
+          <legend className="mb-1 text-[13px] font-medium text-ink">Who is travelling?</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {!family.corporate && (
               <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={travellers.includes(customer.id)} onChange={(e) => tick(customer.id, e.target.checked)} />{customer.label}</label>
@@ -93,11 +204,16 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
               </label>
             ))}
           </div>
-        </Field>
+          <p className="mt-1 text-xs text-muted">{family.corporate
+            ? (family.members.length ? "Tick the employees on this trip." : "No employees saved yet. Add them on the company's Employees tab, or on the case page after creating it.")
+            : "Untick the customer if they are only paying for someone else's trip."}</p>
+        </fieldset>
       )}
-      <Field label="Services" hint="Select one or more (Flight, Hotel, Visa, Other) to add to this case.">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Services">
-          {CASE_SERVICES.map((s) => {
+      <fieldset>
+        <legend className="mb-1 text-[13px] font-medium text-ink">Services</legend>
+        <p className="mb-2 text-xs text-muted">Select the services for this case. You can add the file or details now or later.</p>
+        <div className="flex flex-wrap gap-2">
+          {SERVICES.map((s) => {
             const on = services.includes(s);
             return (
               <button
@@ -105,6 +221,7 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
                 type="button"
                 role="checkbox"
                 aria-checked={on}
+                aria-label={SERVICE_LABEL[s]}
                 onClick={() => toggleService(s)}
                 className={cx(
                   "inline-flex items-center gap-2 rounded-[10px] border px-3.5 py-2 text-sm font-medium transition-all",
@@ -120,7 +237,28 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
             );
           })}
         </div>
-      </Field>
+      </fieldset>
+      {services.map((service) => (
+        <section key={service} aria-label={`${SERVICE_LABEL[service]} booking`} className="space-y-3 rounded-xl border border-line p-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><ServiceIcon service={service} />{SERVICE_LABEL[service]} booking</h3>
+          <div className="space-y-1">
+            <p className="text-[13px] font-medium">{ATTACH_LABEL[service]}</p>
+            <TicketPick file={files[service] ?? null} onPick={(file, error) => {
+              setFiles((f) => ({ ...f, [service]: file }));
+              setFileErrors((errors) => ({ ...errors, [service]: error }));
+            }} />
+            {fileErrors[service] ? <p role="alert" className="text-xs text-red-700">
+              {fileErrors[service]} <button type="button" className="underline" onClick={() => setFileErrors((errors) => ({ ...errors, [service]: "" }))}>Dismiss</button>
+            </p> : (
+              <p className="text-xs text-muted">PDF, JPG or PNG up to 10 MB.{files[service] && confirmsWithFile(service) ? " Attaching this file marks the booking Confirmed." : ""}</p>
+            )}
+          </div>
+          <More title="Enter details">
+            <BookingDetailsFields service={service} details={details[service] ?? {}}
+              onChange={(value) => setDetails((d) => ({ ...d, [service]: value }))} />
+          </More>
+        </section>
+      ))}
       <Field label="What does the client want?" hint="Number of people, budget, hotel type: whatever they said. Saved in the case notes.">
         <textarea className="field min-h-16" value={want} onChange={(e) => setWant(e.target.value)} placeholder="4 adults, beach hotel, budget about 80,000" />
       </Field>
@@ -152,9 +290,10 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
           <Field label="Owner"><StaffSelect staff={staff} value={assigned} onChange={setAssigned} /></Field>
         </div>
       </More>
+      {formError && <p role="alert" className="text-sm text-red-700">{formError}</p>}
       <div className="flex items-center justify-end gap-3">
         {customer && finalTitle && <span className="min-w-0 truncate text-xs text-muted" title={finalTitle}>Will be saved as “{finalTitle}”</span>}
-        <Button variant="primary" disabled={pending || !customer || !finalTitle} onClick={submit}>Create case</Button>
+        <Button variant="primary" disabled={pending || !customer || familyFor !== customer.id || !finalTitle || services.some((service) => fileErrors[service])} onClick={submit}>{pending ? "Creating case…" : "Create case"}</Button>
       </div>
     </div>
   );
@@ -162,12 +301,14 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
 
 export function NewCaseDialog({ open, onClose, preset }: { open: boolean; onClose: () => void; preset?: Record<string, unknown> }) {
   const router = useRouter();
+  const busy = useRef(false);
   return (
-    <Dialog open={open} onClose={onClose} title="New case">
+    <Dialog open={open} onClose={() => { if (!busy.current) onClose(); }} title="New case" wide>
       {/* a fresh form each time it opens: the dialog stays on the page, and the form used to keep the customer from the
           first time (opening New case from a second customer's profile still showed the first one) */}
       {open && <NewCaseForm key={String((preset?.customer as { id?: string } | undefined)?.id ?? "none")} preset={preset}
-        onDone={(c) => { onClose(); router.push(`/cases/${c.id}`); }} />}
+        onSavingChange={(saving) => { busy.current = saving; }}
+        onDone={(c) => { onClose(); router.push(`/cases/${c.id}${c.bookings.length ? "?tab=bookings" : ""}`); }} />}
     </Dialog>
   );
 }

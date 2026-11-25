@@ -11,15 +11,25 @@ const DATE_PAIRS: [string, string, string, boolean][] = [
   ["applied_on", "expected_by", "The decision date can't be before the date applied.", false],
 ];
 
-/** What's wrong with a booking, in plain words, or null when it can be saved.
- *  Owner, 2026-11-18: a booking is the ticket file plus prices; sectors, PNR, hotel name and the like are no longer
- *  typed in, so nothing is required. Details an older booking already has are still checked for obvious mistakes. */
+function filledFlightLegs(sectors: unknown) {
+  return (Array.isArray(sectors) ? sectors as Record<string, string>[] : []).filter((s) =>
+    s && ["from", "to", "date", "airline", "flight_no", "dep", "arr_date", "arr"].some((k) => String(s[k] ?? "").trim()));
+}
+
+export function withoutEmptyFlightLegs(service: Service, details: Record<string, unknown>) {
+  return service === "flight" && Array.isArray(details.sectors)
+    ? { ...details, sectors: filledFlightLegs(details.sectors).map((leg) => ({
+      ...leg, from: String(leg.from ?? "").trim().toUpperCase(), to: String(leg.to ?? "").trim().toUpperCase(),
+    })) }
+    : details;
+}
+
+/** Booking details are optional. Validate any details the user entered. */
 export function lineProblem(service: Service, d: Record<string, unknown>): string | null {
   const v = (k: string) => String(d[k] ?? "").trim();
   if (service === "flight") {
     // only sectors someone actually filled in (an untouched blank sector is ignored)
-    const sectors = (Array.isArray(d.sectors) ? (d.sectors as Record<string, string>[]) : [])
-      .filter((s) => ["from", "to", "date", "airline", "flight_no", "dep", "arr"].some((k) => String(s[k] ?? "").trim()));
+    const sectors = filledFlightLegs(d.sectors);
     let prev = "";
     for (const [i, s] of sectors.entries()) {
       const from = String(s.from ?? "").trim().toUpperCase(), to = String(s.to ?? "").trim().toUpperCase();
