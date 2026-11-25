@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
 import { readinessText, type Readiness } from "@/lib/readiness";
 import { SERVICES, SERVICE_LABEL, type Service } from "@/lib/constants";
+import { bookingAmountProblem, optionalAmount, type BookingPrice } from "@/lib/money";
 import { lineProblem, withoutEmptyFlightLegs } from "@/lib/validate";
 
 export type CaseCreation = { id: string; max_id: string; bookings: { id: string; service: Service }[] };
@@ -19,7 +20,7 @@ type CaseInput = {
   notes?: string | null;
   tags?: string[];
   traveller_ids?: string[];
-  bookings?: { service: Service; details: Record<string, unknown> }[];
+  bookings?: { service: Service; details: Record<string, unknown>; pricing?: BookingPrice }[];
 };
 
 const clean = (v: string | null | undefined) => (v === undefined ? undefined : v?.toString().trim() || null);
@@ -32,7 +33,7 @@ export async function createCase(input: CaseInput, requestKey?: string): Promise
     const dest = clean(input.destination), start = clean(input.travel_start), end = clean(input.travel_end);
     const bookings: NonNullable<CaseInput["bookings"]> = [];
     const seen = new Set<Service>();
-    for (const { service, details } of input.bookings ?? []) {
+    for (const { service, details, pricing } of input.bookings ?? []) {
       if (!SERVICES.includes(service) || seen.has(service)) return { ok: false, error: "Choose each booking service once." };
       seen.add(service);
       const defaults = service === "visa"
@@ -40,9 +41,17 @@ export async function createCase(input: CaseInput, requestKey?: string): Promise
         : service === "hotel" ? { ...(dest ? { city: dest } : {}), ...(start ? { check_in: start } : {}), ...(end && start && end > start ? { check_out: end } : {}) } : {};
       const entered = Object.fromEntries(Object.entries(details).filter(([, value]) => value !== ""));
       const d = withoutEmptyFlightLegs(service, { ...defaults, ...entered });
-      const problem = lineProblem(service, d);
+      const problem = lineProblem(service, d) ?? (pricing ? bookingAmountProblem(pricing, d.base_fare) : null);
       if (problem) return { ok: false, error: `${SERVICE_LABEL[service]}: ${problem}` };
-      bookings.push({ service, details: d });
+      const cost = optionalAmount(pricing?.supplier_cost), sale = optionalAmount(pricing?.selling_price);
+      if (sale !== null && cost === null) {
+        return { ok: false, error: `${SERVICE_LABEL[service]}: Enter the supplier cost as well (type 0 if there is none), so the profit is right.` };
+      }
+      bookings.push({ service, details: d, pricing: {
+        supplier_cost: cost, selling_price: sale, gst: optionalAmount(pricing?.gst),
+        commission_type: pricing?.commission_type === "percent" ? "percent" : "amount",
+        commission_value: optionalAmount(pricing?.commission_value),
+      } });
     }
     const sb = await createClient();
     const travellers = Array.from(new Set(input.traveller_ids ?? []));

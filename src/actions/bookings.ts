@@ -2,7 +2,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { fail, getMe, type ActionResult } from "@/lib/auth";
 import { lineProblem } from "@/lib/validate";
-import { moneyProblem, parseMoney, strictAmount } from "@/lib/money";
+import { bookingAmountProblem, moneyProblem, parseMoney, strictAmount, type BookingPrice } from "@/lib/money";
 import type { Service } from "@/lib/constants";
 import { todayIST } from "@/lib/format";
 
@@ -18,7 +18,7 @@ function defaultClientDue(serviceDate: string | null): string {
 
 type Amount = number | string | null | undefined;
 
-export type LineInput = {
+export type LineInput = BookingPrice<Amount> & {
   id?: string;
   case_id: string;
   service: string;
@@ -26,11 +26,6 @@ export type LineInput = {
   status: string;
   reference?: string | null;
   traveller_ids: string[];
-  supplier_cost: Amount;
-  selling_price: Amount;
-  commission_type: "amount" | "percent";
-  commission_value: Amount;
-  gst: Amount;
   payment_due_date?: string | null;
   supplier_due_date?: string | null;
   notes?: string | null;
@@ -40,18 +35,9 @@ export type LineInput = {
 
 const n = strictAmount;
 
-/** Missing, unreadable and zero are three different things: unreadable is refused, missing is recorded as "not priced yet". */
-function moneyProblems(input: LineInput): string | null {
-  return moneyProblem("Supplier cost", input.supplier_cost)
-    ?? moneyProblem("Selling price", input.selling_price)
-    ?? moneyProblem("Commission", input.commission_value)
-    ?? moneyProblem("GST", input.gst)
-    ?? moneyProblem("Base fare", (input.details ?? {}).base_fare);
-}
-
 export async function saveLine(input: LineInput): Promise<ActionResult<{ id: string }>> {
   try {
-    const problem = lineProblem(input.service as Service, (input.details ?? {}) as Record<string, unknown>) ?? moneyProblems(input);
+    const problem = lineProblem(input.service as Service, input.details ?? {}) ?? bookingAmountProblem(input, input.details?.base_fare);
     if (problem) return { ok: false, error: problem };
     const me = await getMe();
     // staff who may not see profit never see the saved cost or commission: on an edit, an empty cost means "keep it"

@@ -8,6 +8,14 @@ export type MoneyParse =
   | { kind: "invalid"; raw: string }    // typed, but not a number
   | { kind: "value"; paise: number };   // a number (zero included)
 
+export type BookingPrice<T = number | string | null | undefined> = {
+  supplier_cost: T;
+  selling_price: T;
+  commission_type: "amount" | "percent";
+  commission_value: T;
+  gst: T;
+};
+
 /** Reads what staff typed: "11,000", "₹ 11000", "1,25,000.50", "Rs. 500" and plain numbers. Never guesses. */
 export function parseMoney(x: unknown): MoneyParse {
   if (x === null || x === undefined) return { kind: "missing" };
@@ -74,6 +82,14 @@ export function moneyProblem(label: string, x: unknown, opts: { required?: boole
   if (p.kind === "missing") return opts.required ? `${label} is needed.` : null;
   if (!opts.allowNegative && p.paise < 0) return `${label} can't be negative.`;
   return null;
+}
+
+export function bookingAmountProblem(input: BookingPrice, baseFare?: unknown): string | null {
+  return moneyProblem("Supplier cost", input.supplier_cost)
+    ?? moneyProblem("Selling price", input.selling_price)
+    ?? moneyProblem("Commission", input.commission_value)
+    ?? moneyProblem("GST", input.gst)
+    ?? moneyProblem("Base fare", baseFare);
 }
 
 const paiseOf = (x: unknown) => {

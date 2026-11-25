@@ -7,12 +7,14 @@ import { Dialog, More, useAction } from "@/components/client";
 import { CustomerPicker, StaffSelect } from "@/components/pickers";
 import { CustomerInline } from "./customer-inline";
 import { BookingDetailsFields } from "./booking-details-fields";
+import { BookingPriceFields, EMPTY_BOOKING_PRICE } from "./booking-price-fields";
 import { TicketPick } from "./ticket-pick";
 import { useApp } from "@/components/shell/shell";
 import { createCase, type CaseCreation } from "@/actions/cases";
 import { confirmLine } from "@/actions/bookings";
 import { familyMembers } from "@/actions/search";
 import { DEFAULT_KIND, LEAD_SOURCES, SERVICES, SERVICE_LABEL, type Service } from "@/lib/constants";
+import type { BookingPrice } from "@/lib/money";
 
 type Picked = { id: string; label: string; sub?: string };
 const ATTACH_LABEL: Record<Service, string> = {
@@ -70,6 +72,7 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
   const [want, setWant] = useState("");
   const [services, setServices] = useState<Service[]>([]);
   const [details, setDetails] = useState<Partial<Record<Service, Record<string, unknown>>>>({});
+  const [prices, setPrices] = useState<Partial<Record<Service, BookingPrice<string>>>>({});
   const [files, setFiles] = useState<Partial<Record<Service, File | null>>>({});
   const [fileErrors, setFileErrors] = useState<Partial<Record<Service, string>>>({});
   const [created, setCreated] = useState<CaseCreation | null>(null);
@@ -120,7 +123,7 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
           const result = await createCase({
             customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null,
             lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want,
-            bookings: services.map((service) => ({ service, details: details[service] ?? {} })),
+            bookings: services.map((service) => ({ service, details: details[service] ?? {}, pricing: prices[service] })),
           }, requestKey);
           if (!result.ok) { setFormError(result.error); return result; }
           if (!result.data) return { ok: false as const, error: "The case could not be opened. Try again." };
@@ -257,6 +260,11 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
             <BookingDetailsFields service={service} details={details[service] ?? {}}
               onChange={(value) => setDetails((d) => ({ ...d, [service]: value }))} />
           </More>
+          <div className="rounded-lg border border-line p-3">
+            <BookingPriceFields visa={service === "visa"} perPerson={service === "visa" && travellers.length > 1}
+              showCommission={me.can_see_profit} price={prices[service] ?? EMPTY_BOOKING_PRICE}
+              onChange={(value) => setPrices((p) => ({ ...p, [service]: value }))} />
+          </div>
         </section>
       ))}
       <Field label="What does the client want?" hint="Number of people, budget, hotel type: whatever they said. Saved in the case notes.">

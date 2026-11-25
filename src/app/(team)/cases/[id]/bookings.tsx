@@ -6,6 +6,7 @@ import { Confirm, Dialog, Menu, More, Toggle, useAction } from "@/components/cli
 import { SupplierPicker } from "@/components/pickers";
 import { SupplierQuickForm } from "@/components/forms/supplier-quick";
 import { BookingDetailsFields } from "@/components/forms/booking-details-fields";
+import { BookingPriceFields } from "@/components/forms/booking-price-fields";
 import { TicketPick } from "@/components/forms/ticket-pick";
 import { DropZone, FileItem, withHistory } from "@/components/files";
 import { BookingDetails } from "@/components/trip-view";
@@ -373,19 +374,8 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
         {/* no traveller picker (owner, 2026-11-18): a booking is for everyone on the case; a visa is still one file each */}
         {visaPerPerson && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">We&apos;ll make {trav.length} visa files, one for each traveller on the case, because each visa is approved separately.</p>}
         <div className="rounded-lg border border-line p-3">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Field label={isVisa ? "Our cost (₹)" : "Supplier cost (₹)"} hint={!me.can_see_profit && line ? "Hidden. Leave empty to keep the cost already saved." : isVisa ? `Embassy + VFS fees${visaPerPerson ? ", per person" : ""}` : undefined}><input className="field tabular" inputMode="decimal" placeholder={!me.can_see_profit && line ? "Hidden" : undefined} value={m.supplier_cost} onChange={(e) => setM({ ...m, supplier_cost: e.target.value })} /></Field>
-            <Field label={isVisa ? "Charge to client (₹)" : "Selling price (₹)"} hint={isVisa ? `Fees + our service charge${visaPerPerson ? ", per person" : ""}` : "Without GST"}><input className="field tabular" inputMode="decimal" value={m.selling_price} onChange={(e) => setM({ ...m, selling_price: e.target.value })} /></Field>
-            {!isVisa && me.can_see_profit && <Field label="Commission">
-              <div className="flex">
-                <input className="field tabular !rounded-r-none" inputMode="decimal" value={m.commission_value} onChange={(e) => setM({ ...m, commission_value: e.target.value })} />
-                <select className="field !w-16 !rounded-l-none !border-l-0 !px-2" value={m.commission_type} onChange={(e) => setM({ ...m, commission_type: e.target.value as "amount" | "percent" })}>
-                  <option value="amount">₹</option><option value="percent">%</option>
-                </select>
-              </div>
-            </Field>}
-            <Field label="GST (₹, optional)"><input className="field tabular" inputMode="decimal" value={m.gst} onChange={(e) => setM({ ...m, gst: e.target.value })} /></Field>
-          </div>
+          <BookingPriceFields visa={isVisa} perPerson={visaPerPerson} showCommission={me.can_see_profit}
+            keepCost={!me.can_see_profit && !!line} price={m} onChange={(value) => setM((prev) => ({ ...prev, ...value }))} />
           {/* below the price boxes, so they don't jump up under the cursor when it goes away */}
           {unpriced && !isCancelled && (
             <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">No prices entered yet. That is fine to save; the booking is marked “not priced” until someone enters them (enter 0 if it really is free).</p>

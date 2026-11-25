@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(6);
+select plan(10);
 
 insert into auth.users (id, email, raw_app_meta_data) values
   ('00000000-0000-0000-0000-0000000048b1', 'boss@initial-booking.test', '{"role":"boss","full_name":"Test Owner"}');
@@ -15,13 +15,24 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000048b1","role":"authenticated"}';
 insert into created select public.create_case(
   '{"customer_id":"00000000-0000-0000-0000-00000048c001","title":"Case with initial bookings","bookings":[
-    {"service":"flight","details":{"pnr":"DEMO12"}},{"service":"visa","details":{"country":"UAE"}},{"service":"hotel","details":{}}]}',
+    {"service":"flight","details":{"pnr":"DEMO12"},"pricing":{"supplier_cost":1000.25,"selling_price":1250.50,"commission_type":"percent","commission_value":2.5,"gst":12.25}},
+    {"service":"visa","details":{"country":"UAE"}},
+    {"service":"hotel","details":{},"pricing":{"supplier_cost":0,"selling_price":0}}]}',
   '{00000000-0000-0000-0000-00000048c001,00000000-0000-0000-0000-00000048c002}', 'initial-booking-key');
 select is((select jsonb_array_length(result -> 'bookings') from created), 4, 'returns flight, hotel and one visa booking per traveller');
 select is((select l.details ->> 'pnr' from public.booking_lines l join created c on l.case_id = (c.result ->> 'id')::uuid where l.service = 'flight'),
   'DEMO12', 'manual flight details are saved on the booking');
 select is((select array_agg(cardinality(l.traveller_ids) order by sort) from public.booking_lines l join created c on l.case_id = (c.result ->> 'id')::uuid),
   array[2,1,1,2], 'visa bookings are individual while the other bookings include the case travellers');
+select is((select array[l.supplier_cost, l.selling_price, l.commission_amount, l.gst] from public.booking_lines l
+  join created c on l.case_id = (c.result ->> 'id')::uuid where l.service = 'flight'),
+  array[1000.25,1250.50,25.01,12.25]::numeric[], 'flight prices and calculated percentage commission keep their paise');
+select is((select l.pricing_state from public.booking_lines l join created c on l.case_id = (c.result ->> 'id')::uuid where l.service = 'hotel'),
+  'entered', 'explicit zero prices count as entered');
+select is((select count(*) from public.booking_lines l join created c on l.case_id = (c.result ->> 'id')::uuid
+  where l.service = 'visa' and l.pricing_state = 'not_entered' and l.payment_due_date is null), 2::bigint, 'blank visa prices stay unpriced');
+select is((select l.payment_due_date from public.booking_lines l join created c on l.case_id = (c.result ->> 'id')::uuid where l.service = 'flight'),
+  (now() at time zone 'Asia/Kolkata')::date + 3, 'a positive selling price with no trip date gets the default due date');
 select is(public.create_case('{"customer_id":"00000000-0000-0000-0000-00000048c001","title":"Retried request"}', '{}', 'initial-booking-key') -> 'bookings',
   (select result -> 'bookings' from created), 'retries return the original booking IDs');
 select throws_like($$select public.create_case(
