@@ -1,18 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Field } from "@/components/ui";
+import { Check } from "lucide-react";
+import { Button, Field, ServiceIcon, cx } from "@/components/ui";
 import { Dialog, More, useAction } from "@/components/client";
 import { CustomerPicker, StaffSelect } from "@/components/pickers";
 import { CustomerInline } from "./customer-inline";
 import { useApp } from "@/components/shell/shell";
 import { createCase } from "@/actions/cases";
 import { familyMembers } from "@/actions/search";
-import { LEAD_SOURCES } from "@/lib/constants";
+import { LEAD_SOURCES, SERVICE_LABEL, type Service } from "@/lib/constants";
 
 type Picked = { id: string; label: string; sub?: string };
+const CASE_SERVICES: Service[] = ["flight", "hotel", "visa", "other"];
 
-export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: string; max_id: string }) => void; preset?: Record<string, unknown>; compact?: boolean }) {
+export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: string; max_id: string; services?: Service[] }) => void; preset?: Record<string, unknown>; compact?: boolean }) {
   const { me, staff } = useApp();
   const { run, pending } = useAction();
   const [customer, setCustomer] = useState<Picked | null>((preset?.customer as Picked) ?? null);
@@ -26,6 +28,7 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
   const [end, setEnd] = useState("");
   const [lead, setLead] = useState("");
   const [want, setWant] = useState("");
+  const [services, setServices] = useState<Service[]>([]);
   const [assigned, setAssigned] = useState(me.id);
   const [family, setFamily] = useState<{ last_name: string | null; corporate: boolean; members: { id: string; full_name: string; relation?: string | null; designation?: string | null }[] }>({ last_name: null, corporate: false, members: [] });
   const [travellers, setTravellers] = useState<string[]>([]);
@@ -38,18 +41,23 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
     familyMembers(customer.id).then((f) => { setFamily(f); setTravellers(f.corporate ? [] : [customer.id]); });
   }, [customer]);
   const tick = (id: string, on: boolean) => setTravellers((t) => (on ? [...t, id] : t.filter((x) => x !== id)));
+  const toggleService = (s: Service) => setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
   const suggested = (() => {
     if (!customer) return "";
     const who = !family.corporate && family.members.length && family.last_name ? `${family.last_name} family` : customer.label;
     const route = from && dest ? `${from} to ${dest}` : dest || "";
-    return route ? `${route}, ${who}` : `Trip for ${who}`;
+    const svc = services.length ? services.map((s) => SERVICE_LABEL[s]).join(" + ") : "";
+    if (route && svc) return `${svc} · ${route}, ${who}`;
+    if (route) return `${route}, ${who}`;
+    if (svc) return `${svc} for ${who}`;
+    return `Trip for ${who}`;
   })();
   const finalTitle = title.trim() || suggested;
 
   const submit = () =>
-    run(() => createCase({ customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want }, requestKey), {
-      then: (r) => onDone(r.data as { id: string; max_id: string }),
+    run(() => createCase({ customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null, lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want, services }, requestKey), {
+      then: (r) => onDone({ ...(r.data as { id: string; max_id: string }), services }),
     });
 
   return (
@@ -87,6 +95,32 @@ export function NewCaseForm({ onDone, preset, compact }: { onDone: (c: { id: str
           </div>
         </Field>
       )}
+      <Field label="Services" hint="Select one or more (Flight, Hotel, Visa, Other) to add to this case.">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Services">
+          {CASE_SERVICES.map((s) => {
+            const on = services.includes(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                onClick={() => toggleService(s)}
+                className={cx(
+                  "inline-flex items-center gap-2 rounded-[10px] border px-3.5 py-2 text-sm font-medium transition-all",
+                  on
+                    ? "border-coral bg-coral-soft text-coral-dark ring-1 ring-coral/30"
+                    : "border-line bg-white text-ink hover:border-gray-300 hover:bg-gray-50",
+                )}
+              >
+                <ServiceIcon service={s} className="h-4 w-4" />
+                {SERVICE_LABEL[s]}
+                {on && <Check className="h-3.5 w-3.5 text-coral-dark" />}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
       <Field label="What does the client want?" hint="Number of people, budget, hotel type: whatever they said. Saved in the case notes.">
         <textarea className="field min-h-16" value={want} onChange={(e) => setWant(e.target.value)} placeholder="4 adults, beach hotel, budget about 80,000" />
       </Field>
