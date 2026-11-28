@@ -5,7 +5,6 @@ import { Badge, Button, Card, Empty, Field, Money, ServiceIcon, StatusBadge, cx 
 import { Confirm, Dialog, Menu, More, Toggle, useAction } from "@/components/client";
 import { SupplierPicker } from "@/components/pickers";
 import { SupplierQuickForm } from "@/components/forms/supplier-quick";
-import { BookingDetailsFields } from "@/components/forms/booking-details-fields";
 import { BookingPriceFields } from "@/components/forms/booking-price-fields";
 import { TicketPick } from "@/components/forms/ticket-pick";
 import { DropZone, FileItem, withHistory } from "@/components/files";
@@ -83,7 +82,7 @@ export function BookingsTab({ caseId, lines, travellers, maxId, customer, lookup
           iata={iata}
         />
       ))}
-      <LineDialog open={!!dlg} onClose={() => setDlg(null)} caseId={caseId} line={dlg?.line} service={dlg?.service} travellers={travellers} iata={iata} />
+      <LineDialog open={!!dlg} onClose={() => setDlg(null)} caseId={caseId} line={dlg?.line} service={dlg?.service} travellers={travellers} />
       <CancelDialog line={cancel} onClose={() => setCancel(null)} />
     </div>
   );
@@ -209,8 +208,8 @@ function blankDetails(s: Service): Record<string, unknown> {
   return {};
 }
 
-function LineDialog({ open, onClose, caseId, line, service: initService, travellers, iata }: {
-  open: boolean; onClose: () => void; caseId: string; line?: Line; service?: Service; travellers: Pax[]; iata: Iata;
+function LineDialog({ open, onClose, caseId, line, service: initService, travellers }: {
+  open: boolean; onClose: () => void; caseId: string; line?: Line; service?: Service; travellers: Pax[];
 }) {
   const { me } = useApp();
   const { run, pending } = useAction();
@@ -368,9 +367,6 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </Field>
         </div>
 
-        <More key={line?.id ?? service} title="Booking details">
-          <BookingDetailsFields service={service} details={d} onChange={setD} lookups airportZones={iata.tzByCode} />
-        </More>
         {/* no traveller picker (owner, 2026-11-18): a booking is for everyone on the case; a visa is still one file each */}
         {visaPerPerson && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">We&apos;ll make {trav.length} visa files, one for each traveller on the case, because each visa is approved separately.</p>}
         <div className="rounded-lg border border-line p-3">

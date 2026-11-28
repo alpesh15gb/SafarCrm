@@ -6,7 +6,6 @@ import { Button, Field, ServiceIcon, cx } from "@/components/ui";
 import { Dialog, More, useAction } from "@/components/client";
 import { CustomerPicker, StaffSelect } from "@/components/pickers";
 import { CustomerInline } from "./customer-inline";
-import { BookingDetailsFields } from "./booking-details-fields";
 import { BookingPriceFields, EMPTY_BOOKING_PRICE } from "./booking-price-fields";
 import { TicketPick } from "./ticket-pick";
 import { useApp } from "@/components/shell/shell";
@@ -71,7 +70,6 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
   const [lead, setLead] = useState("");
   const [want, setWant] = useState("");
   const [services, setServices] = useState<Service[]>([]);
-  const [details, setDetails] = useState<Partial<Record<Service, Record<string, unknown>>>>({});
   const [prices, setPrices] = useState<Partial<Record<Service, BookingPrice<string>>>>({});
   const [files, setFiles] = useState<Partial<Record<Service, File | null>>>({});
   const [fileErrors, setFileErrors] = useState<Partial<Record<Service, string>>>({});
@@ -123,7 +121,8 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
           const result = await createCase({
             customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null,
             lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want,
-            bookings: services.map((service) => ({ service, details: details[service] ?? {}, pricing: prices[service] })),
+            // the ticket file and the prices only: no PNR, cabin or flight legs typed in (owner, 2026-11-18, again 2026-11-28)
+            bookings: services.map((service) => ({ service, details: {}, pricing: prices[service] })),
           }, requestKey);
           if (!result.ok) { setFormError(result.error); return result; }
           if (!result.data) return { ok: false as const, error: "The case could not be opened. Try again." };
@@ -214,7 +213,7 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
       )}
       <fieldset>
         <legend className="mb-1 text-[13px] font-medium text-ink">Services</legend>
-        <p className="mb-2 text-xs text-muted">Select the services for this case. You can add the file or details now or later.</p>
+        <p className="mb-2 text-xs text-muted">Select the services for this case. Attach the file and enter the prices now, or later on the case.</p>
         <div className="flex flex-wrap gap-2">
           {SERVICES.map((s) => {
             const on = services.includes(s);
@@ -256,10 +255,6 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
               <p className="text-xs text-muted">PDF, JPG or PNG up to 10 MB.{files[service] && confirmsWithFile(service) ? " Attaching this file marks the booking Confirmed." : ""}</p>
             )}
           </div>
-          <More title="Enter details">
-            <BookingDetailsFields service={service} details={details[service] ?? {}}
-              onChange={(value) => setDetails((d) => ({ ...d, [service]: value }))} />
-          </More>
           <div className="rounded-lg border border-line p-3">
             <BookingPriceFields visa={service === "visa"} perPerson={service === "visa" && travellers.length > 1}
               showCommission={me.can_see_profit} price={prices[service] ?? EMPTY_BOOKING_PRICE}
