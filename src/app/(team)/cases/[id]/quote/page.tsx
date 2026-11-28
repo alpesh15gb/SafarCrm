@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireTeam } from "@/lib/auth";
+import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AGENCY_COLS, Breakup, FieldGrid, PayTo, PrintDoc, Rule, SignOff, Terms, type Agency } from "@/components/print-doc";
 import { SERVICE_LABEL, type Service } from "@/lib/constants";
@@ -9,7 +9,7 @@ export const metadata = { title: "Estimate" };
 
 /** Client-facing estimate (quotation) for a case: services and selling prices only (never costs, commission or profit). */
 export default async function QuotePage({ params }: { params: Promise<{ id: string }> }) {
-  await requireTeam();
+  await requireBoss();
   const { id } = await params;
   const sb = await createClient();
   const [{ data: kase }, { data: lines }, { data: trav }, { data: agency }] = await Promise.all([

@@ -34,6 +34,7 @@ export function CaseHeaderControls({ kase }: { kase: {
   // the stage is changed by clicking a step in the stage bar under the header (see stage-steps.tsx)
   const changeStage = (to: string) => {
     if (to === kase.status || pending) return;
+    if (to === "cancelled" && me.role !== "boss") return;
     if (to === "cancelled") { setReason(""); setCancelOpen(true); return; }
     if (to === "completed") {
       // show what is still open before closing
@@ -67,7 +68,7 @@ export function CaseHeaderControls({ kase }: { kase: {
               <button type="button" onClick={() => { setWaitWhy(""); setWaitUntil(""); setWaitFor("waiting_customer"); }}>Waiting on the customer…</button>
               <button type="button" onClick={() => { setWaitWhy(""); setWaitUntil(""); setWaitFor("waiting_supplier"); }}>Waiting on a supplier…</button>
             </>}
-        {kase.status !== "cancelled" && <button type="button" onClick={() => changeStage("cancelled")}>Cancel case…</button>}
+        {me.role === "boss" && kase.status !== "cancelled" && <button type="button" onClick={() => changeStage("cancelled")}>Cancel case…</button>}
         {me.role === "boss" && <button type="button" className="text-red-600" onClick={() => setDelOpen(true)}>Delete case</button>}
       </Menu>
       {kase.status === "cancelled" && kase.cancel_reason && <span className="w-full text-right text-xs text-red-600">Cancelled: {kase.cancel_reason}</span>}

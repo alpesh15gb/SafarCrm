@@ -81,31 +81,18 @@ function tempPassword() {
   return `Safar-${randomInt(1000, 9999)}-${randomInt(100, 999)}`;
 }
 
-export async function createStaff(v: { full_name: string; email: string; phone?: string; can_see_profit?: boolean; can_see_all_cases?: boolean }): Promise<ActionResult<{ password: string }>> {
+export async function createStaff(v: { full_name: string; email: string; phone?: string }): Promise<ActionResult<{ password: string }>> {
   try {
     await boss();
     if (!v.full_name.trim() || !v.email.includes("@")) return { ok: false, error: "Enter a name and a valid email." };
     const admin = createAdmin();
     const password = tempPassword();
-    const { data, error } = await admin.auth.admin.createUser({
+    const { error } = await admin.auth.admin.createUser({
       email: v.email.trim().toLowerCase(), password, email_confirm: true,
       app_metadata: { role: "staff", full_name: v.full_name.trim(), phone: v.phone ?? null, must_change_password: true },
     });
     if (error) throw error;
-    await admin.from("profiles").update({ can_see_profit: !!v.can_see_profit, can_see_all_cases: !!v.can_see_all_cases }).eq("id", data.user.id);
     return { ok: true, data: { password }, message: "Staff login created" };
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-export async function updateStaff(id: string, patch: { full_name?: string; can_see_profit?: boolean; can_see_all_cases?: boolean }): Promise<ActionResult> {
-  try {
-    await boss();
-    const sb = await createClient();
-    const { error } = await sb.from("profiles").update(patch).eq("id", id);
-    if (error) throw error;
-    return { ok: true, message: "Saved" };
   } catch (e) {
     return fail(e);
   }

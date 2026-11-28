@@ -12,8 +12,8 @@ export type Report = { title: string; sub: string; cols: Col[]; rows: Record<str
 
 export const REPORTS = [
   { key: "pnl", label: "Profit and loss", profit: true },
-  { key: "client_dues", label: "Client dues" },
-  { key: "client_credits", label: "Client credits" },
+  { key: "client_dues", label: "Client dues", profit: true },
+  { key: "client_credits", label: "Client credits", profit: true },
   { key: "supplier_dues", label: "Supplier dues", profit: true },
   { key: "cashbook", label: "Cash and bank book", profit: true },
   { key: "sales", label: "Sales by service and staff", profit: true },

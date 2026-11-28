@@ -76,8 +76,10 @@ export async function GET(req: Request) {
       const cols: Col[] = [{ key: "max_id", label: "MAX ID" }, { key: "title", label: "Title" }, { key: "customer", label: "Customer" }, { key: "mobile", label: "Mobile" },
         { key: "travel_start", label: "Travel start", date: true }, { key: "travel_end", label: "Travel end", date: true }, { key: "destination", label: "Destination" },
         { key: "services", label: "Services" }, { key: "staff", label: "Staff" }, { key: "status", label: "Status" },
-        { key: "billed", label: "Billed", money: true }, { key: "received", label: "Received", money: true }, { key: "due", label: "Due", money: true },
-        ...(me.can_see_profit ? [{ key: "profit", label: "Profit", money: true } as Col] : [])];
+        ...(me.can_see_profit ? [
+          { key: "billed", label: "Billed", money: true }, { key: "received", label: "Received", money: true },
+          { key: "due", label: "Due", money: true }, { key: "profit", label: "Profit", money: true },
+        ] : [])];
       addSheet(wb, "Cases", cols, rows.map((r) => ({
         ...r, customer: r.customer?.full_name, mobile: r.customer?.mobile, staff: r.staff?.full_name, status: STATUS_LABEL[r.status],
         services: [...new Set(r.lines.map((l) => SERVICE_LABEL[l.service as Service]))].join(", "), ...r.money,

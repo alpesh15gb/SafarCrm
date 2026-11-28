@@ -3,11 +3,12 @@ import Link from "next/link";
 import { requireTeam } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { IndianRupee, Layers, TrendingUp, Wallet, Receipt } from "lucide-react";
-import { Avatar, Card, IconChip, Money, PageHeader, Tabs, cx } from "@/components/ui";
+import { Avatar, Card, IconChip, Money, PageHeader, ServiceIcon, StatusBadge, Tabs, cx } from "@/components/ui";
 import type { PaxSource } from "@/lib/iata";
 
 type PaxRow = PaxSource & { id: string; full_name: string; dob: string | null; passport_expiry: string | null; mobile: string };
 import { MaxId } from "@/components/client";
+import { SERVICE_LABEL } from "@/lib/constants";
 import { fdate, prettyPhone, inr } from "@/lib/format";
 import { CaseHeaderControls } from "./header-controls";
 import { FinishLine, type FinishItem } from "./next-step";
@@ -41,6 +42,7 @@ export default async function CasePage({ params, searchParams }: { params: Promi
   const { id } = await params;
   const { tab = "overview" } = await searchParams;
   const sb = await createClient();
+  const showMoney = me.role === "boss";
 
   const { data: c } = await sb
     .from("cases")
@@ -50,10 +52,11 @@ export default async function CasePage({ params, searchParams }: { params: Promi
   if (!c) notFound();
 
   const [{ data: money }, { data: travellers }, { data: lines }, { data: lineMoney }, { data: alerts }, { data: finishData }] = await Promise.all([
-    sb.from("v_case_money").select("*").eq("case_id", id).single(),
+    showMoney ? sb.from("v_case_money").select("*").eq("case_id", id).single() : Promise.resolve({ data: null }),
     sb.from("case_travellers").select("customer:customers(id, full_name, title, first_name, middle_name, last_name, passport_surname, passport_given_name, gender, dob, passport_expiry, mobile)").eq("case_id", id),
-    sb.from("booking_lines").select("*, supplier:suppliers(id, name)").eq("case_id", id).order("sort").order("service_date", { nullsFirst: false }).order("created_at"),
-    sb.from("v_line_money").select("line_id, billed, sale, cost, profit, margin").eq("case_id", id),
+    (showMoney ? sb.from("booking_lines").select("*, supplier:suppliers(id, name)") : sb.from("v_operational_bookings").select("id, case_id, service, status, reference, traveller_ids, summary, service_date"))
+      .eq("case_id", id).order("sort").order("service_date", { nullsFirst: false }).order("created_at"),
+    showMoney ? sb.from("v_line_money").select("line_id, billed, sale, cost, profit, margin").eq("case_id", id) : Promise.resolve({ data: [] }),
     // alerts = the open automatic reminders on this case (the Tasks page was removed, owner 2026-11-18)
     sb.from("tasks").select("id, title, due_at, notes").eq("case_id", id).neq("status", "done").order("due_at", { nullsFirst: true }),
     sb.rpc("case_finish_items", { p_case: id }),
@@ -61,12 +64,10 @@ export default async function CasePage({ params, searchParams }: { params: Promi
   const trav = (travellers ?? []).map((t) => t.customer as unknown as PaxRow);
   const customer = c.customer as { id: string; full_name: string; mobile: string; whatsapp: string | null; email: string | null; family_id: string | null; code: string; customer_type: string };
   const lm = new Map((lineMoney ?? []).map((m) => [m.line_id, m]));
-  // supplier cost and commission never reach the browser of staff who may not see profit
-  const hideCost = (l: Record<string, unknown>) => (me.can_see_profit ? l : { ...l, supplier_cost: null, commission_type: "amount", commission_value: null, commission_amount: null, refund_from_supplier: null, cancellation_charge: null });
-  const linesWithMoney = (lines ?? []).map((l) => ({ ...hideCost(l), money: lm.get(l.id) })) as Line[];
+  const visibleLines = (lines ?? []).map((line) => ({ ...line, ...(showMoney ? { money: lm.get(line.id) } : {}) })) as Line[];
 
   const profit = money?.profit as number | null;
-  const tabs = TABS.map((t) => ({
+  const tabs = TABS.filter((entry) => showMoney || !["payments", "activity"].includes(entry.key)).map((t) => ({
     ...t,
     label: t.key === "bookings" ? `Bookings (${lines?.length ?? 0})` : t.label,
   }));
@@ -104,9 +105,9 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         );
       })()}
 
-      <div className={cx("mb-5 grid gap-3", me.can_see_profit ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
+      {showMoney && <div className={cx("mb-5 grid gap-3", me.can_see_profit ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 sm:grid-cols-3")}>
         <Strip label="Sale" icon={IndianRupee} tone="blue" value={<Money value={money?.sale} />} />
-        {me.can_see_profit && <Strip label="Cost" icon={Layers} tone="violet" value={<Money value={linesWithMoney.reduce((sum, line) => sum + Number(line.money?.cost ?? 0), 0)} />} />}
+        {me.can_see_profit && <Strip label="Cost" icon={Layers} tone="violet" value={<Money value={visibleLines.reduce((sum, line) => sum + Number(line.money?.cost ?? 0), 0)} />} />}
         {me.can_see_profit && (
           <Strip
             label="Profit"
@@ -120,24 +121,33 @@ export default async function CasePage({ params, searchParams }: { params: Promi
         {Number(money?.due) < 0
           ? <Strip label="Client credit" icon={Wallet} tone="blue" value={<Money value={-Number(money?.due)} className="text-sky-700" />} sub="Paid more than billed: refund or adjust" />
           : <Strip label="Due from client" icon={Wallet} tone="amber" value={<Money value={money?.due} className={Number(money?.due) > 0 ? "text-amber-700" : ""} />} sub={`Billed ${inr(money?.billed ?? 0)}`} />}
-      </div>
+      </div>}
 
       <Tabs tabs={tabs} active={tab} base={`/cases/${id}`} />
 
-      {["overview", "bookings", "payments"].includes(tab) && <DocsLoader caseId={id} caseStatus={c.status} lines={linesWithMoney} />}
+      {showMoney && ["overview", "bookings", "payments"].includes(tab) && <DocsLoader caseId={id} caseStatus={c.status} lines={visibleLines} />}
 
-      {tab === "overview" && (
+      {(tab === "overview" || !tabs.some((entry) => entry.key === tab)) && (
         <OverviewTab
           kase={c}
           customer={customer}
           travellers={trav}
-          lines={linesWithMoney}
+          lines={visibleLines}
         />
       )}
-      {tab === "bookings" && <BookingsLoader caseId={id} lines={linesWithMoney} travellers={trav} maxId={c.max_id} customer={customer} trip={{ start: c.travel_start, end: c.travel_end }} />}
-      {tab === "payments" && <PaymentsLoader caseId={id} lines={linesWithMoney} money={money} status={c.status} />}
-      {tab === "files" && <FilesLoader caseId={id} maxId={c.max_id} customer={customer} travellers={trav.map((t) => ({ id: t.id, full_name: t.full_name }))} lines={linesWithMoney} />}
-      {tab === "activity" && <ActivityLoader caseId={id} />}
+      {tab === "bookings" && (showMoney
+        ? <BookingsLoader caseId={id} lines={visibleLines} travellers={trav} maxId={c.max_id} customer={customer} trip={{ start: c.travel_start, end: c.travel_end }} />
+        : <Card title="Bookings">{visibleLines.length ? <ul className="divide-y divide-line">{visibleLines.map((line) => (
+          <li key={line.id} className="flex flex-wrap items-center gap-3 py-3">
+            <ServiceIcon service={line.service} className="h-4 w-4 text-muted" />
+            <span className="flex-1">{SERVICE_LABEL[line.service]}{line.summary && ` · ${line.summary}`}</span>
+            <span className="text-sm text-muted">{fdate(line.service_date)}</span>
+            <StatusBadge status={line.status} />
+          </li>
+        ))}</ul> : <p className="text-sm text-muted">No bookings yet.</p>}</Card>)}
+      {showMoney && tab === "payments" && <PaymentsLoader caseId={id} lines={visibleLines} money={money} status={c.status} />}
+      {tab === "files" && <FilesLoader caseId={id} maxId={c.max_id} customer={customer} travellers={trav.map((t) => ({ id: t.id, full_name: t.full_name }))} lines={visibleLines} />}
+      {showMoney && tab === "activity" && <ActivityLoader caseId={id} />}
 
       <div className="mt-6 text-xs text-muted">
         Created {fdate(c.created_at)} by {(c.creator as { full_name: string } | null)?.full_name ?? "—"} · Lead source {c.lead_source ?? "—"}

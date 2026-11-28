@@ -85,7 +85,7 @@ export function OverviewTab({ kase, customer, travellers, lines }: { kase: Kase;
             <Link className="text-sm link" href={`/cases/${kase.id}?tab=bookings`}>Open bookings</Link>
           </span>}>
           {lines.length === 0 ? (
-            <p className="p-4 text-muted">No bookings yet. <Link className="link" href={`/cases/${kase.id}?tab=bookings`}>Add a flight, hotel or other service.</Link></p>
+            <p className="p-4 text-muted">No bookings yet.{me.role === "boss" && <> <Link className="link" href={`/cases/${kase.id}?tab=bookings`}>Add a flight, hotel or other service.</Link></>}</p>
           ) : (
             <ul>
               {lines.map((l) => (
@@ -103,7 +103,7 @@ export function OverviewTab({ kase, customer, travellers, lines }: { kase: Kase;
 
       <div className="min-w-0 space-y-4">
         <TravellersCard caseId={kase.id} customer={customer} travellers={travellers} />
-        <Card
+        {me.role === "boss" && <Card
           title="Client view"
           action={<Button size="sm" onClick={async () => { setPreview("loading"); setPreview(await previewAsClient(kase.id)); }}><Eye className="h-4 w-4" />Preview as client</Button>}
         >
@@ -128,7 +128,7 @@ export function OverviewTab({ kase, customer, travellers, lines }: { kase: Kase;
               </div>
             </details>
           )}
-        </Card>
+        </Card>}
       </div>
 
       <Dialog open={preview !== null} onClose={() => setPreview(null)} title="Preview: what the client sees" wide>

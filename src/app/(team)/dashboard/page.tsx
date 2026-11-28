@@ -135,7 +135,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
         {/* right column (1/3) */}
         <div className="min-w-0 space-y-5">
-          <Pipeline rows={pipeline} />
+          <Pipeline rows={pipeline} showMoney={profitOk} />
           <VisaTracker active={active} />
           <Card title="Departures" sub="Next 7 days" icon={PlaneTakeoff} pad={false} className="scroll-mt-24" >
             <div id="departures" />
@@ -239,7 +239,7 @@ function HeroChip({ href, icon: I, children, hot }: { href: string; icon: typeof
   );
 }
 
-function Pipeline({ rows }: { rows: { status: string; cases: number; sale: number; due: number }[] }) {
+function Pipeline({ rows, showMoney }: { showMoney: boolean; rows: { status: string; cases: number; sale: number; due: number }[] }) {
   const flow = CASE_STATUSES.filter((s) => s !== "cancelled");
   const data = flow.map((s) => {
     const r = rows.find((x) => x.status === s);
@@ -248,13 +248,13 @@ function Pipeline({ rows }: { rows: { status: string; cases: number; sale: numbe
   const max = Math.max(1, ...data.map((d) => d.n));
   const cancelled = Number(rows.find((x) => x.status === "cancelled")?.cases ?? 0);
   return (
-    <Card title="Case pipeline" sub="Active cases by stage: until the trip is over, or while money is due" icon={PieChart} action={<Link href="/cases?view=board" className="inline-flex items-center gap-1 text-xs link">Board <ArrowRight className="h-3 w-3" /></Link>}>
+    <Card title="Case pipeline" sub={showMoney ? "Active cases by stage: until the trip is over, or while money is due" : "Active cases by stage"} icon={PieChart} action={<Link href="/cases?view=board" className="inline-flex items-center gap-1 text-xs link">Board <ArrowRight className="h-3 w-3" /></Link>}>
       <div className="space-y-3">
         {data.map((d) => (
-          <Link key={d.s} href={`/cases?status=${d.s}`} className="group block" title={`${STATUS_LABEL[d.s]}: ${d.n} cases, ${inr(d.sale)} sale value`}>
+          <Link key={d.s} href={`/cases?status=${d.s}`} className="group block" title={`${STATUS_LABEL[d.s]}: ${d.n} cases${showMoney ? `, ${inr(d.sale)} sale value` : ""}`}>
             <div className="mb-1 flex items-center justify-between text-[13px]">
               <StatusBadge status={d.s} />
-              <span className="tabular text-muted"><b className="font-semibold text-ink">{d.n}</b>{d.sale > 0 && <> · {inrShort(d.sale)}</>}</span>
+              <span className="tabular text-muted"><b className="font-semibold text-ink">{d.n}</b>{showMoney && d.sale > 0 && <> · {inrShort(d.sale)}</>}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-gray-100">
               <div className="h-full rounded-full bg-navy/80 transition-all group-hover:bg-coral" style={{ width: `${(d.n / max) * 100}%`, minWidth: d.n ? 6 : 0 }} />

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireTeam } from "@/lib/auth";
+import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AGENCY_COLS, PrintDoc, Rule, SignOff, type Agency } from "@/components/print-doc";
 import { PAY_MODE_LABEL } from "@/lib/constants";
@@ -8,7 +8,7 @@ import { fdate, inr, rupeesInWords, waLink } from "@/lib/format";
 export const metadata = { title: "Payment receipt" };
 
 export default async function ReceiptPage({ params }: { params: Promise<{ id: string; pid: string }> }) {
-  await requireTeam();
+  await requireBoss();
   const { id, pid } = await params;
   const sb = await createClient();
   const [{ data: pay }, { data: kase }, { data: all }, { data: money }, { data: agency }] = await Promise.all([

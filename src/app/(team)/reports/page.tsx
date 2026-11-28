@@ -33,7 +33,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHeader title="Reports" sub={!me.can_see_profit ? "Profit reports are visible to the boss and to staff the boss allows." : undefined}
+      <PageHeader title="Reports" sub={!me.can_see_profit ? "Financial reports are available to the owner." : undefined}
         action={report && <><PrintButton /><a className={btnClass("primary")} href={`/api/export?export=report&${qs}`}><Download className="h-4 w-4" />Export to Excel</a></>} />
       <div className="no-print mb-3 space-y-2">
         <div className="flex flex-wrap gap-1.5">

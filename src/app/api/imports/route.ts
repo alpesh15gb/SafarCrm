@@ -14,6 +14,7 @@ const EXT = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" 
 export async function POST(req: Request) {
   const me = await getMe();
   if (!me || me.mfa_pending) return err("Please log in again.", 401);
+  if (me.role === "staff") return err("Ticket import review requires owner access.", 403);
   const fd = await req.formData();
   const file = fd.get("file");
   if (!(file instanceof File)) return err("No file received.");

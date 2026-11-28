@@ -14,7 +14,7 @@ export async function loadCaseOverview(activeIds?: string[]) {
   // ids go in small batches to keep each request short
   const chunks = Array.from({ length: Math.ceil(activeIds.length / 150) }, (_, i) => activeIds!.slice(i * 150, i * 150 + 150));
   const [lines, cases, { data: checkins }, { data: deps }] = await Promise.all([
-    Promise.all(chunks.map((ids) => sb.from("booking_lines").select("case_id, service, status, visa_status:details->>application_status").in("case_id", ids))),
+    Promise.all(chunks.map((ids) => sb.from("v_operational_bookings").select("case_id, service, status, visa_status:details->>application_status").in("case_id", ids))),
     Promise.all(chunks.map((ids) => sb.from("cases").select("id, created_at, travel_start").in("id", ids))),
     // web check-in alerts whose window has opened and that nobody has ticked off yet
     sb.from("tasks").select("case_id").like("auto_key", "webcheckin:%").neq("status", "done").lte("due_at", new Date().toISOString()).limit(500),

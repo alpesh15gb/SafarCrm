@@ -57,6 +57,7 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
   onDone: (c: CaseCreation) => void; onSavingChange?: (saving: boolean) => void; preset?: Record<string, unknown>; compact?: boolean;
 }) {
   const { me, staff } = useApp();
+  const showMoney = me.role === "boss";
   const { run, pending } = useAction();
   const [customer, setCustomer] = useState<Picked | null>((preset?.customer as Picked) ?? null);
   const [adding, setAdding] = useState<string | null>(null);
@@ -123,7 +124,7 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
             customer_id: customer?.id ?? "", title: finalTitle, destination: dest, travel_start: start, travel_end: end || null,
             lead_source: lead, assigned_to: assigned, traveller_ids: travellers, notes: want,
             // the ticket file and the prices only: no PNR, cabin or flight legs typed in (owner, 2026-11-18, again 2026-11-28)
-            bookings: services.map((service) => ({ service, details: {}, pricing: prices[service] })),
+            bookings: services.map((service) => ({ service, details: {}, pricing: showMoney ? prices[service] : undefined })),
           }, requestKey);
           if (!result.ok) { setFormError(result.error); return result; }
           if (!result.data) return { ok: false as const, error: "The case could not be opened. Try again." };
@@ -268,11 +269,11 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
               <p className="text-xs text-muted">PDF, JPG or PNG up to 10 MB.{files[service] && confirmsWithFile(service) ? " Attaching this file marks the booking Confirmed." : ""}</p>
             )}
           </div>
-          <div className="rounded-lg border border-line p-3">
+          {showMoney && <div className="rounded-lg border border-line p-3">
             <BookingPriceFields visa={service === "visa"} perPerson={service === "visa" && travellers.length > 1}
               showCommission={me.can_see_profit} price={prices[service] ?? EMPTY_BOOKING_PRICE}
               onChange={(value) => setPrices((p) => ({ ...p, [service]: value }))} />
-          </div>
+          </div>}
         </section>
       ))}
       <Field label="What does the client want?" hint="Number of people, budget, hotel type: whatever they said. Saved in the case notes.">

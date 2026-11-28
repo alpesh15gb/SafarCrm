@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       let lineId: string | null = null;
       let kind = String(fd.get("kind") || "other");
       if (target === "line") {
-        const { data: l } = await sb.from("booking_lines").select("id, service, details, service_date").eq("id", String(fd.get("line_id"))).eq("case_id", caseId).maybeSingle();
+        const { data: l } = await sb.from("v_operational_bookings").select("id, service, details, service_date").eq("id", String(fd.get("line_id"))).eq("case_id", caseId).maybeSingle();
         if (!l) return err("Booking not found.", 404);
         lineId = l.id;
         base = [c.max_id, SERVICE_LABEL[l.service as Service], lineLabel(l.service as Service, l.details ?? {}), l.service_date ? fdate(l.service_date) : ""].filter(Boolean).join("_");

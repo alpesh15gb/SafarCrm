@@ -6,7 +6,7 @@ import { Download, Plus, X } from "lucide-react";
 import { Badge, Button, Card, Field, Table, btnClass, cx } from "@/components/ui";
 import { Confirm, CopyButton, Dialog, Toggle, useAction } from "@/components/client";
 import {
-  addLookup, createStaff, deactivateStaff, reactivateStaff, removeLogo, removeLookup, resetStaffPassword, runRemindersNow, saveSettings, setMaxStart, updateStaff,
+  addLookup, createStaff, deactivateStaff, reactivateStaff, removeLogo, removeLookup, resetStaffPassword, runRemindersNow, saveSettings, setMaxStart,
 } from "@/actions/settings";
 import { fdatetime, inr } from "@/lib/format";
 import { saveMoneyAccount, setMoneyAccountActive } from "@/actions/money";
@@ -110,19 +110,19 @@ type U = { id: string; full_name: string; email: string | null; role: string; ac
 export function UsersTab({ users, meId }: { users: U[]; meId: string }) {
   const { run, pending } = useAction();
   const [add, setAdd] = useState(false);
-  const [nu, setNu] = useState({ full_name: "", email: "", phone: "", can_see_profit: false, can_see_all_cases: false });
+  const [nu, setNu] = useState({ full_name: "", email: "", phone: "" });
   const [pw, setPw] = useState<{ name: string; email: string; password: string } | null>(null);
   const [deact, setDeact] = useState<U | null>(null);
   return (
     <div className="space-y-4">
       <Card title="Team" action={<Button size="sm" variant="primary" onClick={() => setAdd(true)}>Add staff login</Button>} pad={false}>
-        <Table head={["Name", "Role", "Can see profit", "Can see all cases", "Open cases", "Status", ""]}>
+        <Table head={["Name", "Role", "Financial access", "Case and customer access", "Open cases", "Status", ""]}>
           {users.map((u) => (
             <tr key={u.id} className={cx(!u.active && "text-muted")}>
               <td data-label="Name">{u.full_name}<div className="text-xs text-muted">{u.email}</div></td>
               <td data-label="Role">{u.role === "boss" ? "Boss" : "Staff"}</td>
-              <td data-label="Can see profit">{u.role === "boss" ? "Always" : <Toggle checked={u.can_see_profit} disabled={pending || !u.active} onChange={(x) => run(() => updateStaff(u.id, { can_see_profit: x }))} />}</td>
-              <td data-label="Can see all cases">{u.role === "boss" ? "Always" : <Toggle checked={u.can_see_all_cases} disabled={pending || !u.active} onChange={(x) => run(() => updateStaff(u.id, { can_see_all_cases: x }))} />}</td>
+              <td data-label="Financial access">{u.role === "boss" ? "Full" : "Restricted"}</td>
+              <td data-label="Case and customer access">All</td>
               <td data-label="Open cases">{u.open_cases}</td>
               <td data-label="Status"><Badge tone={u.active ? "green" : "grey"}>{u.active ? "Active" : "Deactivated"}</Badge></td>
               <td data-label="">
@@ -138,16 +138,14 @@ export function UsersTab({ users, meId }: { users: U[]; meId: string }) {
           ))}
         </Table>
       </Card>
-      <p className="text-[13px] text-muted">By default staff see only cases assigned to them or created by them, and never see profit. Switch these on per person.</p>
+      <p className="text-[13px] text-muted">Staff can view and edit all cases and customer profiles. Financial access and deletion are reserved for the owner.</p>
       <Dialog open={add} onClose={() => setAdd(false)} title="Add staff login"
         footer={<><Button onClick={() => setAdd(false)}>Cancel</Button><Button variant="primary" disabled={pending}
-          onClick={() => run(() => createStaff(nu), { then: (r) => { setAdd(false); setPw({ name: nu.full_name, email: nu.email, password: (r.data as { password: string }).password }); setNu({ full_name: "", email: "", phone: "", can_see_profit: false, can_see_all_cases: false }); } })}>Create login</Button></>}>
+          onClick={() => run(() => createStaff(nu), { then: (r) => { setAdd(false); setPw({ name: nu.full_name, email: nu.email, password: (r.data as { password: string }).password }); setNu({ full_name: "", email: "", phone: "" }); } })}>Create login</Button></>}>
         <div className="space-y-3">
           <Field label="Full name" required><input className="field" value={nu.full_name} onChange={(e) => setNu({ ...nu, full_name: e.target.value })} /></Field>
           <Field label="Email (used to log in)" required><input className="field" type="email" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} /></Field>
           <Field label="Mobile"><input className="field" value={nu.phone} onChange={(e) => setNu({ ...nu, phone: e.target.value })} /></Field>
-          <Toggle checked={nu.can_see_profit} onChange={(x) => setNu({ ...nu, can_see_profit: x })} label="Can see profit, P&L and reports" />
-          <Toggle checked={nu.can_see_all_cases} onChange={(x) => setNu({ ...nu, can_see_all_cases: x })} label="Can see all cases" />
         </div>
       </Dialog>
       <Dialog open={!!pw} onClose={() => setPw(null)} title="Temporary password" footer={<Button variant="primary" onClick={() => setPw(null)}>Done</Button>}>

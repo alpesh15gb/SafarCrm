@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireTeam } from "@/lib/auth";
+import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Chips, Empty, PageHeader, Pager, StatusBadge, Table } from "@/components/ui";
 import { TicketUploadButton } from "@/components/ticket-upload";
@@ -16,7 +16,7 @@ type Row = {
 };
 
 export default async function ImportsPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
-  await requireTeam();
+  await requireBoss();
   const sp = await searchParams;
   const sb = await createClient();
   const page = Math.max(1, Number(sp.page) || 1);

@@ -173,6 +173,11 @@ export async function reinstateLine(id: string): Promise<ActionResult> {
 export async function confirmLine(id: string): Promise<ActionResult> {
   try {
     const sb = await createClient();
+    if ((await getMe())?.role === "staff") {
+      const { data, error } = await sb.rpc("confirm_operational_booking", { p_line: id });
+      if (error) throw error;
+      return data ? { ok: true, message: "Booking confirmed" } : { ok: false, error: "This booking is no longer pending. Reload the page." };
+    }
     const { data: before } = await sb.from("booking_lines").select("case:cases!inner(status)").eq("id", id).maybeSingle();
     const was = (before?.case as unknown as { status: string } | undefined)?.status;
     const { data: l, error } = await sb.from("booking_lines").update({ status: "confirmed" }).eq("id", id).eq("status", "pending")

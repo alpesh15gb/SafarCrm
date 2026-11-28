@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireTeam } from "@/lib/auth";
+import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AGENCY_COLS, Breakup, FieldGrid, PayTo, PrintDoc, Rule, SAC, SignOff, Terms, type Agency } from "@/components/print-doc";
 import { SERVICE_LABEL, type Service } from "@/lib/constants";
@@ -13,7 +13,7 @@ type CaseRef = { max_id: string; title: string; travellers: string | null; trave
 
 /** A numbered invoice, printed exactly as it was issued (the amounts are the copy kept on the invoice, not today's bookings). */
 export default async function InvoicePage({ params }: { params: Promise<{ id: string; iid: string }> }) {
-  await requireTeam();
+  await requireBoss();
   const { id, iid } = await params;
   const sb = await createClient();
   const [{ data: inv }, { data: agency }, { data: money }, { data: cust }] = await Promise.all([

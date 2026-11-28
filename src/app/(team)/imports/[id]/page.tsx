@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireTeam } from "@/lib/auth";
+import { requireBoss } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader, StatusBadge } from "@/components/ui";
 import { emptyDraft, type Draft } from "@/lib/imports/schema";
@@ -9,7 +9,7 @@ import { ReviewScreen, type ImportRow } from "./review";
 export const metadata = { title: "Review ticket" };
 
 export default async function ImportReviewPage({ params }: { params: Promise<{ id: string }> }) {
-  const me = await requireTeam();
+  const me = await requireBoss();
   const { id } = await params;
   const sb = await createClient();
   const { data } = await sb.from("ticket_imports")

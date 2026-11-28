@@ -74,13 +74,13 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         { key: "documents", label: pending ? `Documents (${pending} to review)` : "Documents" },
         { key: "family", label: c.customer_type === "corporate" ? "Employees" : "Family" },
         { key: "cases", label: "Cases" },
-        { key: "activity", label: "Activity" },
+        ...(me.role === "boss" ? [{ key: "activity", label: "Activity" }] : []),
       ]} />
-      {tab === "profile" && <div className="max-w-4xl"><CustomerForm customer={c} ids={(ids?.[0] ?? { aadhaar_masked: null, pan: null, passport: null })} /></div>}
+      {(tab === "profile" || (tab === "activity" && me.role !== "boss")) && <div className="max-w-4xl"><CustomerForm customer={c} ids={(ids?.[0] ?? { aadhaar_masked: null, pan: null, passport: null })} /></div>}
       {tab === "documents" && <DocumentsLoader id={id} />}
       {tab === "family" && <FamilyLoader head={{ id: c.id, first_name: c.first_name, last_name: c.last_name, mobile: c.mobile }} familyId={c.family_id} companyId={c.company_id} type={c.customer_type} />}
       {tab === "cases" && <CasesLoader id={id} />}
-      {tab === "activity" && <ActivityLoader id={id} />}
+      {me.role === "boss" && tab === "activity" && <ActivityLoader id={id} />}
     </>
   );
 }

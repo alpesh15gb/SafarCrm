@@ -1,4 +1,5 @@
 import "server-only";
+import { getMe } from "./auth";
 import { createClient } from "./supabase/server";
 import { monthRange, todayIST } from "./format";
 
@@ -48,9 +49,10 @@ export type CaseRow = {
 export async function listCases(sp: SP, all = false) {
   const sb = await createClient();
   const page = Math.max(1, Number(sp.page) || 1);
+  const money = (await getMe())?.role === "boss";
   const sel = `id, max_id, title, status, travel_start, travel_end, destination, created_at, assigned_to, starred,
     customer:customers!cases_customer_id_fkey(id, full_name, mobile), staff:profiles!cases_assigned_to_fkey(full_name),
-    lines:booking_lines${sp.service ? "!inner" : ""}(service, status)`;
+    lines:v_operational_bookings${sp.service ? "!inner" : ""}(service, status)`;
   // "what the case needs next" filter: the ids come from the database (open cases only), then the usual filters apply
   let workIds: string[] | null = null;
   if (sp.work) {
@@ -66,11 +68,11 @@ export async function listCases(sp: SP, all = false) {
     const { data } = await sb.rpc("dashboard_case_ids");
     quickIds = ((data ?? []) as { case_id: string }[]).map((r) => r.case_id);
   }
-  else if (sp.quick === "payment") {
+  else if (money && sp.quick === "payment") {
     const { data } = await sb.from("v_case_money").select("case_id").gt("due", 0.009).limit(1000);
     quickIds = (data ?? []).map((r) => r.case_id as string);
   } else if (sp.quick === "visa") {
-    const { data } = await sb.from("booking_lines").select("case_id").eq("service", "visa").eq("status", "pending").limit(1000);
+    const { data } = await sb.from("v_operational_bookings").select("case_id").eq("service", "visa").eq("status", "pending").limit(1000);
     quickIds = Array.from(new Set((data ?? []).map((r) => r.case_id as string)));
   }
   // a number clicked in the dashboard's Running cases boxes (?box=flight.ticketed …): exactly the cases it counted
@@ -96,7 +98,7 @@ export async function listCases(sp: SP, all = false) {
   if (sp.quick === "week") q = q.gte("travel_start", todayIST()).lte("travel_start", todayIST(7));
   if (sp.status === "open") q = q.not("status", "in", "(completed,cancelled)");
   else if (sp.status) q = q.eq("status", sp.status);
-  if (sp.service) q = q.eq("booking_lines.service", sp.service);
+  if (sp.service) q = q.eq("lines.service", sp.service);
   if (sp.staff) q = q.eq("assigned_to", sp.staff);
   if (sp.customer) q = q.eq("customer_id", sp.customer);
   if (sp.date === "upcoming") q = q.gte("travel_start", todayIST()).lte("travel_start", todayIST(30));
@@ -120,7 +122,7 @@ export async function listCases(sp: SP, all = false) {
   return q.order("id");
   };
   const { rows, count } = await fetchRows<CaseRow>(make, page, all);
-  if (rows.length) {
+  if (money && rows.length) {
     const m = await byIds(rows.map((r) => r.id), (ids) => sb.from("v_case_money").select("case_id, billed, received, due, profit, margin, sale").in("case_id", ids));
     const byId = new Map(m.map((x) => [x.case_id, x]));
     rows.forEach((r) => (r.money = byId.get(r.id) as CaseRow["money"]));

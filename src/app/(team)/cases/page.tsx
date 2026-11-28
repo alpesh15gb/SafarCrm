@@ -57,7 +57,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         {/* the questions asked most of a long list, one tap each (owner, 2026-11-18) */}
         <Chips param="quick" current={sp.quick} base={sp} allLabel={sp.status && sp.status !== "open" ? "Everything" : "All open"} items={[
           { value: "starred", label: "⭐ Starred" }, { value: "active", label: "Active" }, { value: "attention", label: "Needs attention" },
-          { value: "week", label: "Travelling this week" }, { value: "payment", label: "Payment due" }, { value: "visa", label: "Visa pending" },
+          { value: "week", label: "Travelling this week" }, ...(boss ? [{ value: "payment", label: "Payment due" }] : []), { value: "visa", label: "Visa pending" },
         ]} />
         {/* opened from a number on the dashboard: say which, with a way back to the whole list */}
         {sp.box && (
@@ -98,7 +98,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
           filtered ? <Empty text="No cases match these filters." action={<LinkButton href="/cases">Clear filters</LinkButton>} />
             : <Empty text="No cases yet. Create your first case." action={<NewButton kind="case" label="New case" />} />
         ) : (
-          <Table head={["MAX ID", "Case", "Travel", "Services", "Owner", "Stage", "Alerts", "Due from client", ...(me.can_see_profit ? ["Profit"] : [])]}>
+          <Table head={["MAX ID", "Case", "Travel", "Services", "Owner", "Stage", "Alerts", ...(boss ? ["Due from client", "Profit"] : [])]}>
             {rows.map((r) => {
               const loss = me.can_see_profit && r.money?.profit != null && Number(r.money.profit) < 0;
               const al = alerts.get(r.id) ?? [];
@@ -136,7 +136,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                       </span>
                     ) : al.length ? <span className="text-muted">Next: {al[0].due_at ? fdatetime(al[0].due_at) : al[0].title}</span> : <span className="text-muted">—</span>}
                   </td>
-                  <td data-label="Due from client" className="text-right md:text-left">{Number(r.money?.due) > 0 ? <Money value={r.money?.due} /> : <span className="text-muted">—</span>}</td>
+                  {boss && <td data-label="Due from client" className="text-right md:text-left">{Number(r.money?.due) > 0 ? <Money value={r.money?.due} /> : <span className="text-muted">—</span>}</td>}
                   {me.can_see_profit && <td data-label="Profit"><Money value={r.money?.profit} profit /></td>}
                 </tr>
               );

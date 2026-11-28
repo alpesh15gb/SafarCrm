@@ -28,7 +28,7 @@ export const getMe = cache(async (): Promise<Me | null> => {
   if (!p || !p.active) return null;
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   const mfa_pending = !!aal && aal.nextLevel === "aal2" && aal.currentLevel !== "aal2";
-  return { ...p, can_see_profit: p.role === "boss" || p.can_see_profit, mfa_pending } as Me;
+  return { ...p, can_see_profit: p.role === "boss", can_see_all_cases: p.role !== "client", mfa_pending } as Me;
 });
 
 export async function requireTeam() {
