@@ -5,7 +5,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(56);
+select plan(57);
 
 create temp table r (k text primary key, v text);
 grant all on r to authenticated;
@@ -274,6 +274,11 @@ update public.cases set travel_end = '2026-12-10' where id = '00000000-0000-0000
 select results_eq($$ select title from public.tasks where case_id = '00000000-0000-0000-0000-0000000ca5e3' and auto_key like 'webcheckin:%' and status <> 'done' order by due_at $$,
   $$ values ('Web check-in: departure 05-12-2026'), ('Web check-in: return 10-12-2026') $$,
   'changing the return date closes the old alert and makes the new one');
+-- a case with travel dates but no flight/rail/bus booking (only a hotel, a visa or nothing yet) still departs
+insert into public.cases (id, customer_id, title, assigned_to, created_by, status, travel_start) values
+  ('00000000-0000-0000-0000-0000000ca5e4', '00000000-0000-0000-0000-00000000c003', 'No booking yet trip', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a1', 'enquiry', '2026-12-06');
+select results_eq($$ select service, dep_date::text from public.departures('2026-12-01', '2026-12-31') where case_id = '00000000-0000-0000-0000-0000000ca5e4' $$,
+  $$ values ('trip', '2026-12-06') $$, 'a case with no transport booking departs on its From date as a trip');
 select is((select count(*)::int from public.service_dates('2026-12-01', '2026-12-31') where service = 'hotel'), 2, 'hotel check-in and check-out are listed separately');
 
 -- ================================================================== A8: money in the database matches the browser rules

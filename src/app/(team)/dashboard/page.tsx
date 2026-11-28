@@ -156,7 +156,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                           <span className="flex items-center gap-1.5 truncate text-xs text-muted">
                             <ServiceIcon service={l.service} className="h-3.5 w-3.5 shrink-0" />
                             <span className="truncate">
-                              {[l.from_code && l.to_code ? `${l.from_code} → ${l.to_code}` : SERVICE_LABEL[l.service as keyof typeof SERVICE_LABEL], l.dep_time, l.carrier].filter(Boolean).join(" · ")}
+                              {[l.from_code && l.to_code ? `${l.from_code} → ${l.to_code}` : SERVICE_LABEL[l.service as keyof typeof SERVICE_LABEL] ?? "Trip", l.dep_time, l.carrier].filter(Boolean).join(" · ")}
                               {/* from the case dates (no legs typed on the booking): outbound and return */}
                               {l.legs > 1 && (l.from_code ? ` · leg ${l.leg} of ${l.legs}` : l.leg === 1 ? " · Departure" : " · Return")}
                             </span>

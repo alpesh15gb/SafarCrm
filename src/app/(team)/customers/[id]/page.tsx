@@ -85,16 +85,25 @@ export default async function CustomerPage({ params, searchParams }: { params: P
   );
 }
 
+/** The customer's documents and, for a family, every member's (owner, 2026-11-28: a member's passport uploaded from the
+ *  Family tab was invisible here). Each document says whose it is; the upload box can file it under any member. */
 async function DocumentsLoader({ id }: { id: string }) {
   const sb = await createClient();
-  const [{ data: docs }, { data: nums }, { data: types }] = await Promise.all([
-    sb.from("customer_documents").select("id, doc_type, expiry, note, file_name, mime, status, created_at, storage_path, uploader:profiles!customer_documents_uploaded_by_fkey(full_name, role)").eq("customer_id", id).order("created_at", { ascending: false }),
-    sb.rpc("document_numbers", { p_customer: id }),
+  const { data: me } = await sb.from("customers").select("id, full_name, family_id").eq("id", id).single();
+  const { data: fam } = me?.family_id
+    ? await sb.from("customers").select("id, full_name, relation").eq("family_id", me.family_id).order("dob", { nullsFirst: false })
+    : { data: null };
+  const people = [{ id, full_name: me?.full_name ?? "", relation: null as string | null }, ...((fam ?? []).filter((p) => p.id !== id))];
+  const ids = people.map((p) => p.id);
+  const [{ data: docs }, nums, { data: types }] = await Promise.all([
+    sb.from("customer_documents").select("id, customer_id, doc_type, expiry, note, file_name, mime, status, created_at, storage_path, uploader:profiles!customer_documents_uploaded_by_fkey(full_name, role)").in("customer_id", ids).order("created_at", { ascending: false }),
+    Promise.all(ids.map((p) => sb.rpc("document_numbers", { p_customer: p }))),
     sb.from("lookups").select("value").eq("kind", "document_type").eq("active", true).order("sort"),
   ]);
-  const n = new Map<string, string | null>((nums ?? []).map((x: { id: string; number: string | null }) => [x.id, x.number]));
-  return <DocumentsTab customerId={id} types={(types ?? []).map((t) => t.value)}
-    docs={(docs ?? []).map((d) => ({ ...d, has_file: !!d.storage_path, number: n.get(d.id) ?? null, uploader: d.uploader as unknown as { full_name: string; role: string } | null }))} />;
+  const n = new Map<string, string | null>(nums.flatMap((r) => (r.data ?? []) as { id: string; number: string | null }[]).map((x) => [x.id, x.number]));
+  const name = new Map(people.map((p) => [p.id, p.full_name]));
+  return <DocumentsTab customerId={id} types={(types ?? []).map((t) => t.value)} people={people}
+    docs={(docs ?? []).map((d) => ({ ...d, owner: name.get(d.customer_id) ?? "", has_file: !!d.storage_path, number: n.get(d.id) ?? null, uploader: d.uploader as unknown as { full_name: string; role: string } | null }))} />;
 }
 
 const PEOPLE = "id, code, full_name, relation, designation, gender, dob, mobile, passport_expiry, meal_pref, passport_hash, aadhaar_last4";
