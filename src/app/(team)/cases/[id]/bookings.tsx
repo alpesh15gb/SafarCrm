@@ -10,6 +10,7 @@ import { TicketPick } from "@/components/forms/ticket-pick";
 import { DropZone, FileItem, withHistory } from "@/components/files";
 import { BookingDetails } from "@/components/trip-view";
 import { useApp } from "@/components/shell/shell";
+import { updateCase } from "@/actions/cases";
 import { cancelLine, confirmLine, deleteLine, duplicateLine, reinstateLine, saveLine, setLineVisible } from "@/actions/bookings";
 import { DEFAULT_KIND, SERVICES, SERVICE_LABEL, type Service } from "@/lib/constants";
 import { VisaPanel } from "@/components/visa-panel";
@@ -82,7 +83,7 @@ export function BookingsTab({ caseId, lines, travellers, maxId, customer, lookup
           iata={iata}
         />
       ))}
-      <LineDialog open={!!dlg} onClose={() => setDlg(null)} caseId={caseId} line={dlg?.line} service={dlg?.service} travellers={travellers} />
+      <LineDialog open={!!dlg} onClose={() => setDlg(null)} caseId={caseId} line={dlg?.line} service={dlg?.service} travellers={travellers} trip={trip} />
       <CancelDialog line={cancel} onClose={() => setCancel(null)} />
     </div>
   );
@@ -208,8 +209,8 @@ function blankDetails(s: Service): Record<string, unknown> {
   return {};
 }
 
-function LineDialog({ open, onClose, caseId, line, service: initService, travellers }: {
-  open: boolean; onClose: () => void; caseId: string; line?: Line; service?: Service; travellers: Pax[];
+function LineDialog({ open, onClose, caseId, line, service: initService, travellers, trip }: {
+  open: boolean; onClose: () => void; caseId: string; line?: Line; service?: Service; travellers: Pax[]; trip: Trip;
 }) {
   const { me } = useApp();
   const { run, pending } = useAction();
@@ -226,6 +227,10 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   // the ticket, voucher, policy or visa form picked in the form: uploaded onto the booking when it is saved
   const [file, setFile] = useState<File | null>(null);
   const [fileErr, setFileErr] = useState("");
+  // flight, rail and bus ask when the client travels (owner, 2026-11-28): saved as the case's From and To dates, which
+  // feed Departures, web check-in alerts and the dashboard. Nothing else about the journey is typed in.
+  const [go, setGo] = useState("");
+  const [back, setBack] = useState("");
 
   // reset only when the dialog opens or a different booking is opened: a background refresh must never wipe what was typed
   useEffect(() => {
@@ -247,6 +252,7 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
       setM({ supplier_cost: "", selling_price: "", commission_type: "amount", commission_value: "", gst: "", payment_due_date: "", supplier_due_date: "" });
       setNotes(""); setVisible(true);
     }
+    setGo(trip.start ?? ""); setBack(trip.end ?? "");
     setAddSup(null);
     setTried(false);
     setFile(null); setFileErr("");
@@ -273,7 +279,10 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
   const visaPerPerson = service === "visa" && !line && trav.length > 1;
   // check before sending, and say exactly what is missing
   // the same checks the server runs: an unreadable amount is refused, an empty one means "not priced yet"
-  const problem = lineProblem(service, d)
+  const travels = ["flight", "rail", "bus"].includes(service) && !isCancelled;
+  const problem = (travels && !go ? "Enter the travel date (it is on the ticket)." : null)
+    ?? (travels && back && back < go ? "The return date can't be before the travel date." : null)
+    ?? lineProblem(service, d)
     ?? moneyProblem(service === "visa" ? "Our cost" : "Supplier cost", m.supplier_cost)
     ?? moneyProblem(service === "visa" ? "Charge to client" : "Selling price", m.selling_price)
     ?? moneyProblem("Commission", m.commission_value) ?? moneyProblem("GST", m.gst) ?? moneyProblem("Base fare", d.base_fare);
@@ -296,6 +305,10 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
     if (problem) return;
     return run(
       async () => {
+        if (travels && (go !== (trip.start ?? "") || back !== (trip.end ?? ""))) {
+          const t = await updateCase(caseId, { travel_start: go, travel_end: back || null });
+          if (!t.ok) return t;
+        }
         const r = visaPerPerson ? await saveVisaPerPerson() : await saveLine({
         id: line?.id, case_id: caseId, service, supplier_id: supplier?.id ?? null, status: saveStatus, reference, traveller_ids: trav,
         supplier_cost: m.supplier_cost, selling_price: m.selling_price, commission_type: m.commission_type, commission_value: m.commission_value,
@@ -367,6 +380,17 @@ function LineDialog({ open, onClose, caseId, line, service: initService, travell
           </Field>
         </div>
 
+        {travels && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Travel date" required hint={tried && !go ? undefined : "From the ticket. Saved as the case's travel date."}>
+              <input type="date" className={cx("field", tried && !go && "!border-red-400")} value={go} onChange={(e) => setGo(e.target.value)} />
+              {tried && !go && <span role="alert" className="mt-1 block text-xs font-medium text-red-600">Enter the travel date.</span>}
+            </Field>
+            <Field label="Return date" hint="Leave empty for a one-way trip">
+              <input type="date" className="field" min={go || undefined} value={back} onChange={(e) => setBack(e.target.value)} />
+            </Field>
+          </div>
+        )}
         {/* no traveller picker (owner, 2026-11-18): a booking is for everyone on the case; a visa is still one file each */}
         {visaPerPerson && <p className="rounded-lg bg-sky-50 px-3 py-2 text-[13px] text-sky-900">We&apos;ll make {trav.length} visa files, one for each traveller on the case, because each visa is approved separately.</p>}
         <div className="rounded-lg border border-line p-3">

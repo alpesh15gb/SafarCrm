@@ -94,6 +94,7 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
     return () => { current = false; };
   }, [customer]);
   const tick = (id: string, on: boolean) => setTravellers((t) => (on ? [...t, id] : t.filter((x) => x !== id)));
+  const travels = services.some((s) => s === "flight" || s === "rail" || s === "bus");
   const toggleService = (s: Service) => setServices((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
   const suggested = (() => {
@@ -240,6 +241,18 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
           })}
         </div>
       </fieldset>
+      {/* flight, rail or bus: when the client travels (owner, 2026-11-28). Saved as the case's dates, which feed
+          Departures, web check-in alerts and the dashboard; nothing else about the journey is typed in */}
+      {travels && (
+        <div className="grid gap-3 rounded-xl bg-sky-50/60 p-3 sm:grid-cols-2">
+          <Field label="Travel date" required hint="From the ticket">
+            <input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} />
+          </Field>
+          <Field label="Return date" hint="Leave empty for a one-way trip">
+            <input type="date" className="field" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />
+          </Field>
+        </div>
+      )}
       {services.map((service) => (
         <section key={service} aria-label={`${SERVICE_LABEL[service]} booking`} className="space-y-3 rounded-xl border border-line p-3">
           <h3 className="flex items-center gap-2 text-sm font-semibold"><ServiceIcon service={service} />{SERVICE_LABEL[service]} booking</h3>
@@ -266,10 +279,11 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
         <textarea className="field min-h-16" value={want} onChange={(e) => setWant(e.target.value)} placeholder="4 adults, beach hotel, budget about 80,000" />
       </Field>
       {!compact && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className={cx("grid gap-3", travels ? "sm:grid-cols-1" : "sm:grid-cols-3")}>
           <Field label="Going to"><input className="field" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Goa" /></Field>
-          <Field label="From date"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-          <Field label="To date"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+          {/* with a flight, rail or bus booking the dates are asked above, as the travel and return dates */}
+          {!travels && <Field label="From date"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>}
+          {!travels && <Field label="To date"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>}
         </div>
       )}
       {/* filled in for you or rarely changed: the title is suggested, the case goes to you */}
@@ -282,8 +296,8 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
           </div>
           <Field label="Starting from"><input className="field" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Delhi" /></Field>
           {compact && <Field label="Going to"><input className="field" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Goa" /></Field>}
-          {compact && <Field label="From date"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>}
-          {compact && <Field label="To date"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>}
+          {compact && !travels && <Field label="From date"><input type="date" className="field" value={start} onChange={(e) => setStart(e.target.value)} /></Field>}
+          {compact && !travels && <Field label="To date"><input type="date" className="field" min={start} value={end} onChange={(e) => setEnd(e.target.value)} /></Field>}
           <Field label="Lead source">
             <select className="field" value={lead} onChange={(e) => setLead(e.target.value)}>
               <option value="">—</option>
@@ -295,8 +309,10 @@ export function NewCaseForm({ onDone, onSavingChange, preset, compact }: {
       </More>
       {formError && <p role="alert" className="text-sm text-red-700">{formError}</p>}
       <div className="flex items-center justify-end gap-3">
-        {customer && finalTitle && <span className="min-w-0 truncate text-xs text-muted" title={finalTitle}>Will be saved as “{finalTitle}”</span>}
-        <Button variant="primary" disabled={pending || !customer || familyFor !== customer.id || !finalTitle || services.some((service) => fileErrors[service])} onClick={submit}>{pending ? "Creating case…" : "Create case"}</Button>
+        {travels && !start
+          ? <span className="min-w-0 truncate text-xs font-medium text-amber-700">Enter the travel date to create the case.</span>
+          : customer && finalTitle && <span className="min-w-0 truncate text-xs text-muted" title={finalTitle}>Will be saved as “{finalTitle}”</span>}
+        <Button variant="primary" disabled={pending || !customer || familyFor !== customer.id || !finalTitle || services.some((service) => fileErrors[service]) || (travels && !start) || (!!end && !!start && end < start)} onClick={submit}>{pending ? "Creating case…" : "Create case"}</Button>
       </div>
     </div>
   );
